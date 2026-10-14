@@ -2,6 +2,9 @@ import { api } from "../../scripts/api.js";
 
 const PREFIX = "/bundle-library/v1";
 
+/** Fired on window after a request that changed the library. */
+export const CHANGED_EVENT = "bundle-library:changed";
+
 async function request(path, options = {}) {
     const method = options.method ?? "GET";
     const headers = { ...(options.headers ?? {}) };
@@ -10,6 +13,10 @@ async function request(path, options = {}) {
     const body = await response.json().catch(() => null);
     if (!response.ok) {
         throw new Error(body?.error?.message ?? `${method} ${path}: HTTP ${response.status}`);
+    }
+    if (method !== "GET") {
+        forgetBundles();
+        window.dispatchEvent(new CustomEvent(CHANGED_EVENT));
     }
     return body;
 }

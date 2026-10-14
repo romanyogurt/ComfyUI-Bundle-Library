@@ -221,6 +221,26 @@ const PAGE_HELPERS = () => {
     await page.screenshot({ path: path.join(OUT, "classic-A.png") });
     outs = await ev(() => window.__bl.outs(window.__node));
     check("wired baseline: one link per output", outs.every((o) => o.links === 1), outs);
+    const panelA = await ev(async (bundleA) => {
+        const b = window.__bl, { preview, rows, notice } = window.__node.bundlePanel;
+        const summary = (await b.request("GET", "/bundles")).bundles.find((x) => x.id === bundleA);
+        const shown = [...rows.querySelectorAll(".bl-row")].map((row) => ({
+            name: row.querySelector(".bl-name").textContent,
+            type: row.querySelector(".bl-type").textContent,
+            text: row.querySelector(".bl-text")?.textContent ?? null,
+            img: row.querySelector("img")?.getAttribute("src") ?? null,
+            value: row.querySelector(".bl-value")?.textContent ?? null,
+        }));
+        return { summary, shown, spare: preview.clientHeight - rows.offsetHeight - (notice.hidden ? 0 : notice.offsetHeight + 4) };
+    }, A);
+    check("panel height fits its content (at most a small margin left)", panelA.spare >= 0 && panelA.spare <= 16, panelA.spare);
+    const fieldsA = Object.fromEntries(panelA.summary.fields.map((f) => [f.name, f]));
+    check("preview shows each field of the bundle", JSON.stringify(panelA.shown.map((r) => [r.name, r.type])) === JSON.stringify(
+        panelA.summary.fields.map((f) => [f.name, f.type])), panelA.shown);
+    check("preview: text, thumbnails and value match the bundle",
+        panelA.shown[0].text === fieldsA.prompt.preview
+        && panelA.shown[1].img.includes(fieldsA.ref_1.preview.sha256) && panelA.shown[2].img.includes(fieldsA.ref_2.preview.sha256)
+        && panelA.shown[3].value === "✓ true", panelA.shown);
 
     let run = await ev(() => window.__bl.run());
     const p = await ev(() => window.__p);
@@ -335,6 +355,43 @@ const PAGE_HELPERS = () => {
     check("save: 4 outputs and only bundle_id/slot_spec stored", reload.savedOutputs === 4 && reload.savedWidgets.length === 2, reload.savedWidgets);
     check("reload: labels/types/links restored", JSON.stringify(reload.outs) === JSON.stringify(outs), reload.outs);
     check("reload: link types restored", JSON.stringify(reload.linkTypes) === JSON.stringify(["BOOLEAN", "IMAGE", "IMAGE", "STRING"]), reload.linkTypes);
+
+    // collapse the preview, then reload the whole page with the saved workflow
+    const collapse = await ev(async () => {
+        const b = window.__bl, n = window.__node;
+        const before = n.size[1];
+        n.bundlePanel.toggle.click();
+        await b.sleep(200);
+        return { before, after: n.size[1], hidden: n.bundlePanel.preview.hidden, saved: n.properties.preview_collapsed };
+    });
+    check("collapse: preview hidden, node shorter, state saved", collapse.hidden && collapse.saved === true && collapse.after < collapse.before - 40, collapse);
+    const savedGraph = await ev(() => JSON.parse(JSON.stringify(window.__bl.app.graph.serialize())));
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await page.waitForFunction(() => window.LiteGraph && document.querySelector("canvas"), null, { timeout: 60000 });
+    await ev(async () => {
+        for (let i = 0; i < 100; i++) {
+            try { await window.__bl.init(); if (window.__bl.app.graph && window.__bl.app.canvas) return; } catch {}
+            await window.__bl.sleep(200);
+        }
+    });
+    await page.waitForTimeout(1500);
+    await page.keyboard.press("Escape");
+    const pageReload = await ev(async (data) => {
+        const b = window.__bl;
+        await b.app.loadGraphData(data);
+        await b.sleep(800);
+        const n = b.loaders()[0];
+        window.__node = n;
+        const { select, preview } = n.bundlePanel;
+        const collapsed = preview.hidden;
+        n.bundlePanel.toggle.click();
+        await b.sleep(300);
+        return { outs: b.outs(n), selected: select.selectedOptions[0]?.textContent, collapsed,
+                 rows: preview.querySelectorAll(".bl-row").length, expanded: !preview.hidden && !n.properties.preview_collapsed };
+    }, savedGraph);
+    check("page reload: outputs, links and selection restored", JSON.stringify(pageReload.outs) === JSON.stringify(outs)
+        && pageReload.selected === "[test] A (red)", pageReload);
+    check("page reload: collapsed state kept, then expands with the preview", pageReload.collapsed && pageReload.expanded && pageReload.rows === 4, pageReload);
 
     // copy/paste and clone
     const paste = await ev(async () => {
@@ -472,6 +529,101 @@ const PAGE_HELPERS = () => {
         return { subOutputs: sg.outputs.map((o) => [o.label ?? o.name, o.type, o.links?.length ?? 0]), inner: b.outs(b.loaders(sg.subgraph)[0]) };
     });
     check("subgraph reload: inner outputs restored", JSON.stringify(subReload.inner) === JSON.stringify(outs), subReload);
+    const subSwitch = await ev(async (ids) => {
+        const b = window.__bl;
+        const sg = b.app.graph.nodes.find((n) => n.subgraph);
+        const inner = b.loaders(sg.subgraph)[0];
+        const sgOuts = () => sg.outputs.map((o) => [o.label ?? o.name, o.type, o.links?.length ?? 0]);
+        const before = sgOuts();
+        await b.pick(inner, ids.B);
+        const onB = { inner: b.outs(inner), outer: sgOuts() };
+        await b.pick(inner, ids.C);
+        const onC = { inner: b.outs(inner), outer: sgOuts() };
+        return { before, onB, onC };
+    }, { B, C });
+    check("subgraph: switching the inner loader A -> B keeps inner and outer slots",
+        JSON.stringify(subSwitch.onB.inner) === JSON.stringify(outs) && JSON.stringify(subSwitch.onB.outer) === JSON.stringify(subSwitch.before), subSwitch.onB);
+    check("subgraph: switching to C keeps the linked slots and the subgraph outputs",
+        JSON.stringify(subSwitch.onC.outer) === JSON.stringify(subSwitch.before) && subSwitch.onC.inner.length === 5, subSwitch.onC);
+    run = await ev(() => window.__bl.run());
+    check("subgraph on C: run fails at the inner loader", (run.errors ?? []).some((e) => e.exception_message.includes("cannot fill the connected outputs")),
+        (run.errors ?? []).map((e) => [e.node_id, e.exception_message.slice(0, 60)]));
+    await ev(async (bundleA) => {
+        const b = window.__bl;
+        const sg = b.app.graph.nodes.find((n) => n.subgraph);
+        await b.pick(b.loaders(sg.subgraph)[0], bundleA);
+    }, A);
+
+    // a second loader beside the first: independence, rename, field changes, unlinked misfits
+    const second = await ev(async (ids) => {
+        const b = window.__bl;
+        const n2 = b.add("BundleLibraryLoad", [80, 700]);
+        window.__node2 = n2;
+        await b.pick(n2, ids.B);
+        const p2 = b.add("PreviewAny", [700, 700]);
+        const p3 = b.add("PreviewAny", [1000, 700]);
+        n2.connect(0, p2, 0);
+        n2.connect(3, p3, 0);
+        window.__p2 = { p2: p2.id, p3: p3.id };
+        return { outs: b.outs(n2) };
+    }, { B });
+    run = await ev(() => window.__bl.run());
+    const p2 = await ev(() => window.__p2);
+    check("two loaders run side by side with their own bundles",
+        run.history?.outputs?.[p.pPrompt]?.text?.[0]?.startsWith("Red dress") && run.history?.outputs?.[p2.p2]?.text?.[0] === "Blue shirt girl",
+        { first: run.history?.outputs?.[p.pPrompt]?.text, second: run.history?.outputs?.[p2.p2]?.text });
+
+    const renamed = await ev(async (ids) => {
+        const b = window.__bl;
+        const summary = (await b.request("GET", "/bundles")).bundles.find((x) => x.id === ids.B);
+        const full = await b.request("GET", `/bundles/${ids.B}`);
+        await b.request("PUT", `/bundles/${ids.B}`, { ...full, name: "[test] B renamed", expected_revision: summary.revision });
+        window.dispatchEvent(new CustomEvent("bundle-library:changed"));
+        await b.sleep(600);
+        const n2 = window.__node2;
+        return { selected: n2.bundlePanel.select.selectedOptions[0]?.textContent, outs: b.outs(n2) };
+    }, { B });
+    check("rename in the library: the node keeps its selection and outputs",
+        renamed.selected === "[test] B renamed" && JSON.stringify(renamed.outs) === JSON.stringify(second.outs), renamed);
+
+    const grown = await ev(async (ids) => {
+        const b = window.__bl;
+        const full = await b.request("GET", `/bundles/${ids.B}`);
+        await b.request("PUT", `/bundles/${ids.B}`, { ...full, expected_revision: full.revision,
+            fields: [...full.fields, { name: "extra", type: "int", value: 7 }] });
+        window.dispatchEvent(new CustomEvent("bundle-library:changed"));
+        await b.sleep(600);
+        const n2 = window.__node2, { notice } = n2.bundlePanel;
+        const before = { visible: !notice.hidden, text: notice.textContent };
+        notice.querySelector(".bl-update")?.click();
+        await b.sleep(300);
+        return { before, after: b.outs(n2), hidden: notice.hidden };
+    }, { B });
+    check("a new field in the library is offered, and Update outputs adds it", grown.before.visible && grown.before.text.includes("+extra")
+        && grown.after.at(-1).label === "extra" && grown.after.at(-1).type === "INT" && grown.after[0].links === 1 && grown.hidden, grown);
+
+    const misfit = await ev(async (ids) => {
+        const b = window.__bl, n2 = window.__node2;
+        await b.pick(n2, ids.C);
+        const linkedText = n2.bundlePanel.rows.textContent;
+        n2.disconnectOutput(n2.outputs.findIndex((o) => o.label === "use_bgm"));  // linked and missing until now
+        await b.sleep(400);
+        const { rows, notice } = n2.bundlePanel;
+        const unlinked = { rows: rows.textContent, notice: notice.hidden ? null : notice.textContent };
+        notice.querySelector(".bl-update")?.click();
+        await b.sleep(300);
+        return { linkedText, unlinked, after: b.outs(n2).map((o) => o.label) };
+    }, { C });
+    check("misfit status follows the link: failure warning while linked",
+        (misfit.linkedText.match(/running will fail/g) ?? []).length === 1, misfit.linkedText);
+    check("misfit status follows the link: 'not connected' once unlinked, with an update to drop it",
+        misfit.unlinked.rows.includes("not in this bundle (not connected)") && misfit.unlinked.notice?.includes("−use_bgm")
+        && !misfit.after.includes("use_bgm"), misfit);
+    await ev(() => {
+        const b = window.__bl;
+        for (const id of Object.values(window.__p2)) b.app.graph.remove(b.app.graph.getNodeById(id));
+        b.app.graph.remove(window.__node2);
+    });
 
     // ---- Nodes 2.0 ---------------------------------------------------------
     await ev(async () => {
@@ -494,6 +646,16 @@ const PAGE_HELPERS = () => {
     const vueId = await ev(() => String(window.__node.id));
     let text = await domText(vueId);
     check("vue: DOM shows A slot labels", text && ["prompt", "ref_1", "ref_2", "use_bgm"].every((s) => text.includes(s)), text);
+    const vueCollapse = await ev(async (nid) => {
+        const b = window.__bl, n = window.__node;
+        n.bundlePanel.toggle.click();
+        await b.sleep(400);
+        const collapsedText = document.querySelector(`[data-node-id="${nid}"]`)?.innerText ?? "";
+        n.bundlePanel.toggle.click();
+        await b.sleep(400);
+        return { collapsedHasPreview: collapsedText.includes("BOOLEAN"), expanded: !n.bundlePanel.preview.hidden };
+    }, vueId);
+    check("vue: collapse hides the preview and expands it again", !vueCollapse.collapsedHasPreview && vueCollapse.expanded, vueCollapse);
     await ev(() => {
         const b = window.__bl, n = window.__node;
         const pRef2 = b.add("PreviewImage", [700, 260]);

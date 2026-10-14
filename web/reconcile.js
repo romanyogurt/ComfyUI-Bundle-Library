@@ -80,6 +80,21 @@ export function planSlots(current, fields) {
     return { slots, overflow };
 }
 
+/**
+ * What applying planSlots() would change, by field name: slots added at the
+ * end, unlinked slots removed, and unlinked slots retyped. Linked slots that
+ * no longer fit stay as they are, so they are not changes.
+ */
+export function planChanges(current, fields) {
+    const { slots } = planSlots(current, fields);
+    const kept = new Set(slots.filter((s) => s.from !== null).map((s) => s.from));
+    return {
+        added: slots.filter((s) => s.from === null).map((s) => s.name),
+        removed: current.filter((_, i) => !kept.has(i)).map((s) => s.name),
+        retyped: slots.filter((s) => s.from !== null && s.type !== current[s.from].type).map((s) => s.name),
+    };
+}
+
 /** "ok", "missing" or "type_mismatch" for each slot against a bundle's fields. */
 export function slotStatuses(slots, fields) {
     const byName = new Map(fields.map((f) => [f.name, f]));

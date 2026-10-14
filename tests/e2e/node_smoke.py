@@ -8,10 +8,14 @@ bundle is not served from the cache. Run inside the container:
 """
 
 import argparse
+import io
 import json
 import time
+import urllib.parse
 
-from api_smoke import SAMPLES, Api, ensure_samples, expect
+from PIL import Image
+
+from api_smoke import SAMPLES, Api, ensure_samples, expect, sample_image
 
 SLOTS = [("prompt", "text"), ("ref_1", "image"), ("ref_2", "image"), ("use_bgm", "boolean")]
 
@@ -45,6 +49,15 @@ def run(api, prompt):
     expect(False, f"prompt {prompt_id} did not finish")
 
 
+def center_pixel(api, image):
+    """The middle pixel of an image a Preview Image node wrote."""
+    query = urllib.parse.urlencode({"filename": image["filename"], "subfolder": image.get("subfolder", ""),
+                                    "type": image.get("type", "temp")})
+    status, data, _ = api.call("GET", f"/api/view?{query}", raw=True, prefix="")
+    with Image.open(io.BytesIO(data)) as picture:
+        return picture.convert("RGB").getpixel((picture.width // 2, picture.height // 2))
+
+
 def messages(entry, kind):
     return [m[1] for m in entry["status"]["messages"] if m[0] == kind]
 
@@ -75,20 +88,28 @@ def main():
     cached = [n for m in messages(entry, "execution_cached") for n in m["nodes"]]
     expect("1" in cached, "unchanged bundle: the loader is served from the cache")
 
+    red, green = (179, 38, 30), (21, 128, 61)  # Sample A's ref_1 and its stand-in
     bundle = api.call("GET", f"/bundles/{sample_a}")[1]
     original = bundle["fields"][0]["value"]
-    edited = {**bundle, "expected_revision": bundle["revision"],
-              "fields": [{**bundle["fields"][0], "value": original + " (edited)"}, *bundle["fields"][1:]]}
-    status, saved, _ = api.call("PUT", f"/bundles/{sample_a}", edited)
-    expect(status == 200, f"Sample A edited (revision {saved.get('revision')})")
+    long_text = "".join(f"line {i:04d}: 긴 여러 줄 텍스트 with emoji 🎨 and  double  spaces\n" for i in range(2000)) + "\n\n  end  "
+    stand_in = api.upload(sample_image("#15803d", "A ref_1 replaced"), "a_ref_1_replaced.png")
+    fields = [{**bundle["fields"][0], "value": long_text},
+              {**bundle["fields"][1], "asset": {"sha256": stand_in, "original_name": "a_ref_1_replaced.png"}},
+              *bundle["fields"][2:]]
+    status, saved, _ = api.call("PUT", f"/bundles/{sample_a}", {**bundle, "expected_revision": bundle["revision"], "fields": fields})
+    expect(status == 200, f"Sample A edited: long text and another ref_1 (revision {saved.get('revision')})")
     try:
         status, entry = run(api, graph(sample_a))
-        expect(entry["outputs"]["2"]["text"] == [original + " (edited)"], "edited bundle: the next run uses the new text")
+        expect(entry["outputs"]["2"]["text"] == [long_text],
+               f"edited bundle: {len(long_text):,} characters of multi-line text come out exactly")
+        expect(center_pixel(api, entry["outputs"]["3"]["images"][0]) == green, "edited bundle: the replaced image comes out")
     finally:
-        restore = {**saved, "expected_revision": saved["revision"],
-                   "fields": [{**saved["fields"][0], "value": original}, *saved["fields"][1:]]}
+        restore = {**saved, "expected_revision": saved["revision"], "fields": bundle["fields"]}
         status, restored, _ = api.call("PUT", f"/bundles/{sample_a}", restore)
         expect(status == 200, f"Sample A restored (revision {restored.get('revision')})")
+    status, entry = run(api, graph(sample_a))
+    expect(entry["outputs"]["2"]["text"] == [original] and center_pixel(api, entry["outputs"]["3"]["images"][0]) == red,
+           "restored bundle: the original text and image come out again")
 
     with_seed = SLOTS + [("seed", "int")]
     linked = [(0, "PreviewAny"), (4, "PreviewAny")]

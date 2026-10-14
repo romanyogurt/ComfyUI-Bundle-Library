@@ -23,7 +23,13 @@
     padding: 2px 4px;
 }
 
+.bl-panel [hidden] {
+    display: none !important;
+}
+
 .bl-open,
+.bl-toggle,
+.bl-update,
 .bl-use,
 .bl-close {
     background: var(--comfy-input-bg, #222);
@@ -33,12 +39,39 @@
     cursor: pointer;
 }
 
+.bl-toggle {
+    width: 24px;
+    padding: 0;
+}
+
 .bl-preview {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.bl-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bl-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    border: 1px dashed var(--border-color, #444);
+    border-radius: 4px;
+}
+
+.bl-notice-text {
+    flex: 1;
+    min-width: 120px;
 }
 
 .bl-row {
@@ -69,7 +102,7 @@
 }
 
 .bl-thumb {
-    height: 36px;
+    height: 48px;
     width: auto;
     border-radius: 3px;
 }
@@ -77,6 +110,11 @@
 .bl-note,
 .bl-empty {
     opacity: 0.7;
+}
+
+.bl-dim {
+    opacity: 0.6;
+    font-style: italic;
 }
 
 .bl-bad {

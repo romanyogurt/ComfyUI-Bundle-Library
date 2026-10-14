@@ -6,11 +6,13 @@
 
 ## 상태
 
-Phase 2(Load Bundle 노드)까지 진행했다.
+Phase 3(노드 프런트엔드)까지 진행했다.
 
 - 번들과 이미지는 ComfyUI 사용자 디렉토리의 `bundle_library/`에 저장되고, HTTP API로 만들고
   고칠 수 있다. 형식과 API는 [docs/data-format.md](docs/data-format.md)에 있다.
 - Load Bundle은 저장소의 번들을 읽는다. 이미지는 core Load Image와 같은 텐서로 변환한다.
+- 노드 패널에서 번들을 고르고 내용을 미리 본다. 패널은 접을 수 있다. 라이브러리에서 번들의
+  필드가 바뀌면 "Update outputs"로 출력 슬롯을 맞춘다.
 - 편집 화면은 Phase 4에서 만든다. 그 전까지 번들은 API로 만든다
   (`tests/e2e/api_smoke.py`가 예제 번들 두 개를 만든다).
 

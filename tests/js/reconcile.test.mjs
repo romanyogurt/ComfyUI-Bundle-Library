@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { POOL_SIZE, parseSpec, planSlots, serializeSpec, slotStatuses } from "../../web/reconcile.js";
+import { POOL_SIZE, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "../../web/reconcile.js";
 
 const A = [
     { name: "prompt", type: "text" },
@@ -65,6 +65,17 @@ test("slot_spec round-trips and rejects malformed text", () => {
     assert.equal(parseSpec(JSON.stringify({ v: 2, slots: [] })), null);
     assert.equal(parseSpec(JSON.stringify({ v: 1, slots: [{ name: "x", type: "video" }] })), null);
     assert.equal(parseSpec(JSON.stringify({ v: 1, slots: [{ name: "", type: "text" }] })), null);
+});
+
+test("changes list what an update would do, and nothing for linked misfits", () => {
+    const none = { added: [], removed: [], retyped: [] };
+    assert.deepEqual(planChanges(linked(A, ["prompt"]), A), none);
+    const grown = [...A, { name: "ref_3", type: "image" }];
+    assert.deepEqual(planChanges(linked(A, []), grown), { ...none, added: ["ref_3"] });
+    const changed = [{ name: "prompt", type: "text" }, { name: "ref_1", type: "text" }, { name: "ref_2", type: "image" }];
+    assert.deepEqual(planChanges(linked(A, ["ref_2"]), changed), { added: [], removed: ["use_bgm"], retyped: ["ref_1"] });
+    // linked and missing: kept as is, so not offered as a change
+    assert.deepEqual(planChanges(linked(A, ["use_bgm"]), A.slice(0, 3)), none);
 });
 
 test("statuses compare names and types", () => {
