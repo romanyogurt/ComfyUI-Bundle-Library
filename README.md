@@ -19,6 +19,9 @@ comfy-docker 저장소의 `docs/bundle-library.md`에 있다.
   (Ctrl+V), 끌어 놓기로 올린다.
 - 비디오와 오디오 필드(Phase 6)는 core Load Video·Load Audio와 같은 VIDEO·AUDIO를 내보낸다.
   편집기와 노드 미리보기에서 재생할 수 있다.
+- Phase 6.5에서 독립 검토의 문제를 고쳤다. 오디오는 올릴 때 끝까지 디코딩해 길이·샘플 제한을
+  지키고, 정수 필드는 ±(2^53−1)이다. 편집기는 저장하는 동안 잠기고, 늦게 온 응답을 버리며,
+  업로드를 취소할 수 있다. 테스트는 운영 서버와 분리된 테스트 서버에서 돈다.
 
 설계와 단계는 comfy-docker 저장소의 `docs/bundle-library-plan.md`, Phase 0 검증 결과는
 [docs/compatibility.md](docs/compatibility.md)에 있다.
