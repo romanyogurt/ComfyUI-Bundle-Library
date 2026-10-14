@@ -1,9 +1,9 @@
 import { app } from "../../scripts/app.js";
 import { CHANGED_EVENT, assetURL, forgetBundles, listBundles, thumbnailURL } from "./api.js";
-import { el } from "./dom.js";
+import { el, formatDuration } from "./dom.js";
 import { openLibrary } from "./library_modal.js";
 import { COMFY_TYPES, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
-import { showImage } from "./viewer.js";
+import { showImage, showVideo } from "./viewer.js";
 
 export const NODE_ID = "BundleLibraryLoad";
 
@@ -74,7 +74,7 @@ function panelHeight(node) {
 
 function estimatedRows(node) {
     const slots = specOf(node);
-    const images = slots.filter((s) => s.type === "image").length;
+    const images = slots.filter((s) => s.type === "image" || s.type === "video").length;
     return (images ? 180 : 0) + 22 * Math.max(slots.length - images, images ? 0 : 1);
 }
 
@@ -135,8 +135,8 @@ export function selectBundle(node, bundle) {
 }
 
 // The preview groups the slots by kind: problems, then a gallery of the
-// images, then text excerpts, then the other values as chips. Every item
-// carries data-field and data-type.
+// images and videos, then text excerpts, then audio and the other values as
+// chips. Every item carries data-field and data-type.
 
 function item(tag, className, slot) {
     const element = el(tag, className);
@@ -152,27 +152,74 @@ function problemLine(slot, status, linked) {
     return line;
 }
 
-function imageTile(slot, field, linked) {
+/** An image or video in the gallery; a video shows its poster frame. */
+function mediaTile(slot, field, linked) {
     const tile = item("div", "bl-tile", slot);
-    const image = field.preview;
+    const media = field.preview;
     // Tiles share rows by aspect ratio and grow with the node's width (bundle_library.css).
-    const ratio = image ? Math.min(Math.max(image.width / image.height, 0.25), 4) : 1;
+    const ratio = media?.width && media?.height ? Math.min(Math.max(media.width / media.height, 0.25), 4) : 1;
     tile.style.setProperty("--ratio", String(ratio));
-    if (image) {
+    if (media) {
         const img = el("img", "bl-tile-img");
-        img.src = thumbnailURL(image.sha256, 512);
+        img.src = thumbnailURL(media.sha256, 512);
         img.alt = slot.name;
         img.draggable = false;
-        const size = `${image.width} × ${image.height}`;
-        tile.title = `${slot.name} · ${size} · click to enlarge`;
-        tile.addEventListener("click", () => showImage(assetURL(image.sha256), `${slot.name} · ${size}`));
         tile.append(img);
+        let caption = `${slot.name} · ${media.width} × ${media.height}`;
+        if (slot.type === "video") {
+            const length = formatDuration(media.duration ?? 0);
+            caption += ` · ${length}`;
+            tile.classList.add("video");
+            tile.append(el("div", "bl-tile-play", "▶"), el("div", "bl-tile-duration", length));
+            tile.addEventListener("click", () => showVideo(assetURL(media.sha256), caption));
+        } else {
+            tile.addEventListener("click", () => showImage(assetURL(media.sha256), caption));
+        }
+        tile.title = `${caption} · click to ${slot.type === "video" ? "play" : "enlarge"}`;
     } else {
         tile.classList.add("empty");
-        tile.append(el("div", `bl-tile-empty${linked ? " bl-bad" : ""}`, linked ? "⚠ No image; running will fail" : "No image"));
+        tile.append(el("div", `bl-tile-empty${linked ? " bl-bad" : ""}`,
+            linked ? `⚠ No ${slot.type}; running will fail` : `No ${slot.type}`));
     }
     tile.append(el("div", "bl-tile-name", slot.name));
     return tile;
+}
+
+// Audio from the node previews plays one sound at a time.
+const player = new Audio();
+let playing = null; // the play button of the sound now playing
+
+function stopped() {
+    if (playing) playing.textContent = "▶";
+    playing = null;
+}
+player.addEventListener("pause", stopped);
+player.addEventListener("ended", stopped);
+
+function audioChip(slot, field, linked) {
+    const chip = item("div", "bl-value-chip bl-audio-chip", slot);
+    const media = field.preview;
+    chip.append(el("span", "bl-value-name", slot.name));
+    if (!media) {
+        chip.append(el("span", `bl-value ${linked ? "bl-bad" : "bl-dim"}`, linked ? "⚠ No audio; running will fail" : "No audio"));
+        return chip;
+    }
+    const play = el("button", "bl-play", "▶");
+    play.type = "button";
+    play.title = "Play";
+    play.addEventListener("click", () => {
+        if (playing === play) {
+            player.pause();
+            return;
+        }
+        stopped();
+        playing = play;
+        play.textContent = "⏸";
+        player.src = assetURL(media.sha256);
+        player.play().catch(stopped);
+    });
+    chip.append(play, el("span", "bl-value", formatDuration(media.duration ?? 0)));
+    return chip;
 }
 
 function textBlock(slot, field) {
@@ -235,8 +282,9 @@ function renderPreview(node, bundle) {
         const linked = isLinked(node.outputs[i]);
         const field = fields.get(slot.name);
         if (statuses[i] !== "ok") parts.problems.append(problemLine(slot, statuses[i], linked));
-        else if (slot.type === "image") parts.gallery.append(imageTile(slot, field, linked));
+        else if (slot.type === "image" || slot.type === "video") parts.gallery.append(mediaTile(slot, field, linked));
         else if (slot.type === "text") parts.texts.append(textBlock(slot, field));
+        else if (slot.type === "audio") parts.values.append(audioChip(slot, field, linked));
         else parts.values.append(valueChip(slot, field));
     });
     rows.append(...Object.values(parts).filter((part) => part.childElementCount));

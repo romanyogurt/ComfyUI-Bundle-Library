@@ -3,8 +3,8 @@ import json
 
 from comfy_api.latest import io
 
-from .constants import COMFY_TYPES, POOL_SIZE
-from .convert import load_image
+from .constants import COMFY_TYPES, MEDIA_TYPES, POOL_SIZE
+from .convert import load_audio, load_image, load_video
 from .library import get_store
 from .model import LibraryError
 
@@ -37,11 +37,11 @@ def field_problem(store, field, field_type):
         return "is missing from the bundle"
     if field["type"] != field_type:
         return f"is {field['type']}, not {field_type}"
-    if field_type == "image":
+    if field_type in MEDIA_TYPES:
         if field["asset"] is None:
-            return "has no image"
+            return f"has no {field_type}"
         if store.assets.path(field["asset"]["sha256"]) is None:
-            return "has an image file that is missing from the library"
+            return f"has {'an' if field_type in ('image', 'audio') else 'a'} {field_type} file that is missing from the library"
     return None
 
 
@@ -105,7 +105,7 @@ class LoadBundle(io.ComfyNode):
             # that passed while it was unlinked would hand its cached None to a
             # link made later. NaN never matches, so such a node always reruns.
             return float("nan")
-        # Images are stored under their hash, so the bundle JSON pins every output.
+        # Files are stored under their hash, so the bundle JSON pins every output.
         return hashlib.sha256(json.dumps(bundle, sort_keys=True).encode()).hexdigest()
 
     @classmethod
@@ -129,8 +129,9 @@ class LoadBundle(io.ComfyNode):
             field = fields.get(name)
             if field_problem(store, field, field_type):
                 values.append(None)  # not linked, so nothing reads it
-            elif field_type == "image":
-                values.append(load_image(store.assets.path(field["asset"]["sha256"])))
+            elif field_type in MEDIA_TYPES:
+                load = {"image": load_image, "video": load_video, "audio": load_audio}[field_type]
+                values.append(load(store.assets.path(field["asset"]["sha256"])))
             else:
                 values.append(field["value"])
         values += [None] * (POOL_SIZE - len(values))

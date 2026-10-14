@@ -52,10 +52,12 @@ class Api:
         except urllib.error.HTTPError as e:
             return e.code, json.loads(e.read() or b"{}"), e.headers
 
-    def upload(self, data, filename):
+    def upload(self, data, filename, kind=None):
+        """Upload a file; `kind` (image, video, audio) goes first, as the browser sends it."""
         boundary = uuid.uuid4().hex
-        body = (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
-                f"Content-Type: application/octet-stream\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
+        body = f'--{boundary}\r\nContent-Disposition: form-data; name="kind"\r\n\r\n{kind}\r\n'.encode() if kind else b""
+        body += (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{filename}"\r\n'
+                 f"Content-Type: application/octet-stream\r\n\r\n").encode() + data + f"\r\n--{boundary}--\r\n".encode()
         status, payload, _ = self.call("POST", "/assets", body, {"Content-Type": f"multipart/form-data; boundary={boundary}"})
         expect(status in (200, 201), f"upload {filename}: HTTP {status} {payload}")
         return payload["asset"]["sha256"]

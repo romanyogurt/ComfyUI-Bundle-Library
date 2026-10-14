@@ -23,11 +23,11 @@ class StoreTest(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def upload(self, data):
+    def upload(self, data, kind="image"):
         temp = self.store.assets.temp_path()
         temp.write_bytes(data)
         try:
-            info, _ = self.store.assets.finalize(temp, hashlib.sha256(data).hexdigest(), "up.png")
+            info, _ = self.store.assets.finalize(temp, hashlib.sha256(data).hexdigest(), "up.png", kind)
         finally:
             temp.unlink(missing_ok=True)
         return info["sha256"]
@@ -118,6 +118,27 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(json.loads(trashed[0].read_text(encoding="utf-8"))["name"], bundle["name"])
         # its image stays
         self.assertIsNotNone(self.store.assets.path(bundle["fields"][1]["asset"]["sha256"]))
+
+    def test_media_fields_take_files_of_their_kind(self):
+        video = self.upload(helpers.video("mp4", "libx264"), "video")
+        sound = self.upload(helpers.audio(), "audio")
+        image = self.upload(helpers.png())
+        bundle = self.store.create({"name": "Clip", "fields": [
+            {"name": "clip", "type": "video", "asset": {"sha256": video}},
+            {"name": "bgm", "type": "audio", "asset": {"sha256": sound, "original_name": "bgm.wav", "duration": 99}},
+        ]})
+        clip, bgm = (f["asset"] for f in bundle["fields"])
+        self.assertEqual((clip["ext"], clip["width"], clip["has_audio"], clip["codec"]), ("mp4", 64, False, "h264"))
+        self.assertEqual((bgm["ext"], bgm["original_name"], bgm["sample_rate"]), ("wav", "bgm.wav", 8000))
+        self.assertAlmostEqual(bgm["duration"], 1.0, delta=0.05)  # read from the file, not taken from the client
+        self.assertEqual(self.store.get(bundle["id"]), bundle)
+        previews = [f["preview"] for f in self.store.list()["bundles"][0]["fields"]]
+        self.assertEqual([sorted(p) for p in previews], [["duration", "height", "sha256", "width"], ["duration", "sha256"]])
+        wrong = {"name": "Wrong", "fields": [{"name": "clip", "type": "video", "asset": {"sha256": image}}]}
+        error = self.refused(lambda: self.store.create(wrong), 400, "wrong_kind")
+        self.assertIn("is an image, not a video", error.message)
+        copy = self.store.duplicate(bundle["id"], "structure")
+        self.assertEqual([f["asset"] for f in copy["fields"]], [None, None])
 
     def test_duplicate(self):
         source = self.store.create(self.data("Red"))

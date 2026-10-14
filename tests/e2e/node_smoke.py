@@ -35,10 +35,12 @@ def graph(bundle_id, slots=SLOTS, links=None):
     return prompt
 
 
+CLIENT_ID = "bundle-library-node-smoke"  # marks the runs these scripts queue
+
+
 def run(api, prompt):
     """(HTTP status, history entry or error body)."""
-    status, body, _ = api.call("POST", "/api/prompt", {"prompt": prompt, "client_id": "bundle-library-node-smoke"},
-                               prefix="")
+    status, body, _ = api.call("POST", "/api/prompt", {"prompt": prompt, "client_id": CLIENT_ID}, prefix="")
     if status != 200:
         return status, body
     prompt_id = body["prompt_id"]
@@ -67,6 +69,17 @@ def error_text(entry):
     return " | ".join(m["exception_message"] for m in messages(entry, "execution_error"))
 
 
+def forget_runs(api):
+    """Delete the runs these scripts queued from ComfyUI's job history, so the
+    user's queue panel does not fill up with test jobs. Others' runs stay."""
+    history = api.call("GET", "/api/history?max_items=10000", prefix="")[1]
+    ours = [prompt_id for prompt_id, entry in history.items()
+            if len(entry["prompt"]) > 3 and entry["prompt"][3].get("client_id") == CLIENT_ID]
+    if ours:
+        api.call("POST", "/api/history", {"delete": ours}, prefix="", raw=True)
+    print("     ", f"removed {len(ours)} test run(s) from the job history")
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://127.0.0.1:8188")
@@ -77,6 +90,7 @@ def main():
         checks(api, ensure_samples(api))
     finally:
         remove_samples(api, args.library_dir)
+        forget_runs(api)
 
 
 def checks(api, ids):

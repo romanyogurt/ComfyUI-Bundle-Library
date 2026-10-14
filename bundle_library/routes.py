@@ -14,7 +14,7 @@ from urllib.parse import urlsplit
 from aiohttp import web
 
 from .assets import MIME_TYPES
-from .constants import API_PREFIX, MAX_JSON_BODY, VERSION
+from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
 from .model import LibraryError, check_bundle_id, check_sha256
 
 CHUNK = 64 * 1024
@@ -164,30 +164,38 @@ def register(routes, get_store):
     @_writes
     async def upload_asset(request):
         """One file in the multipart field "file", streamed to disk with its own
-        size limit: ComfyUI's --max-upload-size does not apply to multipart()."""
+        size limit: ComfyUI's --max-upload-size does not apply to multipart().
+        An optional "kind" field before it (image, video or audio; image by
+        default) says what the file must be, and so which limit applies."""
         assets = get_store().assets
         if not request.content_type.startswith("multipart/"):
             raise LibraryError(415, "unsupported_media_type", "Upload files as multipart/form-data.")
         reader = await request.multipart()
+        kind = "image"
         part = await reader.next()
         while part is not None and getattr(part, "name", None) != "file":
+            if getattr(part, "name", None) == "kind":
+                kind = (await part.read_chunk()).decode("utf-8", "replace").strip()  # one chunk at most
+                if kind not in MEDIA_TYPES:
+                    raise LibraryError(400, "invalid", "kind must be image, video or audio.")
             await part.release()
             part = await reader.next()
         if part is None:
             raise LibraryError(400, "invalid", "The 'file' field is missing.")
+        limit = assets.limits[kind]["bytes"]
         temp = assets.temp_path()
         digest, total = hashlib.sha256(), 0
         try:
             with open(temp, "wb") as f:
                 while chunk := await part.read_chunk(CHUNK):
                     total += len(chunk)
-                    if total > assets.max_bytes:
-                        raise _too_large(assets.max_bytes)
+                    if total > limit:
+                        raise _too_large(limit)
                     digest.update(chunk)
                     f.write(chunk)
             if total == 0:
                 raise LibraryError(400, "invalid", "The file is empty.")
-            info, created = await asyncio.to_thread(assets.finalize, temp, digest.hexdigest(), part.filename)
+            info, created = await asyncio.to_thread(assets.finalize, temp, digest.hexdigest(), part.filename, kind)
         finally:
             temp.unlink(missing_ok=True)
         return web.json_response({"asset": info}, status=201 if created else 200)
@@ -198,7 +206,7 @@ def register(routes, get_store):
         sha256 = check_sha256(request.match_info["sha256"])
         path = await asyncio.to_thread(get_store().assets.path, sha256)
         if path is None:
-            raise LibraryError(404, "not_found", "Image not found.")
+            raise LibraryError(404, "not_found", "File not found.")
         return web.FileResponse(path, headers={"Content-Type": MIME_TYPES[path.suffix[1:]], **IMMUTABLE})
 
     @routes.get(prefix + "/assets/{sha256}/thumb")
@@ -211,5 +219,5 @@ def register(routes, get_store):
             raise LibraryError(400, "invalid", "size must be an integer.") from None
         path = await asyncio.to_thread(get_store().assets.thumbnail, sha256, size)
         if path is None:
-            raise LibraryError(404, "not_found", "Image not found.")
+            raise LibraryError(404, "not_found", "No thumbnail for this file.")
         return web.FileResponse(path, headers={"Content-Type": "image/webp", **IMMUTABLE})

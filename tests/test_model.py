@@ -78,8 +78,21 @@ class NormalizeBundleTest(unittest.TestCase):
         self.assertEqual(len(normalize_bundle(bundle(note="n" * MAX_NOTE))["note"]), MAX_NOTE)
         self.assertRefused(bundle(note="n" * (MAX_NOTE + 1)))
 
+    def test_media_fields_keep_their_file_metadata(self):
+        asset = {"sha256": SHA, "ext": "mp4", "width": 64, "height": 48, "fps": 24, "duration": 1.5,
+                 "has_audio": True, "codec": "h264", "audio_codec": "aac", "bytes": 1000, "original_name": "a.mp4"}
+        out = normalize_bundle(bundle(fields=[{"name": "clip", "type": "video", "asset": asset},
+                                              {"name": "bgm", "type": "audio", "asset": None}]))
+        self.assertEqual(out["fields"][0]["asset"], {**asset, "fps": 24.0})
+        self.assertEqual(out["fields"][1], {"name": "bgm", "type": "audio", "asset": None})
+        junk = {"sha256": SHA, "ext": "exe", "duration": float("nan"), "fps": -1, "has_audio": "yes",
+                "codec": "Bad Codec!", "sample_rate": 1.5, "channels": True}
+        self.assertEqual(normalize_bundle(with_field(type="audio", asset=junk))["fields"][0]["asset"], {"sha256": SHA})
+        self.assertEqual([empty_value(f) for f in out["fields"]], [
+            {"name": "clip", "type": "video", "asset": None}, {"name": "bgm", "type": "audio", "asset": None}])
+
     def test_unknown_types_are_refused(self):
-        self.assertRefused(with_field(type="video", value=None), code="unsupported_type")
+        self.assertRefused(with_field(type="mesh", value=None), code="unsupported_type")
         self.assertRefused(with_field(type=None, value=None), code="unsupported_type")
 
     def test_values_must_match_their_type(self):

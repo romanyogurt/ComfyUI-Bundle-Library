@@ -5,6 +5,8 @@
 // the server are not changed. Scenarios add bundles named "[test] ..." and
 // remove them at the end; removal moves them to trash/, and with BL_LIBRARY_DIR
 // set to the library folder (user/bundle_library) those trash files go too.
+// The runs a scenario queues are deleted from ComfyUI's job history at the end
+// (by the page's client id), so they do not stay in the user's queue panel.
 const { chromium } = require("playwright-core");
 const fs = require("fs");
 const os = require("os");
@@ -169,6 +171,20 @@ const PAGE_HELPERS = () => {
     };
 };
 
+/** Delete the runs queued by these client ids from ComfyUI's job history. */
+async function forgetRuns(clientIds) {
+    const history = await (await fetch(`${BASE}/api/history?max_items=10000`)).json();
+    const ours = Object.entries(history)
+        .filter(([, entry]) => clientIds.has(entry.prompt?.[3]?.client_id))
+        .map(([id]) => id);
+    if (ours.length) {
+        await fetch(`${BASE}/api/history`, {
+            method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ delete: ours }),
+        });
+    }
+    return ours.length;
+}
+
 async function waitForApp(page) {
     await page.waitForFunction(() => window.LiteGraph && document.querySelector("canvas"), null, { timeout: 60000 });
     await page.evaluate(async () => {
@@ -215,6 +231,7 @@ async function startSession(name) {
     const ev = (fn, arg) => page.evaluate(fn, arg);
     purgeTrash(await ev(() => window.__bl.removeTestBundles())); // left over from an interrupted run
     const deleted = [];
+    const clientIds = new Set([await ev(() => window.__bl.api.clientId)]);
 
     return {
         page, ev, check, out,
@@ -227,6 +244,7 @@ async function startSession(name) {
             await waitForApp(page);
             await page.waitForTimeout(1500);
             await page.keyboard.press("Escape");
+            clientIds.add(await ev(() => window.__bl.api.clientId));
         },
         /** Remove the test bundles, record what was blocked and logged, and close. */
         async finish({ expectRemoved } = {}) {
@@ -234,11 +252,12 @@ async function startSession(name) {
             const purged = purgeTrash([...removed, ...deleted]);
             check("test bundles removed", expectRemoved === undefined || removed.length === expectRemoved,
                 { removed: removed.length, trashFilesPurged: purged });
+            await browser.close(); // first, so the page cannot queue anything more
+            check("test runs removed from the job history (record)", true, { runs: await forgetRuns(clientIds) });
             check("no settings/workflow writes reached the server (blocked list)", true, [...new Set(blocked)]);
             check("browser console errors (record)", true, consoleErrors.slice(0, 20));
             fs.writeFileSync(path.join(out, "results.json"),
                 JSON.stringify({ results, blocked: [...new Set(blocked)], consoleErrors }, null, 2));
-            await browser.close();
             const failed = results.filter((r) => !r.ok).length;
             console.log(`\n${results.length - failed}/${results.length} passed`);
             if (failed) process.exitCode = 1;

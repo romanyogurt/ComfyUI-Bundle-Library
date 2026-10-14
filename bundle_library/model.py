@@ -6,10 +6,12 @@ import re
 import unicodedata
 
 from .constants import (
-    FIELD_TYPES, IMAGE_FORMATS, MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_NOTE,
-    MAX_ORIGINAL_NAME, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES,
+    AUDIO_EXTENSIONS, FIELD_TYPES, IMAGE_FORMATS, MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_NOTE,
+    MAX_ORIGINAL_NAME, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES, MEDIA_TYPES, VIDEO_EXTENSIONS,
 )
 
+ASSET_EXTENSIONS = {e for e, _ in IMAGE_FORMATS.values()} | set(VIDEO_EXTENSIONS) | set(AUDIO_EXTENSIONS)
+CODEC_RE = re.compile(r"^[a-z0-9_.-]{1,32}$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 INT_MIN, INT_MAX = -(2 ** 63), 2 ** 63 - 1
@@ -117,7 +119,7 @@ def _value(field_type, value, label):
 
 
 def _asset(value, label):
-    """An image field's asset reference: None, or a dict whose sha256 names an
+    """A media field's asset reference: None, or a dict whose sha256 names an
     uploaded file. Stored metadata passes through; the store refreshes it from
     the file itself when saving, so a client cannot set it."""
     if value is None:
@@ -134,12 +136,21 @@ def _asset(value, label):
             raise invalid(f"{label}: asset.original_name must be a string.")
         asset["original_name"] = clean_original_name(original)
     ext = value.get("ext")
-    if ext is not None and ext in {e for e, _ in IMAGE_FORMATS.values()}:
+    if ext in ASSET_EXTENSIONS:
         asset["ext"] = ext
-    for key in ("width", "height", "bytes"):
+    for key in ("width", "height", "bytes", "sample_rate", "channels"):
         number = value.get(key)
         if isinstance(number, int) and not isinstance(number, bool) and number >= 0:
             asset[key] = number
+    for key in ("duration", "fps"):
+        number = value.get(key)
+        if isinstance(number, (int, float)) and not isinstance(number, bool) and math.isfinite(number) and number >= 0:
+            asset[key] = float(number)
+    if isinstance(value.get("has_audio"), bool):
+        asset["has_audio"] = value["has_audio"]
+    for key in ("codec", "audio_codec"):
+        if isinstance(value.get(key), str) and CODEC_RE.match(value[key]):
+            asset[key] = value[key]
     return asset
 
 
@@ -155,8 +166,8 @@ def _field(value, index):
                            f"Field '{name}': unsupported type {field_type!r}. "
                            f"Supported types: {', '.join(FIELD_TYPES)}.")
     label = f"Field '{name}'"
-    if field_type == "image":
-        return {"name": name, "type": "image", "asset": _asset(value.get("asset"), label)}
+    if field_type in MEDIA_TYPES:
+        return {"name": name, "type": field_type, "asset": _asset(value.get("asset"), label)}
     if "value" not in value:
         raise invalid(f"{label}: value is missing.")
     return {"name": name, "type": field_type, "value": _value(field_type, value["value"], label)}
@@ -188,7 +199,7 @@ def normalize_bundle(data):
 
 def empty_value(field):
     """The field with its value cleared, for duplicating a bundle's structure."""
-    if field["type"] == "image":
-        return {"name": field["name"], "type": "image", "asset": None}
+    if field["type"] in MEDIA_TYPES:
+        return {"name": field["name"], "type": field["type"], "asset": None}
     blank = {"text": "", "boolean": False, "int": 0, "float": 0.0}[field["type"]]
     return {"name": field["name"], "type": field["type"], "value": blank}

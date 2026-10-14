@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from .assets import AssetStore
-from .constants import MAX_BUNDLE_NAME, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS
+from .constants import MAX_BUNDLE_NAME, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MEDIA_TYPES
 from .model import LibraryError, check_bundle_id, empty_value, name_key, normalize_bundle
 
 FORMAT = "comfyui-bundle-library/bundle"
@@ -165,16 +165,21 @@ class BundleStore:
                 raise LibraryError(409, "name_conflict", f"A bundle named '{bundle['name']}' already exists.")
 
     def _resolve_assets(self, fields):
-        """Fill each image field's metadata from the stored file itself."""
+        """Fill each media field's metadata from the stored file itself, which
+        must be of the field's kind."""
         for field in fields:
             asset = field.get("asset")
-            if field["type"] != "image" or asset is None:
+            if field["type"] not in MEDIA_TYPES or asset is None:
                 continue
             info = self.assets.info(asset["sha256"])
             if info is None:
                 raise LibraryError(400, "unknown_asset",
-                                   f"Field '{field['name']}': image {asset['sha256'][:12]}… has not been uploaded.")
-            resolved = {k: info[k] for k in ("sha256", "ext", "width", "height", "bytes")}
+                                   f"Field '{field['name']}': file {asset['sha256'][:12]}… has not been uploaded.")
+            kind = self.assets.kind(asset["sha256"])
+            if kind != field["type"]:
+                raise LibraryError(400, "wrong_kind",
+                                   f"Field '{field['name']}': the file is {_article(kind)}, not {_article(field['type'])}.")
+            resolved = {k: v for k, v in info.items() if k != "mime"}
             if asset.get("original_name"):
                 resolved["original_name"] = asset["original_name"]
             field["asset"] = resolved
@@ -261,10 +266,19 @@ def _search_text(bundle):
     return "\n".join(parts).casefold()
 
 
+# What the bundle list tells about a media file (enough to lay out its preview).
+PREVIEW_KEYS = {"image": ("sha256", "width", "height"), "video": ("sha256", "width", "height", "duration"),
+                "audio": ("sha256", "duration")}
+
+
+def _article(kind):
+    return f"an {kind}" if kind in ("image", "audio") else f"a {kind}"
+
+
 def _preview(field):
-    if field["type"] == "image":
+    if field["type"] in MEDIA_TYPES:
         asset = field["asset"]
-        return None if asset is None else {k: asset[k] for k in ("sha256", "width", "height")}
+        return None if asset is None else {k: asset[k] for k in PREVIEW_KEYS[field["type"]] if k in asset}
     if field["type"] == "text":
         return field["value"][:TEXT_PREVIEW]
     return field["value"]

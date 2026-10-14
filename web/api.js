@@ -5,9 +5,30 @@ const PREFIX = "/bundle-library/v1";
 /** Fired on window after a request that changed the library. */
 export const CHANGED_EVENT = "bundle-library:changed";
 
-// Mirrors bundle_library/constants.py.
-export const MAX_IMAGE_BYTES = 50 * 1024 * 1024;
-export const IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+// Field types whose value is a file, with the limits and formats of
+// bundle_library/constants.py. The server checks the file itself; these only
+// spare an upload that would be refused. Browsers name audio types in many
+// ways, so video and audio are only checked by their prefix.
+export const MEDIA = {
+    image: { bytes: 50 * 1024 * 1024, types: ["image/png", "image/jpeg", "image/webp"],
+        accept: "image/png,image/jpeg,image/webp", label: "PNG, JPEG and WebP images" },
+    video: { bytes: 1024 * 1024 * 1024, prefix: "video/", accept: "video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov",
+        label: "MP4, WebM and MOV videos" },
+    audio: { bytes: 200 * 1024 * 1024, prefix: "audio/", accept: "audio/*,.wav,.flac,.mp3,.ogg,.opus,.m4a",
+        label: "WAV, FLAC, MP3, OGG and M4A audio files" },
+};
+
+/** Why `file` cannot go in a field of `kind`, or null. */
+export function fileProblem(file, kind) {
+    const spec = MEDIA[kind];
+    const typed = !file.type || (spec.types ? spec.types.includes(file.type) : file.type.startsWith(spec.prefix));
+    if (!typed) return `Only ${spec.label} are accepted.`;
+    if (file.size > spec.bytes) {
+        const limit = spec.bytes >= 1024 ** 3 ? `${spec.bytes / 1024 ** 3} GB` : `${spec.bytes / 1024 ** 2} MB`;
+        return `The file is larger than ${limit}.`;
+    }
+    return null;
+}
 
 /** A refused request: `status` is the HTTP status, `code` and `details` come from the error body. */
 export class ApiError extends Error {
@@ -76,11 +97,35 @@ export const deleteBundle = (id, revision) =>
     request(`/bundles/${id}?expected_revision=${revision}`, { method: "DELETE" });
 export const duplicateBundle = (id, mode) => request(`/bundles/${id}/duplicate`, json("POST", { mode }));
 
-/** Upload one image file; resolves to the stored asset's metadata. */
-export async function uploadImage(file, name) {
+/**
+ * Upload one file for a field of `kind` (image, video or audio); resolves to
+ * the stored asset's metadata. `onProgress` gets the sent fraction (0..1):
+ * fetch() cannot report upload progress, so this uses XMLHttpRequest, with
+ * the headers api.fetchApi() would add.
+ */
+export function uploadAsset(file, kind = "image", onProgress = null, name = null) {
     const form = new FormData();
-    form.append("file", file, name ?? file.name ?? "image.png");
-    return (await request("/assets", { method: "POST", body: form }, { changes: false })).asset;
+    form.append("kind", kind); // before the file: it picks the size limit
+    form.append("file", file, name ?? (file.name || "upload"));
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", api.apiURL(`${PREFIX}/assets`));
+        xhr.setRequestHeader("X-Bundle-Library", "1");
+        if (api.user) xhr.setRequestHeader("Comfy-User", api.user);
+        xhr.responseType = "json";
+        if (onProgress) {
+            xhr.upload.addEventListener("progress", (e) => {
+                if (e.lengthComputable) onProgress(e.loaded / e.total);
+            });
+        }
+        xhr.addEventListener("load", () => {
+            const detail = xhr.response?.error;
+            if (xhr.status >= 200 && xhr.status < 300 && xhr.response?.asset) resolve(xhr.response.asset);
+            else reject(new ApiError(detail?.message ?? `Upload failed: HTTP ${xhr.status}`, xhr.status, detail?.code, detail));
+        });
+        xhr.addEventListener("error", () => reject(new ApiError("Could not reach ComfyUI.", 0, "network")));
+        xhr.send(form);
+    });
 }
 
 export function assetURL(sha256) {

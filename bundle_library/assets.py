@@ -1,17 +1,41 @@
-"""Uploaded media, kept once under its SHA-256 and never changed afterwards."""
+"""Uploaded media, kept once under its SHA-256 and never changed afterwards.
+
+Images are checked with Pillow, video and audio with PyAV (the library core's
+LoadVideo and LoadAudio use). A file's kind follows from its stored extension.
+"""
 
 import os
 import uuid
 from pathlib import Path
 
+import av
 from PIL import Image, ImageOps, UnidentifiedImageError
 
-from .constants import IMAGE_FORMATS, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, THUMBNAIL_SIZES
+from .constants import (
+    AUDIO_EXTENSIONS, IMAGE_FORMATS, MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS,
+    MAX_VIDEO_BYTES, MAX_VIDEO_PIXELS, THUMBNAIL_SIZES, VIDEO_EXTENSIONS,
+)
 from .model import LibraryError, check_sha256, clean_original_name
 
-MIME_TYPES = dict(IMAGE_FORMATS.values())  # extension -> MIME type
+MIME_TYPES = {**dict(IMAGE_FORMATS.values()), **VIDEO_EXTENSIONS, **AUDIO_EXTENSIONS}  # extension -> MIME type
+KINDS = {**{ext: "image" for ext, _ in IMAGE_FORMATS.values()},
+         **{ext: "video" for ext in VIDEO_EXTENSIONS}, **{ext: "audio" for ext in AUDIO_EXTENSIONS}}
 _FORMATS = list(IMAGE_FORMATS)  # the only decoders Pillow may use here
 _SWAPS_SIDES = {5, 6, 7, 8}  # EXIF orientations that turn the image by 90°
+
+# PyAV demuxer names; one demuxer reads several file types.
+_MOV = "mov,mp4,m4a,3gp,3g2,mj2"
+_MATROSKA = "matroska,webm"
+_WEBM_VIDEO = {"vp8", "vp9", "av1"}
+_WEBM_AUDIO = {"opus", "vorbis"}
+_AUDIO_DEMUXERS = {"wav": "wav", "flac": "flac", "mp3": "mp3", "ogg": "ogg"}
+_OGG_AUDIO = {"opus", "vorbis"}
+_CODEC_NAMES = {"mp3float": "mp3"}  # decoder name -> the codec's usual name
+_REFUSED = {
+    "image": "Only PNG, JPEG and WebP images are accepted.",
+    "video": "Only MP4, WebM and MOV videos are accepted.",
+    "audio": "Only WAV, FLAC, MP3, OGG and M4A audio files are accepted.",
+}
 
 
 def _open(path):
@@ -23,47 +47,55 @@ class AssetStore:
         self.files = Path(root) / "assets" / "sha256"
         self.thumbs = Path(root) / "thumbs"
         self.tmp_dir = Path(tmp_dir)
-        self.max_bytes = max_bytes
-        self.max_pixels = max_pixels
-        self._sizes = {}  # sha256 -> (width, height); files never change
+        # Per kind: the largest upload, and a limit on the content itself.
+        self.limits = {
+            "image": {"bytes": max_bytes, "pixels": max_pixels},
+            "video": {"bytes": MAX_VIDEO_BYTES, "pixels": MAX_VIDEO_PIXELS},
+            "audio": {"bytes": MAX_AUDIO_BYTES, "seconds": MAX_AUDIO_SECONDS},
+        }
+        self._meta = {}  # sha256 -> metadata read from the file; files never change
 
     def temp_path(self):
         return self.tmp_dir / f"{uuid.uuid4().hex}.part"
 
-    def finalize(self, temp, sha256, original_name=None):
-        """Check an uploaded file and keep it under its hash.
+    def finalize(self, temp, sha256, original_name=None, kind="image"):
+        """Check an uploaded file of `kind` (image, video or audio) and keep it
+        under its hash.
 
         `temp` holds the received bytes and `sha256` their digest, computed
         while streaming. Returns (info, created); created is False when the
         same content was stored before, in which case `temp` is left for the
         caller to delete.
         """
-        width, height, image_format = self._check(temp)
-        ext, mime = IMAGE_FORMATS[image_format]
+        if kind == "image":
+            width, height, image_format = self._check_image(temp)
+            ext, meta = IMAGE_FORMATS[image_format][0], {"width": width, "height": height}
+        else:
+            ext, meta = self._check_media(temp, kind)
         target = self.files / sha256[:2] / f"{sha256}.{ext}"
         created = not target.exists()
         if created:
             target.parent.mkdir(parents=True, exist_ok=True)
             os.chmod(temp, 0o644)
             os.replace(temp, target)
-        self._sizes[sha256] = (width, height)
-        info = {"sha256": sha256, "ext": ext, "mime": mime, "width": width, "height": height,
-                "bytes": target.stat().st_size}
+        self._meta[sha256] = meta
+        info = self._info(sha256, target)
         if original_name:
             info["original_name"] = clean_original_name(original_name)
         return info, created
 
-    def _check(self, path):
+    def _check_image(self, path):
         """(width, height, format) of a file that must be a whole PNG, JPEG or
-        WebP image of at most max_pixels. Width and height are as displayed,
+        WebP image within the pixel limit. Width and height are as displayed,
         after the EXIF orientation."""
+        limit = self.limits["image"]["pixels"]
         try:
             with _open(path) as image:
                 width, height = image.size
-                if width * height > self.max_pixels:
+                if width * height > limit:
                     raise LibraryError(
                         413, "too_many_pixels",
-                        f"The image is too large ({width}×{height}); the limit is {self.max_pixels:,} pixels.")
+                        f"The image is too large ({width}×{height}); the limit is {limit:,} pixels.")
                 turned = image.getexif().get(0x0112) in _SWAPS_SIDES
                 image.load()  # decode it all: a broken file is refused now, not at run time
                 image_format = image.format
@@ -72,10 +104,41 @@ class AssetStore:
         except Image.DecompressionBombError:
             raise LibraryError(413, "too_many_pixels", "The image is too large.") from None
         except UnidentifiedImageError:
-            raise LibraryError(415, "unsupported_format", "Only PNG, JPEG and WebP images are accepted.") from None
+            raise LibraryError(415, "unsupported_format", _REFUSED["image"]) from None
         except (OSError, SyntaxError, ValueError):
             raise LibraryError(400, "corrupt_image", "The image could not be decoded completely; the file may be damaged.") from None
         return (height, width, image_format) if turned else (width, height, image_format)
+
+    def _check_media(self, path, kind):
+        """(extension, metadata) of a file that must be a video or audio file of
+        an accepted kind within the limits, whose first frame decodes."""
+        limits = self.limits[kind]
+        try:
+            container = av.open(str(path))
+        except (av.error.FFmpegError, OSError, ValueError):
+            raise LibraryError(415, "unsupported_format", _REFUSED[kind]) from None
+        with container:
+            ext, meta = _describe(container, kind)
+            if kind == "video" and meta["width"] * meta["height"] > limits["pixels"]:
+                raise LibraryError(
+                    413, "too_many_pixels",
+                    f"The video is too large ({meta['width']}×{meta['height']}); "
+                    f"the limit is {limits['pixels']:,} pixels per frame.")
+            if kind == "audio" and meta.get("duration", 0) > limits["seconds"]:
+                raise _too_long(meta["duration"], limits["seconds"])
+            try:
+                frames = container.decode(_video_stream(container) if kind == "video" else container.streams.audio[0])
+                first = next(frames)  # a broken file is refused now, not at run time
+                if kind == "audio" and "duration" not in meta:
+                    meta["duration"] = _measure(first, frames, limits["seconds"])
+                    if meta["duration"] > limits["seconds"]:
+                        raise _too_long(meta["duration"], limits["seconds"])
+            except LibraryError:
+                raise
+            except (StopIteration, av.error.FFmpegError, OSError, ValueError):
+                raise LibraryError(400, "corrupt_media",
+                                   f"The {kind} could not be decoded; the file may be damaged.") from None
+        return ext, meta
 
     def path(self, sha256):
         """The stored file for `sha256`, or None. Links are never followed."""
@@ -89,28 +152,31 @@ class AssetStore:
                 return candidate
         return None
 
+    def kind(self, sha256):
+        """"image", "video" or "audio" for a stored file, or None."""
+        path = self.path(sha256)
+        return None if path is None else KINDS[path.suffix[1:]]
+
     def info(self, sha256):
         """Metadata of a stored file (without original_name), or None."""
         path = self.path(sha256)
-        if path is None:
-            return None
-        if sha256 not in self._sizes:
-            with _open(path) as image:
-                width, height = image.size
-                if image.getexif().get(0x0112) in _SWAPS_SIDES:
-                    width, height = height, width
-            self._sizes[sha256] = (width, height)
-        width, height = self._sizes[sha256]
+        return None if path is None else self._info(sha256, path)
+
+    def _info(self, sha256, path):
         ext = path.suffix[1:]
-        return {"sha256": sha256, "ext": ext, "mime": MIME_TYPES[ext], "width": width, "height": height,
+        if sha256 not in self._meta:
+            self._meta[sha256] = _read_meta(path, KINDS[ext])
+        return {"sha256": sha256, "ext": ext, "mime": MIME_TYPES[ext], **self._meta[sha256],
                 "bytes": path.stat().st_size}
 
     def thumbnail(self, sha256, size):
-        """A WebP preview at most `size` pixels on a side, made on first request."""
+        """A WebP preview at most `size` pixels on a side, made on first
+        request: the image itself, or a frame near the start of a video.
+        None for audio and for unknown files."""
         if size not in THUMBNAIL_SIZES:
             raise LibraryError(400, "invalid", f"Thumbnail size must be one of {', '.join(map(str, THUMBNAIL_SIZES))}.")
         source = self.path(sha256)
-        if source is None:
+        if source is None or KINDS[source.suffix[1:]] == "audio":
             return None
         target = self.thumbs / sha256[:2] / f"{sha256}_{size}.webp"
         if target.is_file():
@@ -118,15 +184,132 @@ class AssetStore:
         target.parent.mkdir(parents=True, exist_ok=True)
         temp = self.temp_path()
         try:
-            with _open(source) as image:
-                preview = _displayable(ImageOps.exif_transpose(image))
-                preview.thumbnail((size, size))
-                preview.save(temp, "WEBP", quality=80)
+            if KINDS[source.suffix[1:]] == "video":
+                preview = _poster(source)
+            else:
+                with _open(source) as image:
+                    preview = _displayable(ImageOps.exif_transpose(image))
+                    preview.load()
+            preview.thumbnail((size, size))
+            preview.save(temp, "WEBP", quality=80)
             os.chmod(temp, 0o644)
             os.replace(temp, target)
         finally:
             temp.unlink(missing_ok=True)
         return target
+
+
+def _video_stream(container):
+    """The first real video stream: a cover picture (an MP3's or M4A's album
+    art) also shows as a video stream, flagged as an attached picture."""
+    attached = av.stream.Disposition.attached_pic
+    return next((s for s in container.streams.video if not s.disposition & attached), None)
+
+
+def _describe(container, kind):
+    """(extension, metadata) of an open container, or LibraryError if it is not
+    an accepted file of `kind`."""
+    video = _video_stream(container)
+    audio = container.streams.audio[0] if container.streams.audio else None
+    video_codec = _codec(video)
+    audio_codec = _codec(audio)
+    name = container.format.name
+    if name == _MOV and video:
+        ext = "mov" if (container.metadata.get("major_brand") or "").strip() == "qt" else "mp4"
+    elif name == _MATROSKA and video_codec in _WEBM_VIDEO and audio_codec in _WEBM_AUDIO | {None}:
+        ext = "webm"
+    elif name == _MOV and audio:
+        ext = "m4a"
+    elif name in _AUDIO_DEMUXERS and audio and not video and (name != "ogg" or audio_codec in _OGG_AUDIO):
+        ext = _AUDIO_DEMUXERS[name]
+    else:
+        ext = None
+    found = KINDS.get(ext)
+    if found != kind:
+        message = {("video", "audio"): "This file has no video; use an audio field for it.",
+                   ("audio", "video"): "This file is a video; use a video field for it."}.get(
+            (kind, found), _REFUSED[kind])
+        raise LibraryError(415, "unsupported_format", message)
+    duration = _duration(container, video or audio)
+    if kind == "video":
+        context = video.codec_context
+        meta = {"width": context.width, "height": context.height, "codec": video_codec,
+                "has_audio": audio is not None}
+        if video.average_rate:
+            meta["fps"] = round(float(video.average_rate), 3)
+        if audio:
+            meta["audio_codec"] = audio_codec
+    else:
+        meta = {"sample_rate": audio.codec_context.sample_rate, "channels": audio.codec_context.channels,
+                "codec": audio_codec}
+    if duration is not None:
+        meta["duration"] = duration
+    return ext, meta
+
+
+def _read_meta(path, kind):
+    """Metadata of a file that was checked when it was stored."""
+    if kind == "image":
+        with _open(path) as image:
+            width, height = image.size
+            if image.getexif().get(0x0112) in _SWAPS_SIDES:
+                width, height = height, width
+        return {"width": width, "height": height}
+    with av.open(str(path)) as container:
+        return _describe(container, kind)[1]
+
+
+def _codec(stream):
+    if stream is None:
+        return None
+    name = stream.codec_context.name
+    return _CODEC_NAMES.get(name, name)
+
+
+def _duration(container, stream):
+    """Seconds, from the container or else the stream, or None if neither says."""
+    if container.duration:
+        return round(container.duration / av.time_base, 3)
+    if stream is not None and stream.duration and stream.time_base:
+        return round(float(stream.duration * stream.time_base), 3)
+    return None
+
+
+def _measure(first, frames, limit):
+    """Seconds of audio, counted by decoding; stops a little past `limit`."""
+    seconds = first.samples / first.sample_rate
+    for frame in frames:
+        seconds += frame.samples / frame.sample_rate
+        if seconds > limit:
+            break
+    return round(seconds, 3)
+
+
+def _too_long(seconds, limit):
+    return LibraryError(413, "too_long",
+                        f"The audio is too long ({_clock(seconds)}); the limit is {limit // 60} minutes.")
+
+
+def _clock(seconds):
+    seconds = int(seconds)
+    return f"{seconds // 60}:{seconds % 60:02d}"
+
+
+def _poster(path):
+    """A frame shortly after the start of a video (the first frames are often
+    black): at a tenth of its length, but no later than one second."""
+    with av.open(str(path)) as container:
+        stream = _video_stream(container)
+        duration = _duration(container, stream) or 0
+        target = min(1.0, duration * 0.1)
+        chosen = None
+        for frame in container.decode(stream):
+            chosen = frame
+            if frame.time is not None and frame.time >= target:
+                break
+        if chosen is None:
+            raise ValueError("the video has no frames")
+        return chosen.to_image()
 
 
 def _displayable(image):

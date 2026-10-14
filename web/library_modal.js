@@ -222,7 +222,7 @@ class LibraryModal {
         item.tabIndex = 0;
         item.dataset.id = bundle.id;
         item.classList.toggle("selected", bundle.id === this.selectedId);
-        const image = bundle.fields.find((f) => f.type === "image" && f.preview);
+        const image = bundle.fields.find((f) => (f.type === "image" || f.type === "video") && f.preview);
         const thumb = el(image ? "img" : "div", "bl-list-thumb");
         if (image) {
             thumb.src = thumbnailURL(image.preview.sha256);

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { POOL_SIZE, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "../../web/reconcile.js";
+import { COMFY_TYPES, POOL_SIZE, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "../../web/reconcile.js";
 
 const A = [
     { name: "prompt", type: "text" },
@@ -63,7 +63,7 @@ test("slot_spec round-trips and rejects malformed text", () => {
     assert.equal(serializeSpec([]), "");
     assert.equal(parseSpec("{"), null);
     assert.equal(parseSpec(JSON.stringify({ v: 2, slots: [] })), null);
-    assert.equal(parseSpec(JSON.stringify({ v: 1, slots: [{ name: "x", type: "video" }] })), null);
+    assert.equal(parseSpec(JSON.stringify({ v: 1, slots: [{ name: "x", type: "mesh" }] })), null);
     assert.equal(parseSpec(JSON.stringify({ v: 1, slots: [{ name: "", type: "text" }] })), null);
 });
 
@@ -81,4 +81,14 @@ test("changes list what an update would do, and nothing for linked misfits", () 
 test("statuses compare names and types", () => {
     assert.deepEqual(slotStatuses(A, [{ name: "prompt", type: "text" }, { name: "ref_1", type: "text" }]),
         ["ok", "type_mismatch", "missing", "missing"]);
+});
+
+test("video and audio fields become VIDEO and AUDIO slots; a linked one keeps its type", () => {
+    assert.equal(COMFY_TYPES.video, "VIDEO");
+    assert.equal(COMFY_TYPES.audio, "AUDIO");
+    const media = [{ name: "clip", type: "video" }, { name: "bgm", type: "audio" }];
+    assert.deepEqual(parseSpec(serializeSpec(planSlots([], media).slots)), media);
+    const swapped = [{ name: "clip", type: "audio" }, { name: "bgm", type: "video" }];
+    const { slots } = planSlots(linked(media, ["clip"]), swapped);
+    assert.deepEqual(slots.map((s) => [s.name, s.type, s.status]), [["clip", "video", "type_mismatch"], ["bgm", "video", "ok"]]);
 });

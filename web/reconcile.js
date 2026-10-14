@@ -6,6 +6,8 @@ export const POOL_SIZE = 32;
 export const COMFY_TYPES = {
     text: "STRING",
     image: "IMAGE",
+    video: "VIDEO",
+    audio: "AUDIO",
     boolean: "BOOLEAN",
     int: "INT",
     float: "FLOAT",

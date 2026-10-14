@@ -147,6 +147,38 @@
     pointer-events: none;
 }
 
+/* A video tile: its poster frame with a play mark and its length. */
+.bl-tile-play {
+    position: absolute;
+    left: 50%;
+    top: 45%;
+    transform: translate(-50%, -50%);
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-left: 3px;
+    box-sizing: border-box;
+    background: rgb(0 0 0 / 0.55);
+    color: #fff;
+    font-size: 14px;
+    pointer-events: none;
+}
+
+.bl-tile-duration {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgb(0 0 0 / 0.6);
+    color: #fff;
+    font-size: 10px;
+    pointer-events: none;
+}
+
 .bl-tile-empty {
     position: absolute;
     inset: 0 0 18px;
@@ -202,6 +234,19 @@
 
 .bl-value {
     font-weight: 600;
+}
+
+.bl-play {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: #2563eb;
+    color: #fff;
+    font-size: 9px;
+    line-height: 18px;
+    cursor: pointer;
 }
 
 /* A small switch drawn before "true" / "false", like the editor's toggle. */
@@ -559,12 +604,12 @@
 
 .bl-count,
 .bl-hint,
-.bl-image-meta {
+.bl-media-meta {
     font-size: 12px;
     color: var(--descrip-text, #999);
 }
 
-.bl-image {
+.bl-media {
     display: flex;
     align-items: flex-start;
     gap: 12px;
@@ -577,10 +622,29 @@
     cursor: zoom-in;
 }
 
-.bl-image-meta {
+.bl-media-meta {
     display: flex;
     flex-direction: column;
     gap: 6px;
+}
+
+.bl-video {
+    width: 320px;
+    max-width: 100%;
+    max-height: 240px;
+    border-radius: 6px;
+    background: #000;
+}
+
+.bl-audio {
+    width: 320px;
+    max-width: 100%;
+}
+
+.bl-progress {
+    width: 220px;
+    height: 8px;
+    accent-color: #2563eb;
 }
 
 .bl-row-buttons {
@@ -735,8 +799,15 @@
     cursor: zoom-out;
 }
 
-.bl-lightbox .bl-viewer img {
+.bl-lightbox .bl-viewer img,
+.bl-lightbox .bl-viewer video {
+    max-width: 94vw;
     max-height: calc(100vh - 80px);
+}
+
+.bl-lightbox .bl-viewer video {
+    background: #000;
+    cursor: default;
 }
 
 /* ---- sidebar tab --------------------------------------------------------- */

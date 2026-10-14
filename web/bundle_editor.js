@@ -1,14 +1,16 @@
 // The editor for one bundle inside the library modal. It works on a draft and
-// talks to the API only on Save, Duplicate and Delete (and image uploads).
+// talks to the API only on Save, Duplicate and Delete (and file uploads).
 import {
-    IMAGE_TYPES, MAX_IMAGE_BYTES, assetURL, createBundle, deleteBundle, duplicateBundle, getBundle,
-    thumbnailURL, updateBundle, uploadImage,
+    MEDIA, assetURL, createBundle, deleteBundle, duplicateBundle, fileProblem, getBundle,
+    thumbnailURL, updateBundle, uploadAsset,
 } from "./api.js";
-import { button, el, formatBytes } from "./dom.js";
+import { button, el, formatBytes, formatDuration } from "./dom.js";
 import { POOL_SIZE } from "./reconcile.js";
 
-const TYPES = [["text", "Text"], ["image", "Image"], ["boolean", "Boolean"], ["int", "Integer"], ["float", "Float"]];
+const TYPES = [["text", "Text"], ["image", "Image"], ["video", "Video"], ["audio", "Audio"],
+    ["boolean", "Boolean"], ["int", "Integer"], ["float", "Float"]];
 const BLANK = { text: "", boolean: false, int: 0, float: 0 };
+const NOUN = { image: "an image", video: "a video", audio: "an audio file" };
 const MAX_TEXT_HEIGHT = 320;
 
 const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -20,9 +22,9 @@ function editable(bundle) {
         tags: [...bundle.tags],
         note: bundle.note ?? "",
         fields: bundle.fields.map((f) => {
-            if (f.type !== "image") return { name: f.name, type: f.type, value: f.value };
+            if (!(f.type in MEDIA)) return { name: f.name, type: f.type, value: f.value };
             const asset = f.asset && { sha256: f.asset.sha256, ...(f.asset.original_name ? { original_name: f.asset.original_name } : {}) };
-            return { name: f.name, type: "image", asset: asset || null };
+            return { name: f.name, type: f.type, asset: asset || null };
         }),
     };
 }
@@ -37,12 +39,19 @@ function draftOf(bundle) {
     };
 }
 
-/** The first image file in a DataTransfer (drop or paste), or null. */
-function imageFile(transfer) {
-    for (const file of transfer?.files ?? []) {
-        if (!file.type || file.type.startsWith("image/")) return file;
+/** One line about a stored file: size, length, format. */
+function describeAsset(kind, asset) {
+    const size = formatBytes(asset.bytes);
+    if (kind === "image") return `${asset.width} × ${asset.height} · ${size}`;
+    const time = asset.duration != null ? formatDuration(asset.duration) : null;
+    if (kind === "video") {
+        const sound = asset.has_audio ? (asset.audio_codec ?? "sound") : "no sound";
+        return [`${asset.width} × ${asset.height}`, asset.fps && `${asset.fps} fps`, time, size,
+            `${asset.codec} + ${sound}`].filter(Boolean).join(" · ");
     }
-    return null;
+    const channels = { 1: "mono", 2: "stereo" }[asset.channels] ?? `${asset.channels} channels`;
+    return [time, asset.sample_rate && `${asset.sample_rate / 1000} kHz`, channels, size, asset.codec]
+        .filter(Boolean).join(" · ");
 }
 
 function autosize(area) {
@@ -273,30 +282,30 @@ export class BundleEditor {
             });
             return input;
         }
-        return this.imageEditor(field, card, error);
+        return this.mediaEditor(field, card, error);
     }
 
-    imageEditor(field, card, error) {
-        const box = el("div", "bl-image");
+    /** The card body of an image, video or audio field: a preview of the file and ways to replace it. */
+    mediaEditor(field, card, error) {
+        const kind = field.type;
+        const box = el("div", `bl-media bl-media-${kind}`);
         const picker = el("input");
         picker.type = "file";
-        picker.accept = IMAGE_TYPES.join(",");
+        picker.accept = MEDIA[kind].accept;
         picker.hidden = true;
+        const progress = el("progress", "bl-progress");
+        progress.max = 1;
+        progress.hidden = true;
         picker.addEventListener("change", () => {
-            if (picker.files[0]) void this.setImage(field, picker.files[0], error);
+            if (picker.files[0]) void this.setFile(field, picker.files[0], error, progress);
             picker.value = "";
         });
-        const choose = button(field.asset ? "Replace…" : "Choose an image…");
+        const choose = button(field.asset ? "Replace…" : `Choose ${NOUN[kind]}…`);
         choose.addEventListener("click", () => picker.click());
+        const verb = kind === "image" ? "Drop or paste" : "Drop";
         if (field.asset) {
-            const img = el("img", "bl-image-thumb");
-            img.src = thumbnailURL(field.asset.sha256, 256);
-            img.alt = field.name;
-            img.title = "Show at full size";
-            img.addEventListener("click", () => this.modal.viewImage(
-                assetURL(field.asset.sha256), [field.name, field.asset.original_name].filter(Boolean).join(" · ")));
-            const meta = el("div", "bl-image-meta");
-            meta.append(el("div", null, `${field.asset.width} × ${field.asset.height} · ${formatBytes(field.asset.bytes)}`));
+            const meta = el("div", "bl-media-meta");
+            meta.append(el("div", null, describeAsset(kind, field.asset)));
             if (field.asset.original_name) meta.append(el("div", "bl-dim", field.asset.original_name));
             const clear = button("Clear");
             clear.addEventListener("click", () => {
@@ -305,12 +314,12 @@ export class BundleEditor {
             });
             const actions = el("div", "bl-row-buttons");
             actions.append(choose, clear);
-            meta.append(actions, el("div", "bl-hint", "Drop or paste an image to replace it."));
-            box.append(img, meta);
+            meta.append(actions, progress, el("div", "bl-hint", `${verb} ${NOUN[kind]} to replace it.`));
+            box.append(this.mediaPreview(field), meta);
         } else {
-            const drop = el("div", "bl-drop", "Drop or paste an image here, or ");
+            const drop = el("div", "bl-drop", `${verb} ${NOUN[kind]} here, or `);
             drop.append(choose);
-            box.append(drop);
+            box.append(drop, progress);
         }
         box.append(picker);
         // The card takes drops and, once focused (click it), pastes.
@@ -324,35 +333,59 @@ export class BundleEditor {
         card.addEventListener("drop", (e) => {
             e.preventDefault();
             card.classList.remove("drop-target");
-            const file = imageFile(e.dataTransfer);
-            if (file) void this.setImage(field, file, error);
+            const file = e.dataTransfer?.files?.[0];
+            if (file) void this.setFile(field, file, error, progress);
         });
         card.addEventListener("paste", (e) => {
-            const file = imageFile(e.clipboardData);
+            const file = e.clipboardData?.files?.[0];
             if (!file) return;
             e.preventDefault();
-            void this.setImage(field, file, error);
+            void this.setFile(field, file, error, progress);
         });
         return box;
     }
 
-    async setImage(field, file, error) {
+    mediaPreview(field) {
+        const { asset } = field;
+        if (field.type === "image") {
+            const img = el("img", "bl-image-thumb");
+            img.src = thumbnailURL(asset.sha256, 256);
+            img.alt = field.name;
+            img.title = "Show at full size";
+            img.addEventListener("click", () => this.modal.viewImage(
+                assetURL(asset.sha256), [field.name, asset.original_name].filter(Boolean).join(" · ")));
+            return img;
+        }
+        const player = el(field.type, `bl-${field.type}`);
+        player.controls = true;
+        player.preload = "metadata";
+        if (field.type === "video") player.poster = thumbnailURL(asset.sha256, 512);
+        player.src = assetURL(asset.sha256);
+        return player;
+    }
+
+    async setFile(field, file, error, progress) {
+        const kind = field.type;
         error.hidden = true;
         const fail = (message) => {
             error.textContent = message;
             error.hidden = false;
             this.modal.status(message, "error");
         };
-        if (file.type && !IMAGE_TYPES.includes(file.type)) return fail("Only PNG, JPEG and WebP images are accepted.");
-        if (file.size > MAX_IMAGE_BYTES) return fail(`The file is larger than ${MAX_IMAGE_BYTES / (1024 * 1024)} MB.`);
+        const problem = fileProblem(file, kind);
+        if (problem) return fail(problem);
         this.uploads++;
         this.refreshState();
-        this.modal.status(`Uploading ${file.name || "the image"}…`);
+        this.modal.status(`Uploading ${file.name || `the ${kind}`}…`);
+        progress.value = 0;
+        progress.hidden = false;
         try {
-            field.asset = await uploadImage(file, file.name || "pasted.png");
-            this.modal.status(`Uploaded ${field.asset.original_name ?? "the image"}.`);
+            field.asset = await uploadAsset(file, kind, (sent) => { progress.value = sent; },
+                file.name || (kind === "image" ? "pasted.png" : kind));
+            this.modal.status(`Uploaded ${field.asset.original_name ?? `the ${kind}`}.`);
             this.render();
         } catch (e) {
+            progress.hidden = true;
             fail(e.message);
         } finally {
             this.uploads--;
@@ -373,7 +406,7 @@ export class BundleEditor {
         const taken = new Set(this.draft.fields.map((f) => f.name));
         let n = 1;
         while (taken.has(`${type}_${n}`)) n++;
-        const field = type === "image"
+        const field = type in MEDIA
             ? { name: `${type}_${n}`, type, asset: null, origin: null }
             : { name: `${type}_${n}`, type, value: BLANK[type], origin: null };
         this.draft.fields.push(field);

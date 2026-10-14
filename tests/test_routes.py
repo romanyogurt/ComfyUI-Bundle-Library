@@ -34,8 +34,10 @@ class RoutesTest(AioHTTPTestCase):
         await super().asyncTearDown()
         self.tmp.cleanup()
 
-    async def upload(self, data, filename="up.png", headers=WRITE, field="file"):
+    async def upload(self, data, filename="up.png", headers=WRITE, field="file", kind=None):
         form = FormData(quote_fields=False)  # browsers send the file name as raw UTF-8
+        if kind is not None:
+            form.add_field("kind", kind)
         form.add_field(field, data, filename=filename, content_type="application/octet-stream")
         return await self.client.post(P + "/assets", data=form, headers=headers)
 
@@ -139,8 +141,8 @@ class RoutesTest(AioHTTPTestCase):
         await self.body(await self.client.post(P + "/bundles", json=data, headers=WRITE), 201)
         await self.error(await self.client.post(P + "/bundles", json={**data, "name": data["name"].upper()}, headers=WRITE),
                          409, "name_conflict")
-        video = {**data, "name": "Video", "fields": [{"name": "clip", "type": "video", "value": None}]}
-        await self.error(await self.client.post(P + "/bundles", json=video, headers=WRITE), 400, "unsupported_type")
+        mesh = {**data, "name": "Mesh", "fields": [{"name": "model", "type": "mesh", "value": None}]}
+        await self.error(await self.client.post(P + "/bundles", json=mesh, headers=WRITE), 400, "unsupported_type")
         unknown = {**data, "name": "Unknown", "fields": [{"name": "ref", "type": "image", "asset": {"sha256": "d" * 64}}]}
         await self.error(await self.client.post(P + "/bundles", json=unknown, headers=WRITE), 400, "unknown_asset")
 
@@ -163,6 +165,25 @@ class RoutesTest(AioHTTPTestCase):
         await self.error(await self.upload(data, field="other"), 400, "invalid")
         await self.error(await self.client.post(P + "/assets", data=data, headers={
             **WRITE, "Content-Type": "image/png"}), 415, "unsupported_media_type")
+        self.assertEqual(list((self.root / "tmp").iterdir()), [])
+
+    async def test_media_uploads(self):
+        clip = await self.body(await self.upload(helpers.video("mp4", "libx264", audio_codec="aac"), "clip.mp4",
+                                                 kind="video"), 201)
+        self.assertEqual((clip["asset"]["ext"], clip["asset"]["has_audio"]), ("mp4", True))
+        sound = await self.body(await self.upload(helpers.audio(), "tone.wav", kind="audio"), 201)
+        self.assertEqual(sound["asset"]["mime"], "audio/wav")
+        await self.error(await self.upload(helpers.audio(), kind="sticker"), 400, "invalid")
+        await self.error(await self.upload(helpers.audio(), kind="video"), 415, "unsupported_format")
+        self.store.assets.limits["audio"]["bytes"] = 1000  # each kind streams with its own limit
+        await self.error(await self.upload(helpers.audio(), kind="audio"), 413, "too_large")
+
+        sha = clip["asset"]["sha256"]
+        part = await self.client.get(f"{P}/assets/{sha}", headers={"Range": "bytes=0-99"})
+        self.assertEqual((part.status, part.headers["Content-Type"], len(await part.read())), (206, "video/mp4", 100))
+        poster = await self.client.get(f"{P}/assets/{sha}/thumb?size=128")
+        self.assertEqual((poster.status, poster.headers["Content-Type"]), (200, "image/webp"))
+        await self.error(await self.client.get(f"{P}/assets/{sound['asset']['sha256']}/thumb?size=128"), 404, "not_found")
         self.assertEqual(list((self.root / "tmp").iterdir()), [])
 
     async def test_assets_are_served_read_only(self):
