@@ -169,9 +169,9 @@ def normalize_bundle(data):
         raise invalid("A bundle must be a JSON object.")
     fields_value = data.get("fields", [])
     if not isinstance(fields_value, list):
-        raise invalid("fields: must be an array.")
+        raise invalid("Fields: must be an array.")
     if len(fields_value) > MAX_FIELDS:
-        raise invalid(f"fields: at most {MAX_FIELDS} fields.")
+        raise invalid(f"Fields: at most {MAX_FIELDS}.")
     fields = [_field(f, i) for i, f in enumerate(fields_value)]
     seen = set()
     for field in fields:

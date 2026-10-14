@@ -1,13 +1,15 @@
-"""Smoke test against a running ComfyUI: makes sure the sample bundles exist and
-reads them back through the API.
+"""Smoke test against a running ComfyUI: creates two test bundles, reads them
+back through the API and removes them again.
 
 Run inside the container (it needs Pillow), for example:
     docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library \\
-        comfyui python tests/e2e/api_smoke.py            # create if missing, then verify
-    ... python tests/e2e/api_smoke.py --verify-only      # e.g. after a restart
+        comfyui python tests/e2e/api_smoke.py            # create, verify, remove
+    ... python tests/e2e/api_smoke.py --keep             # create and verify, keep them
+    ... python tests/e2e/api_smoke.py --verify-only      # verify kept ones (after a restart), remove
 
-The two bundles, "Sample A (red)" and "Sample B (blue)", stay in the library
-as examples; delete them from the library when no longer wanted.
+The bundles are "[test] Sample A (red)" and "[test] Sample B (blue)". Removing
+moves them to the library's trash; their trash files are deleted as well when
+the library folder is reachable (--library-dir, the container's path by default).
 """
 
 import argparse
@@ -18,13 +20,15 @@ import sys
 import urllib.error
 import urllib.request
 import uuid
+from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
 P = "/bundle-library/v1"
+LIBRARY_DIR = "/opt/ComfyUI/user/bundle_library"  # inside the container
 SAMPLES = {
-    "Sample A (red)": ("#b3261e", "#e8710a", "An adult woman in a red dress.\n\n  빨간 드레스, 앞뒤 공백 유지  ", True),
-    "Sample B (blue)": ("#1a56db", "#0e7490", "An adult woman in a blue shirt.\n\n  파란 셔츠  ", False),
+    "[test] Sample A (red)": ("#b3261e", "#e8710a", "An adult woman in a red dress.\n\n  빨간 드레스, 앞뒤 공백 유지  ", True),
+    "[test] Sample B (blue)": ("#1a56db", "#0e7490", "An adult woman in a blue shirt.\n\n  파란 셔츠  ", False),
 }
 
 
@@ -72,19 +76,25 @@ def sample_image(color, label):
     return out.getvalue()
 
 
+def sample_ids(api):
+    """{name: id} of the test bundles in the library."""
+    return {b["name"]: b["id"] for b in api.call("GET", "/bundles")[1]["bundles"] if b["name"] in SAMPLES}
+
+
 def ensure_samples(api):
-    existing = {b["name"]: b["id"] for b in api.call("GET", "/bundles")[1]["bundles"]}
+    """Create the test bundles that are missing; returns {name: id}."""
+    existing = sample_ids(api)
     for name, (color_1, color_2, prompt, bgm) in SAMPLES.items():
         if name in existing:
             print("     ", name, "already exists:", existing[name])
             continue
-        letter = name.split()[1]
+        letter = name.split()[2]
         refs = [api.upload(sample_image(c, f"{letter} ref_{i}"), f"{letter.lower()}_ref_{i}.png")
                 for i, c in ((1, color_1), (2, color_2))]
         status, bundle, _ = api.call("POST", "/bundles", {
             "name": name,
-            "tags": ["sample"],
-            "note": "Phase 1 API smoke test",
+            "tags": ["test"],
+            "note": "API smoke test",
             "fields": [
                 {"name": "prompt", "type": "text", "value": prompt},
                 {"name": "ref_1", "type": "image", "asset": {"sha256": refs[0], "original_name": f"{letter.lower()}_ref_1.png"}},
@@ -93,16 +103,32 @@ def ensure_samples(api):
             ],
         })
         expect(status == 201, f"created {name}: {bundle.get('id', bundle)}")
+    return sample_ids(api)
+
+
+def remove_samples(api, library_dir):
+    """Delete the test bundles, and their trash files when `library_dir` is reachable."""
+    removed = []
+    for bundle in api.call("GET", "/bundles")[1]["bundles"]:
+        if bundle["name"] in SAMPLES:
+            status, _, _ = api.call("DELETE", f"/bundles/{bundle['id']}?expected_revision={bundle['revision']}")
+            expect(status == 200, f"removed {bundle['name']}")
+            removed.append(bundle["id"])
+    trash = Path(library_dir) / "trash" if library_dir else None
+    if removed and trash and trash.is_dir():
+        purged = [f for f in trash.iterdir() if f.name.split(".")[0] in removed]
+        for file in purged:
+            file.unlink()
+        print("     ", f"deleted {len(purged)} trash file(s)")
 
 
 def verify(api):
     status, health, _ = api.call("GET", "/health")
     expect(status == 200 and health["writable"] and not health["corrupt"], f"health {health}")
-    listing = api.call("GET", "/bundles?tag=sample")[1]["bundles"]
-    found = {b["name"]: b for b in listing}
-    expect(set(SAMPLES) <= set(found), f"both samples listed ({len(listing)} with tag 'sample')")
+    found = sample_ids(api)
+    expect(set(SAMPLES) <= set(found), "both test bundles listed")
     for name, (_, _, prompt, bgm) in SAMPLES.items():
-        status, bundle, _ = api.call("GET", f"/bundles/{found[name]['id']}")
+        status, bundle, _ = api.call("GET", f"/bundles/{found[name]}")
         expect(status == 200, f"{name}: GET revision {bundle['revision']}")
         fields = {f["name"]: f for f in bundle["fields"]}
         expect(fields["prompt"]["value"] == prompt, f"{name}: text kept exactly")
@@ -120,12 +146,18 @@ def verify(api):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://127.0.0.1:8188")
-    parser.add_argument("--verify-only", action="store_true")
+    parser.add_argument("--keep", action="store_true", help="leave the test bundles in the library")
+    parser.add_argument("--verify-only", action="store_true", help="verify test bundles kept earlier")
+    parser.add_argument("--library-dir", default=LIBRARY_DIR, help="for deleting the trash files ('' to keep them)")
     args = parser.parse_args()
     api = Api(args.base)
-    if not args.verify_only:
-        ensure_samples(api)
-    verify(api)
+    try:
+        if not args.verify_only:
+            ensure_samples(api)
+        verify(api)
+    finally:
+        if not args.keep:
+            remove_samples(api, args.library_dir)
 
 
 if __name__ == "__main__":

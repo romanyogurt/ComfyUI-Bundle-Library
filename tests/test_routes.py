@@ -70,6 +70,30 @@ class RoutesTest(AioHTTPTestCase):
         await self.body(await self.client.post(P + "/bundles", json=data, headers={
             **WRITE, "Origin": same_origin, "Sec-Fetch-Site": "same-origin"}), 201)
 
+    async def test_every_write_route_is_guarded(self):
+        bundle = await self.body(await self.client.post(P + "/bundles", json=await self.bundle_data(), headers=WRITE), 201)
+        path = f"{P}/bundles/{bundle['id']}"
+        writes = {
+            "PUT": lambda headers: self.client.put(path, json={**bundle, "expected_revision": 1}, headers=headers),
+            "DELETE": lambda headers: self.client.delete(path + "?expected_revision=1", headers=headers),
+            "duplicate": lambda headers: self.client.post(path + "/duplicate", json={"mode": "values"}, headers=headers),
+            "upload": lambda headers: self.upload(helpers.png("teal"), headers=headers),
+        }
+        refusals = [({}, "missing_header"), ({**WRITE, "Sec-Fetch-Site": "same-site"}, "cross_site"),
+                    ({**WRITE, "Origin": "null"}, "origin_mismatch"),
+                    ({**WRITE, "Origin": f"http://{self.client.host}:{self.client.port}.evil.example"}, "origin_mismatch")]
+        for name, write in writes.items():
+            for headers, code in refusals:
+                with self.subTest(route=name, code=code, headers=headers):
+                    await self.error(await write(headers), 403, code)
+        self.assertEqual((await self.body(await self.client.get(path), 200))["revision"], 1)  # nothing changed
+        self.assertEqual(len((await self.body(await self.client.get(P + "/bundles"), 200))["bundles"]), 1)
+        for name, request in (("PUT", self.client.put), ("duplicate", self.client.post)):
+            with self.subTest(route=name):
+                target = path if name == "PUT" else path + "/duplicate"
+                await self.error(await request(target, data="mode=values", headers={
+                    **WRITE, "Content-Type": "application/x-www-form-urlencoded"}), 415, "unsupported_media_type")
+
     async def test_bodies_must_be_small_json_objects(self):
         await self.error(await self.client.post(P + "/bundles", data="name=x", headers={
             **WRITE, "Content-Type": "application/x-www-form-urlencoded"}), 415, "unsupported_media_type")

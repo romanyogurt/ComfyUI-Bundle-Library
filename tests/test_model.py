@@ -1,7 +1,9 @@
 import unicodedata
 import unittest
 
-from bundle_library.constants import MAX_BUNDLE_NAME, MAX_FIELDS, MAX_TAGS, MAX_TEXT_BYTES
+from bundle_library.constants import (
+    MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_NOTE, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES,
+)
 from bundle_library.model import LibraryError, check_bundle_id, check_sha256, empty_value, normalize_bundle
 
 SHA = "a" * 64
@@ -63,6 +65,18 @@ class NormalizeBundleTest(unittest.TestCase):
         # Different case is a different field: the loader matches names exactly.
         both = [{"name": "Ref", "type": "text", "value": ""}, {"name": "ref", "type": "text", "value": ""}]
         self.assertEqual(len(normalize_bundle(bundle(fields=both))["fields"]), 2)
+
+    def test_length_limits_and_characters(self):
+        long_name = "f" * MAX_FIELD_NAME
+        self.assertEqual(normalize_bundle(with_field(name=long_name, type="int", value=1))["fields"][0]["name"], long_name)
+        self.assertRefused(with_field(name=long_name + "f", type="int", value=1))
+        for name in ("two\nlines", "spoof\u202eed", "nul\x00"):
+            with self.subTest(name=name):
+                self.assertRefused(with_field(name=name, type="int", value=1))
+        self.assertEqual(normalize_bundle(bundle(tags=["t" * MAX_TAG_LENGTH]))["tags"], ["t" * MAX_TAG_LENGTH])
+        self.assertRefused(bundle(tags=["t" * (MAX_TAG_LENGTH + 1)]))
+        self.assertEqual(len(normalize_bundle(bundle(note="n" * MAX_NOTE))["note"]), MAX_NOTE)
+        self.assertRefused(bundle(note="n" * (MAX_NOTE + 1)))
 
     def test_unknown_types_are_refused(self):
         self.assertRefused(with_field(type="video", value=None), code="unsupported_type")

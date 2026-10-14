@@ -6,7 +6,8 @@
 
 ## 상태
 
-Phase 4(라이브러리 편집 화면)까지 진행했다.
+Phase 5(안정화와 설치)까지 마쳐 MVP를 완성했다. comfy-docker에서의 설치·백업·복원 기록은
+comfy-docker 저장소의 `docs/bundle-library.md`에 있다.
 
 - 번들과 이미지는 ComfyUI 사용자 디렉토리의 `bundle_library/`에 저장되고, HTTP API로 만들고
   고칠 수 있다. 형식과 API는 [docs/data-format.md](docs/data-format.md)에 있다.
@@ -49,13 +50,20 @@ docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library comfy
 docker compose exec -T -e CUDA_VISIBLE_DEVICES= -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library \
     comfyui python tests/e2e/compare_load_image.py
 
-# 실행 중인 서버: 예제 번들 "Sample A (red)", "Sample B (blue)"를 만들고 API로 확인
+# 실행 중인 서버: 테스트 번들 두 개를 만들어 API로 확인하고 지운다
 docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library comfyui \
-    python tests/e2e/api_smoke.py            # --verify-only 는 확인만
+    python tests/e2e/api_smoke.py            # 재시작 확인: --keep, 재시작 뒤 --verify-only
 
-# 실행 중인 서버: 예제 번들로 Load Bundle을 실행해 출력, 캐시, 오류를 확인
+# 실행 중인 서버: 테스트 번들로 Load Bundle을 실행해 출력, 캐시, 오류를 확인하고 지운다
 docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library comfyui \
     python tests/e2e/node_smoke.py
+
+# 실행 중인 서버: 쓰기 보호와 제한값 (거부되는 요청만 보내므로 아무것도 바뀌지 않는다)
+python3 custom_nodes/ComfyUI-Bundle-Library/tests/e2e/security_smoke.py   # --base로 Tailscale 주소 지정
+
+# 번들 100개·1,000개에서 저장소 속도 (임시 폴더, 서버와 별개)
+docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library comfyui \
+    python tests/e2e/bench_store.py --count 100 --count 1000
 
 # 슬롯 조정 순수 함수 (호스트의 Node.js)
 node --test "custom_nodes/ComfyUI-Bundle-Library/tests/js/*.test.mjs"
@@ -68,7 +76,12 @@ BL_LIBRARY_DIR=user/bundle_library NODE_PATH=/tmp/bl-pw/node_modules \
     node custom_nodes/ComfyUI-Bundle-Library/tests/browser/library_scenarios.cjs
 ```
 
-- `node_smoke.py`는 예제 번들 A를 잠시 고쳤다가 되돌린다.
+- `api_smoke.py`와 `node_smoke.py`는 `[test] Sample A (red)`, `[test] Sample B (blue)`를 만들고
+  끝나면 지운다. 컨테이너 안에서는 휴지통으로 옮겨진 파일까지 지운다(`--library-dir`).
+  `node_smoke.py`는 도중에 Sample A를 고쳤다가 되돌려 캐시를 확인한다.
+- `security_smoke.py`는 표준 라이브러리만 써서 호스트에서도 실행된다. 루프백 주소에서는
+  ComfyUI 자체의 Origin 검사가 먼저 거부하기도 하므로, 이 API의 검사까지 보려면 Tailscale
+  주소로도 실행한다.
 - 브라우저 시나리오는 `http://127.0.0.1:8188`(`COMFY_URL`로 변경)에 접속한다.
   - 설정·워크플로 저장 같은 쓰기 요청은 브라우저에서 가로채 서버로 보내지 않는다.
   - `loader_scenarios.cjs`는 프리뷰 노드만 있는 작은 그래프를 실행한다.

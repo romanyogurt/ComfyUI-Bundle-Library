@@ -1,8 +1,9 @@
 """Runs Load Bundle on a running ComfyUI through API-format prompts.
 
-Uses the sample bundles from api_smoke.py (creating them if missing) and only
-preview nodes. Sample A is edited and then restored to check that a changed
-bundle is not served from the cache. Run inside the container:
+Creates the test bundles of api_smoke.py, runs graphs of Load Bundle and
+preview nodes only, and removes the bundles at the end. Sample A is edited and
+restored on the way to check that a changed bundle is not served from the
+cache. Run inside the container while no generation is running:
     docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library \\
         comfyui python tests/e2e/node_smoke.py
 """
@@ -15,7 +16,7 @@ import urllib.parse
 
 from PIL import Image
 
-from api_smoke import SAMPLES, Api, ensure_samples, expect, sample_image
+from api_smoke import LIBRARY_DIR, SAMPLES, Api, ensure_samples, expect, remove_samples, sample_image
 
 SLOTS = [("prompt", "text"), ("ref_1", "image"), ("ref_2", "image"), ("use_bgm", "boolean")]
 
@@ -69,10 +70,16 @@ def error_text(entry):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--base", default="http://127.0.0.1:8188")
-    api = Api(parser.parse_args().base)
-    ensure_samples(api)
-    ids = {b["name"]: b["id"] for b in api.call("GET", "/bundles?tag=sample")[1]["bundles"]}
+    parser.add_argument("--library-dir", default=LIBRARY_DIR, help="for deleting the trash files ('' to keep them)")
+    args = parser.parse_args()
+    api = Api(args.base)
+    try:
+        checks(api, ensure_samples(api))
+    finally:
+        remove_samples(api, args.library_dir)
 
+
+def checks(api, ids):
     for name, (_, _, text, bgm) in SAMPLES.items():
         status, entry = run(api, graph(ids[name]))
         outputs = entry["outputs"] if status == 200 else {}
@@ -82,7 +89,7 @@ def main():
                f"{name}: both images reach Preview Image")
         expect(outputs.get("5", {}).get("text") == [str(bgm)], f"{name}: boolean output {bgm}")
 
-    sample_a = ids["Sample A (red)"]
+    sample_a = ids["[test] Sample A (red)"]
     run(api, graph(sample_a))  # running B replaced A's cached outputs (same node ids)
     status, entry = run(api, graph(sample_a))
     cached = [n for m in messages(entry, "execution_cached") for n in m["nodes"]]

@@ -143,11 +143,13 @@ class StoreTest(unittest.TestCase):
         mismatched = {**good, "id": str(uuid.uuid4())}
         (self.root / "bundles" / f"{mismatched_id}.json").write_text(json.dumps(mismatched), encoding="utf-8")
         (self.root / "bundles" / "notes.txt").write_text("ignored", encoding="utf-8")
-        os.symlink(self.root / "bundles" / f"{good['id']}.json", self.root / "bundles" / f"{uuid.uuid4()}.json")
+        link_id = str(uuid.uuid4())
+        os.symlink(self.root / "bundles" / f"{good['id']}.json", self.root / "bundles" / f"{link_id}.json")
         listing = self.store.list()
         self.assertEqual([b["id"] for b in listing["bundles"]], [good["id"]])
         self.assertEqual(sorted(e["file"] for e in listing["errors"]),
                          sorted([f"{broken_id}.json", f"{mismatched_id}.json"]))
+        self.refused(lambda: self.store.get(link_id), 404, "not_found")  # links are not followed
         error = self.refused(lambda: self.store.get(broken_id), 500, "corrupt_bundle")
         self.assertNotIn(str(self.root), error.message)
         self.assertEqual(self.store.health()["corrupt"], sorted([f"{broken_id}.json", f"{mismatched_id}.json"]))
