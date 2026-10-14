@@ -1,31 +1,35 @@
 // Shared set-up for the browser scenarios: headless Chromium against a running
-// ComfyUI (COMFY_URL, default http://127.0.0.1:8188).
-// Safety: every non-GET request except /api/prompt and the bundle-library API
-// is answered locally (never reaches the server), so settings and workflows on
-// the server are not changed. Scenarios add bundles named "[test] ..." and
-// remove them at the end; removal moves them to trash/, and with BL_LIBRARY_DIR
-// set to the library folder (user/bundle_library) those trash files go too.
-// The runs a scenario queues are deleted from ComfyUI's job history at the end
-// (by the page's client id), so they do not stay in the user's queue panel.
+// ComfyUI, by default the test server of comfy-docker's
+// scripts/bundle-library-test-server.sh (COMFY_URL, default http://127.0.0.1:8189).
+// Safety:
+// - every non-GET request except /api/prompt and the bundle-library API is
+//   answered locally (never reaches the server), so settings and workflows on
+//   the server are not changed;
+// - only bundles created during the session (seen in the server's 201
+//   answers) are removed at the end, by id; every bundle that was there
+//   before must still be there;
+// - the runs a scenario queues are deleted from ComfyUI's job history at the
+//   end (by the page's client id).
 const { chromium } = require("playwright-core");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const BASE = process.env.COMFY_URL || "http://127.0.0.1:8188";
+const BASE = process.env.COMFY_URL || "http://127.0.0.1:8189";
+const BUNDLES = "/api/bundle-library/v1/bundles";
 
-function purgeTrash(ids) {
-    const dir = process.env.BL_LIBRARY_DIR && path.join(process.env.BL_LIBRARY_DIR, "trash");
-    if (!dir || !fs.existsSync(dir)) return 0;
-    let removed = 0;
-    for (const file of fs.readdirSync(dir)) {
-        if (ids.some((id) => file.startsWith(`${id}.`))) {
-            fs.unlinkSync(path.join(dir, file));
-            removed++;
-        }
-    }
-    return removed;
-}
+// Console errors that are expected: what a fresh user folder lacks (no saved
+// workflows, templates or user.css), the browser's report of the error answers
+// the scenarios provoke on purpose (conflicts, deleted bundles, refused
+// uploads, invalid prompts), and frontend start-up noise. Any other error fails
+// the session, so a missing thumbnail or an exception in this package shows up.
+const FAILED = /^Failed to load resource: the server responded with a status of 4\d\d /;
+const EXPECTED_CONSOLE_ERRORS = [
+    { text: FAILED, url: /\/api\/userdata\b|\/user\.css$/ },
+    { text: FAILED, url: /\/api\/prompt$|\/api\/bundle-library\/v1\/(bundles\b|assets$)/ },
+    { text: /^ComfyApp graph accessed before initialization$/ },
+];
+const expectedError = (e) => EXPECTED_CONSOLE_ERRORS.some((k) => k.text.test(e.text) && (!k.url || k.url.test(e.url)));
 
 const PAGE_HELPERS = () => {
     window.__bl = {
@@ -95,12 +99,18 @@ const PAGE_HELPERS = () => {
             const { asset } = await this.request("POST", "/assets", form);
             return { name, type: "image", asset: { sha256: asset.sha256, original_name: `${label}.png` } };
         },
-        async removeTestBundles() {
-            const { bundles } = await this.request("GET", "/bundles");
+        async bundleIds() {
+            return (await this.request("GET", "/bundles")).bundles.map((b) => b.id);
+        },
+        /** Delete these bundles if they still exist; the ids of those deleted. */
+        async removeBundles(ids) {
             const removed = [];
-            for (const b of bundles.filter((x) => x.name.startsWith("[test] "))) {
-                await this.request("DELETE", `/bundles/${b.id}?expected_revision=${b.revision}`);
-                removed.push(b.id);
+            for (const id of ids) {
+                const res = await this.api.fetchApi(`/bundle-library/v1/bundles/${id}`);
+                if (!res.ok) continue;
+                const { revision } = await res.json();
+                await this.request("DELETE", `/bundles/${id}?expected_revision=${revision}`);
+                removed.push(id);
             }
             return removed;
         },
@@ -221,23 +231,30 @@ async function startSession(name) {
     });
     const page = await context.newPage();
     const consoleErrors = [];
-    page.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
-    page.on("pageerror", (e) => consoleErrors.push(String(e)));
+    page.on("console", (m) => { if (m.type() === "error") consoleErrors.push({ text: m.text(), url: m.location().url }); });
+    page.on("pageerror", (e) => consoleErrors.push({ text: String(e.stack || e), url: "" }));
+    // Bundles made during the session, by the scenario or by the UI under test.
+    const created = new Set();
+    const reading = [];
+    page.on("response", (res) => {
+        const route = new URL(res.url()).pathname;
+        const making = route === BUNDLES || /^\/api\/bundle-library\/v1\/bundles\/[^/]+\/duplicate$/.test(route);
+        if (making && res.request().method() === "POST" && res.status() === 201) {
+            reading.push(res.json().then((b) => created.add(b.id), () => {}));
+        }
+    });
     await page.addInitScript(PAGE_HELPERS);
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
     await waitForApp(page);
     await page.waitForTimeout(2000);
     await page.keyboard.press("Escape");
     const ev = (fn, arg) => page.evaluate(fn, arg);
-    purgeTrash(await ev(() => window.__bl.removeTestBundles())); // left over from an interrupted run
-    const deleted = [];
+    const existing = await ev(() => window.__bl.bundleIds());
     const clientIds = new Set([await ev(() => window.__bl.api.clientId)]);
 
     return {
         page, ev, check, out,
         shot: (file) => page.screenshot({ path: path.join(out, file) }),
-        /** A bundle the scenario deleted itself: purge its trash file at the end too. */
-        purgeLater: (id) => deleted.push(id),
         /** Reload the page and wait for ComfyUI and the helpers again. */
         async reload() {
             await page.reload({ waitUntil: "domcontentloaded" });
@@ -246,16 +263,21 @@ async function startSession(name) {
             await page.keyboard.press("Escape");
             clientIds.add(await ev(() => window.__bl.api.clientId));
         },
-        /** Remove the test bundles, record what was blocked and logged, and close. */
+        /** Remove the bundles made in the session, check what else happened, and close. */
         async finish({ expectRemoved } = {}) {
-            const removed = await ev(() => window.__bl.removeTestBundles());
-            const purged = purgeTrash([...removed, ...deleted]);
-            check("test bundles removed", expectRemoved === undefined || removed.length === expectRemoved,
-                { removed: removed.length, trashFilesPurged: purged });
+            await Promise.all(reading);
+            const removed = await ev((ids) => window.__bl.removeBundles(ids), [...created]);
+            check("bundles made in the session removed", expectRemoved === undefined || removed.length === expectRemoved,
+                { removed: removed.length, made: created.size });
+            const now = new Set(await ev(() => window.__bl.bundleIds()));
+            const lost = existing.filter((id) => !now.has(id));
+            check("bundles the session did not make are untouched", lost.length === 0, { before: existing.length, lost });
             await browser.close(); // first, so the page cannot queue anything more
             check("test runs removed from the job history (record)", true, { runs: await forgetRuns(clientIds) });
             check("no settings/workflow writes reached the server (blocked list)", true, [...new Set(blocked)]);
-            check("browser console errors (record)", true, consoleErrors.slice(0, 20));
+            const unexpected = consoleErrors.filter((e) => !expectedError(e));
+            check("no unexpected browser console errors", unexpected.length === 0,
+                { unexpected: unexpected.slice(0, 10), expected: consoleErrors.length - unexpected.length });
             fs.writeFileSync(path.join(out, "results.json"),
                 JSON.stringify({ results, blocked: [...new Set(blocked)], consoleErrors }, null, 2));
             const failed = results.filter((r) => !r.ok).length;

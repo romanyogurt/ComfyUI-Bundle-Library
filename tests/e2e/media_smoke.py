@@ -2,17 +2,15 @@
 
 Uploads the browser fixtures (tests/browser/fixtures) into a "[test] Media"
 bundle, runs graphs of Load Bundle, core video nodes and preview nodes, and
-removes the bundle at the end. Run inside the container while no generation
-is running:
-    docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library comfyui \\
-        python tests/e2e/media_smoke.py
+removes that bundle at the end. Meant for the test server (see api_smoke.py),
+the default --base.
 """
 
 import argparse
 import json
 from pathlib import Path
 
-from api_smoke import LIBRARY_DIR, Api, expect
+from api_smoke import TEST_SERVER, Api, expect, remove_created
 from node_smoke import error_text, forget_runs, run
 
 NAME = "[test] Media"
@@ -32,21 +30,7 @@ def graph(bundle_id, video_slot=0):
     }
 
 
-def remove(api, library_dir):
-    removed = []
-    for bundle in api.call("GET", "/bundles")[1]["bundles"]:
-        if bundle["name"] == NAME:
-            api.call("DELETE", f"/bundles/{bundle['id']}?expected_revision={bundle['revision']}")
-            removed.append(bundle["id"])
-    trash = Path(library_dir) / "trash" if library_dir else None
-    if removed and trash and trash.is_dir():
-        for file in trash.iterdir():
-            if file.name.split(".")[0] in removed:
-                file.unlink()
-    return removed
-
-
-def checks(api):
+def checks(api, created):
     video = api.upload((FIXTURES / "clip.mp4").read_bytes(), "clip.mp4", kind="video")
     sound = api.upload((FIXTURES / "tone.mp3").read_bytes(), "tone.mp3", kind="audio")
     status, bundle, _ = api.call("POST", "/bundles", {"name": NAME, "tags": ["test"], "fields": [
@@ -55,6 +39,7 @@ def checks(api):
         {"name": "empty_clip", "type": "video", "asset": None},
     ]})
     expect(status == 201, f"created {NAME}")
+    created.append(bundle["id"])
     clip, bgm = bundle["fields"][0]["asset"], bundle["fields"][1]["asset"]
     expect((clip["ext"], clip["width"], clip["height"], clip["fps"], clip["has_audio"]) == ("mp4", 160, 120, 24.0, True)
            and abs(clip["duration"] - 2.0) < 0.05, f"video metadata from the file: {clip}")
@@ -78,15 +63,13 @@ def checks(api):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default="http://127.0.0.1:8188")
-    parser.add_argument("--library-dir", default=LIBRARY_DIR, help="for deleting the trash files ('' to keep them)")
-    args = parser.parse_args()
-    api = Api(args.base)
-    remove(api, args.library_dir)  # left over from an interrupted run
+    parser.add_argument("--base", default=TEST_SERVER)
+    api = Api(parser.parse_args().base)
+    created = []
     try:
-        checks(api)
+        checks(api, created)
     finally:
-        print("     ", f"removed {len(remove(api, args.library_dir))} test bundle(s)")
+        remove_created(api, created)
         forget_runs(api)
 
 

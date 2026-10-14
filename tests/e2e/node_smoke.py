@@ -1,11 +1,9 @@
 """Runs Load Bundle on a running ComfyUI through API-format prompts.
 
 Creates the test bundles of api_smoke.py, runs graphs of Load Bundle and
-preview nodes only, and removes the bundles at the end. Sample A is edited and
-restored on the way to check that a changed bundle is not served from the
-cache. Run inside the container while no generation is running:
-    docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library \\
-        comfyui python tests/e2e/node_smoke.py
+preview nodes only, and removes the bundles it created at the end. Sample A is
+edited and restored on the way to check that a changed bundle is not served
+from the cache. Meant for the test server (see api_smoke.py), the default --base.
 """
 
 import argparse
@@ -16,7 +14,7 @@ import urllib.parse
 
 from PIL import Image
 
-from api_smoke import LIBRARY_DIR, SAMPLES, Api, ensure_samples, expect, remove_samples, sample_image
+from api_smoke import SAMPLES, TEST_SERVER, Api, create_samples, expect, remove_created, sample_image
 
 SLOTS = [("prompt", "text"), ("ref_1", "image"), ("ref_2", "image"), ("use_bgm", "boolean")]
 
@@ -82,14 +80,13 @@ def forget_runs(api):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default="http://127.0.0.1:8188")
-    parser.add_argument("--library-dir", default=LIBRARY_DIR, help="for deleting the trash files ('' to keep them)")
-    args = parser.parse_args()
-    api = Api(args.base)
+    parser.add_argument("--base", default=TEST_SERVER)
+    api = Api(parser.parse_args().base)
+    created = []
     try:
-        checks(api, ensure_samples(api))
+        checks(api, create_samples(api, created))
     finally:
-        remove_samples(api, args.library_dir)
+        remove_created(api, created)
         forget_runs(api)
 
 

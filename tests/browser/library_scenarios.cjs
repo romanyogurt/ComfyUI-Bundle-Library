@@ -543,7 +543,6 @@ const LIB_HELPERS = () => {
         status: window.__lib.status().text,
     }), structureId);
     const stillThere = await ev((id) => window.__bl.request("GET", `/bundles/${id}`).then(() => true, () => false), structureId);
-    session.purgeLater(structureId);
     check("Delete removes it from the list and the library",
         !deleted.listed && !stillThere && deleted.status === `Deleted '${UI_NAME} copy 2'.`, deleted);
     const ctrlO = await lib(() => {

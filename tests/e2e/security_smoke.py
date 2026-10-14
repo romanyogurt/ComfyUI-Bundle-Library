@@ -1,12 +1,13 @@
 """Checks the write protection and limits of a running Bundle Library API.
 
 Every request here must be refused, so nothing in the library changes. Only
-the standard library is used, so it also runs on the host, for example through
-the Tailscale address:
-    python3 tests/e2e/security_smoke.py --base https://<machine>.<tailnet>.ts.net
-or inside the container:
-    docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library \\
-        comfyui python tests/e2e/security_smoke.py
+the standard library is used, so it also runs on the host. The default --base
+is the test server (see api_smoke.py).
+
+On a loopback host ComfyUI's own Origin check answers a foreign Origin before
+this API sees it. --host sends another Host header, as a request through the
+Tailscale domain would; then this API's own Origin check must answer:
+    python3 tests/e2e/security_smoke.py --host 192.0.2.1:8189
 """
 
 import argparse
@@ -21,11 +22,14 @@ WRITE = {"X-Bundle-Library": "1"}
 # Text that would reveal where the server keeps its files.
 PATH_HINTS = ("/opt/", "/home/", "/tmp/", "user/bundle_library", "\\\\")
 failures = []
+host = None  # the Host header to send, from --host
 
 
 def call(base, method, path, body=None, headers=None):
     """(status, decoded JSON body or {}, headers). Never raises for HTTP errors."""
     headers = dict(headers or {})
+    if host:
+        headers["Host"] = host
     if isinstance(body, dict):
         body = json.dumps(body).encode()
         headers.setdefault("Content-Type", "application/json")
@@ -63,18 +67,23 @@ def refused(base, label, method, path, status, code, body=None, headers=None, co
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base", default="http://127.0.0.1:8188")
-    base = parser.parse_args().base.rstrip("/")
-    api = base + "/api"
+    parser.add_argument("--base", default="http://127.0.0.1:8189")
+    parser.add_argument("--host", help="Host header to send, a name that is not loopback")
+    args = parser.parse_args()
+    global host
+    host = args.host
+    # Only for a loopback Host may ComfyUI's Origin check answer first.
+    core_origin = host is None
+    api = args.base.rstrip("/") + "/api"
     some_id = str(uuid.uuid4())
     bundle = {"name": "[test] must not be created", "fields": []}
 
     # Writes need the header, and no other site may send them.
     refused(api, "create without the header", "POST", P + "/bundles", 403, "missing_header", bundle)
     refused(api, "create from another origin", "POST", P + "/bundles", 403, "origin_mismatch", bundle,
-            {**WRITE, "Origin": "https://evil.example"}, core_may_refuse=True)
+            {**WRITE, "Origin": "https://evil.example"}, core_may_refuse=core_origin)
     refused(api, "create with Origin: null", "POST", P + "/bundles", 403, "origin_mismatch", bundle,
-            {**WRITE, "Origin": "null"}, core_may_refuse=True)
+            {**WRITE, "Origin": "null"}, core_may_refuse=core_origin)
     refused(api, "create from a cross-site page", "POST", P + "/bundles", 403, "cross_site", bundle,
             {**WRITE, "Sec-Fetch-Site": "cross-site"}, core_may_refuse=True)
     refused(api, "update without the header", "PUT", f"{P}/bundles/{some_id}", 403, "missing_header",
@@ -85,7 +94,7 @@ def main():
             "missing_header", {"mode": "values"})
     refused(api, "upload from another origin", "POST", P + "/assets", 403, "origin_mismatch", b"x",
             {**WRITE, "Origin": "https://evil.example", "Content-Type": "multipart/form-data; boundary=x"},
-            core_may_refuse=True)
+            core_may_refuse=core_origin)
 
     # A browser on another site cannot even send the header: the preflight is not allowed.
     status, _, headers = call(api, "OPTIONS", P + "/bundles", headers={
