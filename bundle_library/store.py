@@ -2,19 +2,25 @@
 
 The loader node reads a bundle file directly (see get()); writes replace the
 file in one step, so a reader sees either the old or the new version. All
-writes and the summary cache share one lock.
+writes and the summary cache share one lock. A deleted bundle moves to
+trash/, from where it can be restored; the files it uses stay until a
+cleanup finds that nothing, not even a trashed bundle, uses them.
 """
 
 import json
 import os
 import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from .assets import AssetStore
-from .constants import MAX_BUNDLE_NAME, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MEDIA_TYPES
-from .model import LibraryError, check_bundle_id, empty_value, name_key, normalize_bundle
+from .assets import KINDS, AssetStore
+from .constants import ASSET_GRACE_SECONDS, MAX_BUNDLE_NAME, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MEDIA_TYPES
+from .model import (
+    TRASH_ID_RE, LibraryError, check_bundle_id, check_sha256, check_trash_id, empty_value, invalid, name_key,
+    normalize_bundle,
+)
 
 FORMAT = "comfyui-bundle-library/bundle"
 SCHEMA_VERSION = 1
@@ -57,6 +63,26 @@ def _not_found(bundle_id):
     return LibraryError(404, "not_found", f"Bundle not found: {bundle_id}")
 
 
+def _stamp_time(stamp):
+    """"20261015T074500Z" (a trash file's) as "2026-10-15T07:45:00Z"."""
+    return f"{stamp[0:4]}-{stamp[4:6]}-{stamp[6:8]}T{stamp[9:11]}:{stamp[11:13]}:{stamp[13:15]}Z"
+
+
+def _file_time(seconds):
+    return datetime.fromtimestamp(seconds, timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def _asset_refs(data):
+    """The SHA-256 of each file a bundle's fields use; ValueError if `data` is
+    not shaped like a bundle. Loose on purpose: a bundle that fails other
+    checks still keeps its files."""
+    if not isinstance(data, dict) or not isinstance(data.get("fields"), list):
+        raise ValueError("not a bundle")
+    return {field["asset"]["sha256"] for field in data["fields"]
+            if isinstance(field, dict) and isinstance(field.get("asset"), dict)
+            and isinstance(field["asset"].get("sha256"), str)}
+
+
 class BundleStore:
     def __init__(self, root, max_image_bytes=MAX_IMAGE_BYTES, max_image_pixels=MAX_IMAGE_PIXELS):
         root = Path(root)
@@ -78,15 +104,16 @@ class BundleStore:
     def _path(self, bundle_id):
         return self.bundle_dir / f"{check_bundle_id(bundle_id)}.json"
 
-    def _read(self, path):
-        """The bundle stored at `path`, checked. Raises ValueError if it is unusable."""
+    def _read(self, path, bundle_id=None):
+        """The bundle stored at `path` (with the id `bundle_id`, else the file
+        name's), checked. Raises ValueError if it is unusable."""
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict) or data.get("format") != FORMAT:
             raise ValueError("not a bundle file")
         if data.get("schema_version") != SCHEMA_VERSION:
             raise ValueError(f"unsupported schema_version {data.get('schema_version')!r}")
-        if data.get("id") != path.stem:
+        if data.get("id") != (bundle_id or path.stem):
             raise ValueError("the file name and the id differ")
         revision = data.get("revision")
         if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
@@ -225,7 +252,7 @@ class BundleStore:
             return self._save(bundle)
 
     def delete(self, bundle_id, expected_revision):
-        """Move the bundle to trash/. Its images stay in the asset store."""
+        """Move the bundle to trash/; its trash id. Its files stay in the asset store."""
         with self._lock:
             self._current(bundle_id, expected_revision)
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -236,6 +263,7 @@ class BundleStore:
                 n += 1
             os.replace(self._path(bundle_id), target)
             self._cache.pop(f"{bundle_id}.json", None)
+            return target.name[:-5]
 
     def duplicate(self, bundle_id, mode="values", name=None):
         """A new bundle with the same fields; mode "structure" leaves the values empty."""
@@ -246,17 +274,148 @@ class BundleStore:
             source = self.get(bundle_id)
             fields = source["fields"] if mode == "values" else [empty_value(f) for f in source["fields"]]
             if name is None:
-                name = self._copy_name(source["name"])
+                name = self._free_name(source["name"], [" copy", *(f" copy {n}" for n in range(2, 1000))])
             return self.create({"name": name, "tags": source["tags"], "note": source["note"], "fields": fields})
 
-    def _copy_name(self, name):
+    def _free_name(self, name, suffixes):
+        """`name` with the first of `suffixes` that no other bundle's name has."""
         taken = {name_key(b["name"]) for b in self._bundles()}
-        for n in range(1, 1000):
-            suffix = " copy" if n == 1 else f" copy {n}"
+        for suffix in suffixes:
             candidate = name[:MAX_BUNDLE_NAME - len(suffix)] + suffix
             if name_key(candidate) not in taken:
                 return candidate
-        raise LibraryError(409, "name_conflict", "Could not find a free name for the copy; give one explicitly.")
+        raise LibraryError(409, "name_conflict", f"Could not find a free name for '{name}'.")
+
+    # -- trash -----------------------------------------------------------------
+
+    def _trash_files(self):
+        """(trash id, path, bundle id, deleted at) of each file delete() put in trash/."""
+        found = []
+        for entry in os.scandir(self.trash_dir):
+            match = TRASH_ID_RE.match(entry.name[:-5]) if entry.name.endswith(".json") else None
+            if match and entry.is_file(follow_symlinks=False):
+                found.append((entry.name[:-5], Path(entry.path), match.group(1), _stamp_time(match.group(2))))
+        return found
+
+    def _trash_path(self, trash_id):
+        path = self.trash_dir / f"{check_trash_id(trash_id)}.json"
+        if not path.is_file() or path.is_symlink():
+            raise LibraryError(404, "not_found", f"Not in the trash: {trash_id}")
+        return path
+
+    def trash(self):
+        """Summaries of the trashed bundles, last deleted first, and the trash
+        files that cannot be read."""
+        entries, errors = [], []
+        with self._lock:
+            for trash_id, path, bundle_id, deleted_at in self._trash_files():
+                try:
+                    bundle = self._read(path, bundle_id)
+                except (OSError, ValueError) as e:
+                    errors.append({"trash_id": trash_id, "deleted_at": deleted_at, "error": _reason(e)})
+                    continue
+                entries.append({"trash_id": trash_id, "deleted_at": deleted_at, **_summary(bundle)})
+        entries.sort(key=lambda e: (e["deleted_at"], e["trash_id"]), reverse=True)
+        errors.sort(key=lambda e: (e["deleted_at"], e["trash_id"]), reverse=True)
+        return {"trash": entries, "errors": errors}
+
+    def restore(self, trash_id):
+        """Put a trashed bundle back. It keeps its id unless a bundle has that id
+        now, and gets a number after its name if a bundle has that name."""
+        with self._lock:
+            path = self._trash_path(trash_id)
+            try:
+                bundle = self._read(path, TRASH_ID_RE.match(trash_id).group(1))
+            except (OSError, ValueError) as e:
+                raise LibraryError(500, "corrupt_bundle", f"Cannot read trash file {path.name}: {_reason(e)}") from None
+            self._scan()
+            bundle_id = bundle["id"] if not self._path(bundle["id"]).exists() else str(uuid.uuid4())
+            name = self._free_name(bundle["name"], ["", *(f" ({n})" for n in range(2, 1000))])
+            restored = self._save({**bundle, "id": bundle_id, "name": name, "revision": bundle["revision"] + 1,
+                                   "updated_at": _now()})
+            path.unlink()  # after the bundle is back: a crash in between leaves a copy, not a loss
+            return restored
+
+    def purge(self, trash_id):
+        """Delete a trashed bundle for good. The files it used stay until a cleanup."""
+        with self._lock:
+            self._trash_path(trash_id).unlink()
+
+    def empty_trash(self):
+        """Delete every trashed bundle for good; how many."""
+        with self._lock:
+            files = self._trash_files()
+            for _, path, _, _ in files:
+                path.unlink(missing_ok=True)
+            return len(files)
+
+    # -- unused files ------------------------------------------------------------
+
+    def _used_assets(self):
+        """The SHA-256 of every file a bundle or a trashed bundle uses. Refuses
+        while a bundle file cannot be read: the files it uses would look unused."""
+        used, unreadable = set(), []
+        for folder in (self.bundle_dir, self.trash_dir):
+            for entry in sorted(os.scandir(folder), key=lambda e: e.name):
+                if not entry.name.endswith(".json") or not entry.is_file(follow_symlinks=False):
+                    continue
+                try:
+                    with open(entry.path, encoding="utf-8") as f:
+                        used |= _asset_refs(json.load(f))
+                except (OSError, ValueError):
+                    unreadable.append(f"{folder.name}/{entry.name}")
+        if unreadable:
+            raise LibraryError(409, "unreadable_bundles",
+                               "Unused files cannot be told apart while these bundle files cannot be read: "
+                               f"{', '.join(unreadable)}.", files=unreadable)
+        return used
+
+    def unused_assets(self):
+        """The stored files that no bundle and no trashed bundle uses, oldest
+        first. Files stored or uploaded again within the grace time are only
+        counted (`recent`): a draft in the editor may be using them."""
+        with self._lock:
+            used = self._used_assets()
+            stored = self.assets.stored()
+        cutoff = time.time() - ASSET_GRACE_SECONDS
+        unused, recent = [], 0
+        for sha256, path in stored:
+            if sha256 in used:
+                continue
+            try:
+                stat = path.stat()
+            except OSError:
+                continue  # removed meanwhile
+            if stat.st_mtime >= cutoff:
+                recent += 1
+                continue
+            ext = path.suffix[1:]
+            unused.append({"sha256": sha256, "kind": KINDS[ext], "ext": ext, "bytes": stat.st_size,
+                           "stored_at": _file_time(stat.st_mtime)})
+        unused.sort(key=lambda a: (a["stored_at"], a["sha256"]))
+        return {"assets": unused, "bytes": sum(a["bytes"] for a in unused), "recent": recent,
+                "grace_hours": ASSET_GRACE_SECONDS // 3600}
+
+    def delete_unused_assets(self, shas):
+        """Delete these stored files (the ones unused_assets() showed) if they
+        are still unused and past the grace time, with their thumbnails; also
+        thumbnails whose file is gone. Files in use again are kept."""
+        if not isinstance(shas, list):
+            raise invalid("sha256 must be a list of file ids.")
+        for sha256 in shas:
+            check_sha256(sha256)
+        with self._lock:  # no bundle is saved meanwhile, so no file becomes used unseen
+            used = self._used_assets()
+            cutoff = time.time() - ASSET_GRACE_SECONDS
+            deleted, freed = 0, 0
+            for sha256 in dict.fromkeys(shas):
+                size = None if sha256 in used else self.assets.remove(sha256, cutoff)
+                if size is not None:
+                    deleted += 1
+                    freed += size
+            thumbnails = self.assets.remove_stray_thumbnails()
+        return {"deleted": deleted, "bytes": freed, "kept": len(dict.fromkeys(shas)) - deleted,
+                "thumbnails": thumbnails}
 
 
 def _search_text(bundle):

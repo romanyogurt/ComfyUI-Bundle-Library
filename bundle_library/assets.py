@@ -5,6 +5,7 @@ LoadVideo and LoadAudio use). A file's kind follows from its stored extension.
 """
 
 import os
+import threading
 import uuid
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from .constants import (
     MAX_AUDIO_SAMPLES, MAX_AUDIO_SECONDS, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS,
     MAX_VIDEO_BYTES, MAX_VIDEO_PIXELS, THUMBNAIL_SIZES, VIDEO_EXTENSIONS,
 )
-from .model import LibraryError, check_sha256, clean_original_name
+from .model import SHA256_RE, LibraryError, check_sha256, clean_original_name
 
 MIME_TYPES = {**dict(IMAGE_FORMATS.values()), **VIDEO_EXTENSIONS, **AUDIO_EXTENSIONS}  # extension -> MIME type
 KINDS = {**{ext: "image" for ext, _ in IMAGE_FORMATS.values()},
@@ -56,6 +57,7 @@ class AssetStore:
                       "channels": MAX_AUDIO_CHANNELS, "rate": MAX_AUDIO_RATE},
         }
         self._meta = {}  # sha256 -> metadata read from the file; files never change
+        self._lock = threading.Lock()  # storing and removing a file, so neither misses the other
 
     def temp_path(self):
         return self.tmp_dir / f"{uuid.uuid4().hex}.part"
@@ -75,11 +77,14 @@ class AssetStore:
         else:
             ext, meta = self._check_media(temp, kind)
         target = self.files / sha256[:2] / f"{sha256}.{ext}"
-        created = not target.exists()
-        if created:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            os.chmod(temp, 0o644)
-            os.replace(temp, target)
+        with self._lock:
+            created = not target.exists()
+            if created:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                os.chmod(temp, 0o644)
+                os.replace(temp, target)
+            else:
+                _touch(target)  # uploaded again: a cleanup waits the grace time anew
         self._meta[sha256] = meta
         info = self._info(sha256, target)
         if original_name:
@@ -154,6 +159,55 @@ class AssetStore:
                 return candidate
         return None
 
+    def stored(self):
+        """(sha256, path) of every stored file. Anything else in the folder is
+        not the library's and is left alone."""
+        found = []
+        if not self.files.is_dir():
+            return found
+        for folder in os.scandir(self.files):
+            if len(folder.name) != 2 or not folder.is_dir(follow_symlinks=False):
+                continue
+            for entry in os.scandir(folder.path):
+                sha256, dot, ext = entry.name.partition(".")
+                if (dot and ext in MIME_TYPES and SHA256_RE.match(sha256) and sha256[:2] == folder.name
+                        and entry.is_file(follow_symlinks=False)):
+                    found.append((sha256, Path(entry.path)))
+        return found
+
+    def remove(self, sha256, stored_before):
+        """Delete a stored file and its thumbnails, but only if it was stored
+        (or uploaded again) before the time `stored_before`. Its size, or None
+        when it is kept or not there."""
+        with self._lock:
+            path = self.path(sha256)
+            if path is None:
+                return None
+            stat = path.stat()
+            if stat.st_mtime >= stored_before:
+                return None
+            path.unlink()
+            self._meta.pop(sha256, None)
+        for thumb in (self.thumbs / sha256[:2]).glob(f"{sha256}_*.webp"):
+            thumb.unlink(missing_ok=True)
+        return stat.st_size
+
+    def remove_stray_thumbnails(self):
+        """Delete the thumbnails whose file is no longer stored; how many."""
+        removed = 0
+        if not self.thumbs.is_dir():
+            return removed
+        for folder in os.scandir(self.thumbs):
+            if not folder.is_dir(follow_symlinks=False):
+                continue
+            for entry in os.scandir(folder.path):
+                sha256 = entry.name.partition("_")[0]
+                if (entry.name.endswith(".webp") and SHA256_RE.match(sha256) and entry.is_file(follow_symlinks=False)
+                        and self.path(sha256) is None):
+                    os.unlink(entry.path)
+                    removed += 1
+        return removed
+
     def kind(self, sha256):
         """"image", "video" or "audio" for a stored file, or None."""
         path = self.path(sha256)
@@ -199,6 +253,13 @@ class AssetStore:
         finally:
             temp.unlink(missing_ok=True)
         return target
+
+
+def _touch(path):
+    try:
+        os.utime(path)
+    except OSError:  # a file this process may not change; it then keeps its first time
+        pass
 
 
 def _video_stream(container):

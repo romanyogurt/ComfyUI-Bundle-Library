@@ -549,7 +549,7 @@ const LIB_HELPERS = () => {
     }), structureId);
     const stillThere = await ev((id) => window.__bl.request("GET", `/bundles/${id}`).then(() => true, () => false), structureId);
     check("Delete removes it from the list and the library",
-        !deleted.listed && !stillThere && deleted.status === `Deleted '${UI_NAME} copy 2'.`, deleted);
+        !deleted.listed && !stillThere && deleted.status === `Deleted '${UI_NAME} copy 2'. It is in the trash.`, deleted);
     const ctrlO = await lib(() => {
         const event = new KeyboardEvent("keydown", { key: "o", ctrlKey: true, bubbles: true, cancelable: true });
         document.querySelector(".bl-overlay .bl-search").dispatchEvent(event);

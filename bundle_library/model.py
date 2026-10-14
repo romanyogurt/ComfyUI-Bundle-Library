@@ -14,6 +14,9 @@ ASSET_EXTENSIONS = {e for e, _ in IMAGE_FORMATS.values()} | set(VIDEO_EXTENSIONS
 CODEC_RE = re.compile(r"^[a-z0-9_.-]{1,32}$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+# A trashed bundle is named by its file, trash/<bundle id>.<UTC time>[-n].json.
+TRASH_ID_RE = re.compile(r"^([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})"
+                         r"\.(\d{8}T\d{6}Z)(?:-[1-9]\d{0,5})?$")
 # JavaScript's safe integers: the browser reads JSON numbers as doubles, so a
 # larger value would change on its way through the editor.
 INT_MIN, INT_MAX = -(2 ** 53 - 1), 2 ** 53 - 1
@@ -47,6 +50,12 @@ def check_bundle_id(value):
 def check_sha256(value):
     if not isinstance(value, str) or not SHA256_RE.match(value):
         raise LibraryError(400, "invalid_id", f"Invalid asset id: {value!r}")
+    return value
+
+
+def check_trash_id(value):
+    if not isinstance(value, str) or not TRASH_ID_RE.match(value):
+        raise LibraryError(400, "invalid_id", f"Invalid trash id: {value!r}")
     return value
 
 

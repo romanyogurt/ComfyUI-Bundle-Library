@@ -97,6 +97,15 @@ export const deleteBundle = (id, revision) =>
     request(`/bundles/${id}?expected_revision=${revision}`, { method: "DELETE" });
 export const duplicateBundle = (id, mode) => request(`/bundles/${id}/duplicate`, json("POST", { mode }));
 
+/** The trashed bundles ({trash, errors}), last deleted first. */
+export const listTrash = () => request("/trash");
+export const restoreBundle = (trashId) => request(`/trash/${trashId}/restore`, { method: "POST" });
+export const purgeBundle = (trashId) => request(`/trash/${trashId}`, { method: "DELETE" }, { changes: false });
+export const emptyTrash = () => request("/trash", { method: "DELETE" }, { changes: false });
+/** Stored files that no bundle uses, in the library or in the trash. */
+export const listUnusedFiles = () => request("/cleanup");
+export const deleteUnusedFiles = (shas) => request("/cleanup", json("POST", { sha256: shas }), { changes: false });
+
 /**
  * Upload one file for a field of `kind` (image, video or audio); resolves to
  * the stored asset's metadata. `onProgress` gets the sent fraction (0..1).

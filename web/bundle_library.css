@@ -350,13 +350,29 @@
     min-height: 0;
 }
 
+.bl-modal-side {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    border-right: 1px solid var(--border-color, #4e4e4e);
+}
+
 .bl-modal-list {
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 8px;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    border-right: 1px solid var(--border-color, #4e4e4e);
+}
+
+.bl-trash-button {
+    margin: 0 8px 8px;
+}
+
+.bl-trash-button.selected {
+    background: var(--content-bg, #4e4e4e);
 }
 
 .bl-list-item {
@@ -778,6 +794,10 @@
     border-radius: 8px;
 }
 
+.bl-confirm.wide {
+    max-width: 640px;
+}
+
 .bl-confirm-title {
     font-size: 14px;
     font-weight: 600;
@@ -853,4 +873,68 @@
 
 .bl-sidebar-item:hover {
     background: var(--comfy-menu-secondary-bg, #303030);
+}
+
+/* The trash, in the pane of the library modal. */
+.bl-trash {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.bl-trash-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bl-trash-title {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.bl-trash-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bl-trash-item {
+    display: grid;
+    grid-template-columns: 44px 1fr auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 6px;
+    border-radius: 6px;
+    background: var(--comfy-menu-secondary-bg, #303030);
+}
+
+/* The files a cleanup would delete. */
+.bl-cleanup-files {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
+    gap: 8px;
+    max-height: 300px;
+    overflow-y: auto;
+    font-size: 11px;
+}
+
+.bl-cleanup-file {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.bl-cleanup-thumb {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--comfy-input-bg, #222);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 28px;
 }

@@ -37,6 +37,16 @@ comfy-docker 저장소의 `docs/bundle-library.md`에 있다.
 창 안에서 Ctrl+S는 저장, Esc는 닫기다. 저장하지 않은 변경이 있으면 닫거나 다른 번들로
 옮기기 전에 묻는다.
 
+## 휴지통과 정리
+
+- 지운 번들은 휴지통으로 간다. 목록 아래의 🗑 Trash 버튼으로 휴지통을 열어, 되살리거나
+  (Restore) 영구 삭제한다(Delete forever, Empty trash). 되살린 번들은 원래 id를 쓰므로 그
+  번들을 쓰던 워크플로가 다시 동작한다. 같은 이름의 번들이 있으면 이름 뒤에 `(2)`가 붙는다.
+- 휴지통의 "Clean up unused files…"는 라이브러리의 번들도, 휴지통의 번들도 쓰지 않는 파일을
+  크기와 함께 보여 주고, 확인을 받아 지운다. 올린 지 24시간이 안 된 파일은 저장하지 않은
+  편집에 쓰일 수 있어 남긴다. 지운 파일은 되돌릴 수 없으므로 필요하면 먼저 라이브러리 폴더를
+  백업한다.
+
 ## 개발 규칙
 
 - 코드에 나오는 문자열(UI, 오류·로그 메시지, 자동으로 만드는 이름)은 영어로 쓴다. 문서는
@@ -80,14 +90,18 @@ scripts/bundle-library-test-server.sh stop
 | `tests/e2e/node_smoke.py` | Load Bundle을 실행해 출력, 캐시, 오류를 확인한다 |
 | `tests/e2e/media_smoke.py` | 비디오·오디오 필드로 Load Bundle을 실행해 VIDEO·AUDIO 출력을 확인한다 |
 | `tests/e2e/security_smoke.py` | 쓰기 보호와 제한값 (거부되는 요청만 보낸다) |
-| `tests/browser/*_scenarios.cjs` | 헤드리스 Chromium으로 노드, 라이브러리, 비디오·오디오 화면을 조작한다. `race_scenarios.cjs`는 응답을 늦추거나 순서를 뒤집어 열기·검색·저장·업로드를 확인한다 |
+| `tests/browser/*_scenarios.cjs` | 헤드리스 Chromium으로 노드, 라이브러리, 비디오·오디오 화면을 조작한다. `race_scenarios.cjs`는 응답을 늦추거나 순서를 뒤집어 열기·검색·저장·업로드를, `trash_scenarios.cjs`는 휴지통과 파일 정리를 확인한다 |
 | `tests/e2e/bench_store.py --count 100 --count 1000` | 번들 수에 따른 저장소 속도 (임시 폴더, `run`에는 없음) |
 
 - e2e 스크립트와 브라우저 시나리오의 기본 주소는 테스트 서버다. 다른 서버는 Python 스크립트의
   `--base`, 브라우저 시나리오의 `COMFY_URL`로 지정한다.
-- 테스트는 자기가 만든 번들만 id로 골라 지운다. 브라우저 시나리오는 시작할 때 있던 번들이 끝날
-  때도 모두 남아 있는지 확인한다. `run`은 테스트가 만들지 않은 번들을 하나 먼저 만들고, 마지막에
-  그 번들이 남아 있는지 확인한다.
+- 테스트는 자기가 만든 번들만 id로 골라 지우고, 그 번들의 휴지통 항목도 지운다. 브라우저
+  시나리오는 시작할 때 있던 번들과 휴지통 항목이 끝날 때도 모두 남아 있는지 확인한다. `run`은
+  테스트가 만들지 않은 번들을 하나 먼저 만들고, 마지막에 그 번들이 남아 있는지 확인한다.
+- `trash_scenarios.cjs`는 휴지통이 자기가 만든 번들만 담고 있을 때만 휴지통을 비우고, 정리 목록이
+  자기 파일 하나뿐일 때만 파일을 지운다. 파일을 지우려면 24시간이 지난 파일이 필요해서,
+  `BL_TEST_CONTAINER`와 `BL_TEST_LIBRARY`가 있으면(`run`이 준다) 테스트 서버 컨테이너 안에서 자기
+  파일의 수정 시각을 사흘 전으로 바꾼다. 없으면 그 단계를 건너뛴다.
 - 프롬프트를 실행하는 테스트(`node_smoke.py`, `media_smoke.py`, `loader_scenarios.cjs`)는 끝날 때
   자기가 넣은 작업을 작업 기록(job history)에서 client id로 골라 지운다.
 - `security_smoke.py`는 표준 라이브러리만 써서 호스트에서도 실행된다. 루프백 주소에서는

@@ -17,6 +17,7 @@ from . import helpers
 
 P = "/bundle-library/v1"
 WRITE = {"X-Bundle-Library": "1"}
+FAKE_TRASH_ID = f"{uuid.uuid4()}.20261015T000000Z"
 
 
 class RoutesTest(AioHTTPTestCase):
@@ -80,6 +81,10 @@ class RoutesTest(AioHTTPTestCase):
             "DELETE": lambda headers: self.client.delete(path + "?expected_revision=1", headers=headers),
             "duplicate": lambda headers: self.client.post(path + "/duplicate", json={"mode": "values"}, headers=headers),
             "upload": lambda headers: self.upload(helpers.png("teal"), headers=headers),
+            "restore": lambda headers: self.client.post(f"{P}/trash/{FAKE_TRASH_ID}/restore", headers=headers),
+            "delete for good": lambda headers: self.client.delete(f"{P}/trash/{FAKE_TRASH_ID}", headers=headers),
+            "empty trash": lambda headers: self.client.delete(P + "/trash", headers=headers),
+            "cleanup": lambda headers: self.client.post(P + "/cleanup", json={"sha256": []}, headers=headers),
         }
         refusals = [({}, "missing_header"), ({**WRITE, "Sec-Fetch-Site": "same-site"}, "cross_site"),
                     ({**WRITE, "Origin": "null"}, "origin_mismatch"),
@@ -205,6 +210,29 @@ class RoutesTest(AioHTTPTestCase):
             with self.subTest(path=path):
                 response = await self.client.get(P + path)
                 self.assertIn(response.status, (400, 404))
+
+    async def test_trash_and_cleanup(self):
+        data = await self.bundle_data()
+        bundle = await self.body(await self.client.post(P + "/bundles", json=data, headers=WRITE), 201)
+        path = f"{P}/bundles/{bundle['id']}"
+        trash_id = (await self.body(await self.client.delete(path + "?expected_revision=1", headers=WRITE), 200))["trash_id"]
+        listing = await self.body(await self.client.get(P + "/trash"), 200)
+        self.assertEqual([(e["trash_id"], e["name"]) for e in listing["trash"]], [(trash_id, "Red Dress Girl")])
+        restored = await self.body(await self.client.post(f"{P}/trash/{trash_id}/restore", headers=WRITE), 200)
+        self.assertEqual((restored["id"], restored["revision"]), (bundle["id"], 2))
+        await self.body(await self.client.get(path), 200)
+        trash_id = (await self.body(await self.client.delete(path + "?expected_revision=2", headers=WRITE), 200))["trash_id"]
+        await self.body(await self.client.delete(f"{P}/trash/{trash_id}", headers=WRITE), 200)
+        await self.error(await self.client.delete(f"{P}/trash/{trash_id}", headers=WRITE), 404, "not_found")
+        await self.error(await self.client.post(f"{P}/trash/..%2Fbundles/restore", headers=WRITE), 400, "invalid_id")
+        self.assertEqual((await self.body(await self.client.delete(P + "/trash", headers=WRITE), 200))["deleted"], 0)
+        unused = await self.body(await self.client.get(P + "/cleanup"), 200)
+        self.assertEqual((unused["assets"], unused["recent"], unused["grace_hours"]), ([], 1, 24))  # uploaded just now
+        sha = data["fields"][1]["asset"]["sha256"]
+        report = await self.body(await self.client.post(P + "/cleanup", json={"sha256": [sha]}, headers=WRITE), 200)
+        self.assertEqual((report["deleted"], report["kept"]), (0, 1))
+        self.assertEqual((await self.client.get(f"{P}/assets/{sha}")).status, 200)  # still there
+        await self.error(await self.client.post(P + "/cleanup", json={"sha256": "x"}, headers=WRITE), 400, "invalid")
 
     async def test_health_and_errors_name_no_paths(self):
         report = await self.body(await self.client.get(P + "/health"), 200)

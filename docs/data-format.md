@@ -13,7 +13,7 @@ bundle_library/
 ├── bundles/<uuid>.json                        # 번들 하나에 파일 하나
 ├── assets/sha256/<해시 앞 2자리>/<sha256>.<ext>    # 올린 원본, 바이트 그대로
 ├── thumbs/<해시 앞 2자리>/<sha256>_<크기>.webp     # 다시 만들 수 있는 미리보기
-├── trash/<uuid>.<UTC 시각>.json                # 지운 번들
+├── trash/<uuid>.<UTC 시각>[-n].json            # 지운 번들. 확장자를 뺀 이름이 휴지통 id
 └── tmp/                                       # 쓰는 중인 파일. 열 때 비운다
 ```
 
@@ -112,8 +112,17 @@ bundle_library/
   - 허용하지 않는 형식이나 종류가 다른 파일, 채널·샘플레이트·샘플 형식이 범위 밖인 오디오는
     415, 깨진 파일은 400, 픽셀 수·길이·샘플 수 초과는 413이다.
 - 원본 바이트를 바꾸지 않고 SHA-256 이름으로 저장한다. 같은 내용을 다시 올리면 기존 파일을
-  쓴다.
-- 지운 번들이 쓰던 파일도 남겨 둔다. 쓰이지 않는 파일 정리는 다음 단계의 관리 기능이다.
+  쓰고, 파일의 수정 시각만 지금으로 바꾼다 (아래 유예 시간).
+- 지운 번들은 `trash/`로 옮겨진다. 휴지통에서 되살리거나 영구 삭제할 수 있다. 휴지통의 번들이
+  쓰는 파일은 남겨 두므로 되살린 번들은 온전하다.
+- 쓰이지 않는 파일 정리: 라이브러리의 번들도, 휴지통의 번들도 쓰지 않는 파일을 목록과 크기로
+  먼저 보여 주고, 확인을 받아 썸네일과 함께 지운다.
+  - 저장한 지(또는 다시 올린 지) 24시간이 안 된 파일은 남긴다. 편집기는 번들을 저장하기 전에
+    파일을 올리기 때문이다.
+  - 지울 때 다시 확인한다. 목록을 본 뒤 어떤 번들이 쓰기 시작한 파일은 남는다.
+  - 읽을 수 없는 번들 파일이 하나라도 있으면 정리하지 않는다. 그 번들이 쓰는 파일을 알 수
+    없기 때문이다.
+  - 폴더 안의, 라이브러리가 만들지 않은 파일은 건드리지 않는다. 파일이 없는 썸네일은 지운다.
 - 썸네일은 처음 요청할 때 만든다.
   - 이미지: EXIF 방향을 적용하고, 16비트 이미지는 잘리지 않게 비율을 줄인다.
   - 비디오: 길이의 10% 지점(1초를 넘지 않음)의 프레임을 쓴다.
@@ -146,11 +155,17 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415).
 | POST | `/bundles` | `{"name", "tags", "note", "fields"}` | 201, 번들 |
 | GET | `/bundles/{id}` | — | 번들 |
 | PUT | `/bundles/{id}` | `{"expected_revision", "name", "tags", "note", "fields"}` | 번들 (revision +1) |
-| DELETE | `/bundles/{id}?expected_revision=N` | — | `{"deleted": id}`. 파일은 `trash/`로 옮긴다 |
+| DELETE | `/bundles/{id}?expected_revision=N` | — | `{"deleted": id, "trash_id"}`. 파일은 `trash/`로 옮긴다 |
 | POST | `/bundles/{id}/duplicate` | `{"mode": "values" 또는 "structure", "name"?}` | 201, 새 번들. 이름을 비우면 `<이름> copy`, 이미 있으면 `<이름> copy 2` … |
 | POST | `/assets` | multipart의 `kind` 필드(`image`·`video`·`audio`, 없으면 `image`)와 그 뒤의 `file` 필드 | `{"asset": {"sha256", "ext", "mime", "bytes", 파일 정보…, "original_name"}}`. 새 파일이면 201, 이미 있으면 200. 크기 제한은 `kind`의 것을 쓴다 |
 | GET | `/assets/{sha256}` | — | 원본. Range 요청을 받는다. `Cache-Control: immutable`, `X-Content-Type-Options: nosniff` |
 | GET | `/assets/{sha256}/thumb?size=256` | — | WebP 썸네일 (이미지, 비디오 포스터) |
+| GET | `/trash` | — | `{"trash": [요약과 "trash_id", "deleted_at"], "errors": [{"trash_id", "deleted_at", "error"}]}`. 마지막에 지운 것부터 |
+| POST | `/trash/{trash_id}/restore` | — | 되살린 번들 (revision +1). id를 다른 번들이 쓰고 있으면 새 id를, 이름이 겹치면 `<이름> (2)` … 를 받는다 |
+| DELETE | `/trash/{trash_id}` | — | `{"deleted": trash_id}`. 휴지통 파일을 영구 삭제한다 |
+| DELETE | `/trash` | — | `{"deleted": 개수}`. 휴지통을 비운다 |
+| GET | `/cleanup` | — | `{"assets": [{"sha256", "kind", "ext", "bytes", "stored_at"}], "bytes", "recent", "grace_hours"}`. 아무 번들도, 휴지통의 번들도 쓰지 않는 파일. 오래된 것부터 |
+| POST | `/cleanup` | `{"sha256": [GET이 보여 준 것]}` | `{"deleted", "bytes", "kept", "thumbnails"}`. 아직 쓰이지 않는 파일만 썸네일과 함께 지운다 |
 
 목록의 요약은 필드마다 `preview`를 준다. 텍스트는 앞 200자, 이미지는
 `{"sha256", "width", "height"}`, 비디오는 `{"sha256", "width", "height", "duration"}`, 오디오는
@@ -164,7 +179,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415).
 | 상태 | `code` | 경우 |
 | --- | --- | --- |
 | 400 | `invalid` | 값이나 형식이 규칙에 맞지 않음 |
-| 400 | `invalid_id` | 번들 UUID나 에셋 SHA-256 형식이 아님 |
+| 400 | `invalid_id` | 번들 UUID, 에셋 SHA-256, 휴지통 id 형식이 아님 |
 | 400 | `invalid_json` | JSON을 읽을 수 없음 |
 | 400 | `unsupported_type` | 지원하지 않는 필드 타입 |
 | 400 | `unknown_asset` | 올린 적 없는 파일을 가리킴 |
@@ -174,6 +189,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415).
 | 404 | `not_found` | 번들이나 파일이 없음, 오디오의 썸네일 |
 | 409 | `name_conflict` | 같은 이름의 번들이 있음 |
 | 409 | `revision_conflict` | `expected_revision`이 현재와 다름. `current_revision`을 함께 준다 |
+| 409 | `unreadable_bundles` | 읽을 수 없는 번들 파일이 있어 쓰이지 않는 파일을 가릴 수 없음. `files`에 파일 이름을 준다 |
 | 413 | `too_large`, `too_many_pixels`, `too_long`, `too_many_samples` | 본문·파일 크기, 픽셀 수, 오디오 길이, 오디오 샘플 수 초과 |
 | 415 | `unsupported_media_type`, `unsupported_format` | 본문 형식이 맞지 않음, 허용하지 않는 파일 형식이거나 필드와 종류가 다른 파일 |
 | 500 | `corrupt_bundle`, `internal` | 번들 파일을 읽을 수 없음, 그 밖의 서버 오류 (자세한 내용은 ComfyUI 로그) |

@@ -98,12 +98,16 @@ def create_samples(api, created):
 
 
 def remove_created(api, created):
-    """Delete the bundles this run created (by id), wherever they are now."""
+    """Delete the bundles this run created (by id), and then their trash entries."""
     for bundle_id in created:
         status, bundle, _ = api.call("GET", f"/bundles/{bundle_id}")
         if status == 200:
             status, _, _ = api.call("DELETE", f"/bundles/{bundle_id}?expected_revision={bundle['revision']}")
             print("ok  " if status == 200 else "FAIL", f"removed {bundle['name']}")
+    status, listing, _ = api.call("GET", "/trash")
+    for entry in listing["trash"] if status == 200 else []:
+        if entry["id"] in created:
+            api.call("DELETE", f"/trash/{entry['trash_id']}")
 
 
 def verify(api, ids):

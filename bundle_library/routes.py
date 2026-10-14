@@ -15,7 +15,7 @@ from aiohttp import web
 
 from .assets import MIME_TYPES
 from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
-from .model import LibraryError, check_bundle_id, check_sha256
+from .model import LibraryError, check_bundle_id, check_sha256, check_trash_id
 
 CHUNK = 64 * 1024
 IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"}
@@ -146,8 +146,8 @@ def register(routes, get_store):
             expected = int(request.query["expected_revision"])
         except (KeyError, ValueError):
             raise LibraryError(400, "invalid", "expected_revision (an integer) is required.") from None
-        await asyncio.to_thread(get_store().delete, bundle_id, expected)
-        return web.json_response({"deleted": bundle_id})
+        trash_id = await asyncio.to_thread(get_store().delete, bundle_id, expected)
+        return web.json_response({"deleted": bundle_id, "trash_id": trash_id})
 
     @routes.post(prefix + "/bundles/{bundle_id}/duplicate")
     @_api
@@ -158,6 +158,45 @@ def register(routes, get_store):
         bundle = await asyncio.to_thread(
             get_store().duplicate, bundle_id, data.get("mode", "values"), data.get("name"))
         return web.json_response(bundle, status=201)
+
+    @routes.get(prefix + "/trash")
+    @_api
+    async def list_trash(request):
+        return web.json_response(await asyncio.to_thread(get_store().trash))
+
+    @routes.post(prefix + "/trash/{trash_id}/restore")
+    @_api
+    @_writes
+    async def restore_bundle(request):
+        trash_id = check_trash_id(request.match_info["trash_id"])
+        return web.json_response(await asyncio.to_thread(get_store().restore, trash_id))
+
+    @routes.delete(prefix + "/trash/{trash_id}")
+    @_api
+    @_writes
+    async def purge_bundle(request):
+        trash_id = check_trash_id(request.match_info["trash_id"])
+        await asyncio.to_thread(get_store().purge, trash_id)
+        return web.json_response({"deleted": trash_id})
+
+    @routes.delete(prefix + "/trash")
+    @_api
+    @_writes
+    async def empty_trash(request):
+        return web.json_response({"deleted": await asyncio.to_thread(get_store().empty_trash)})
+
+    @routes.get(prefix + "/cleanup")
+    @_api
+    async def list_unused_assets(request):
+        return web.json_response(await asyncio.to_thread(get_store().unused_assets))
+
+    @routes.post(prefix + "/cleanup")
+    @_api
+    @_writes
+    async def delete_unused_assets(request):
+        """Deletes the files listed in "sha256" (what GET showed) that are still unused."""
+        data = await _read_json(request)
+        return web.json_response(await asyncio.to_thread(get_store().delete_unused_assets, data.get("sha256")))
 
     @routes.post(prefix + "/assets")
     @_api

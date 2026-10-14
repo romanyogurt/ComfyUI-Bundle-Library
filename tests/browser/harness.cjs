@@ -6,8 +6,8 @@
 //   answered locally (never reaches the server), so settings and workflows on
 //   the server are not changed;
 // - only bundles created during the session (seen in the server's 201
-//   answers) are removed at the end, by id; every bundle that was there
-//   before must still be there;
+//   answers) are removed at the end, by id, and then their trash entries;
+//   every bundle and trash entry that was there before must still be there;
 // - the runs a scenario queues are deleted from ComfyUI's job history at the
 //   end (by the page's client id).
 const { chromium } = require("playwright-core");
@@ -102,7 +102,7 @@ const PAGE_HELPERS = () => {
         async bundleIds() {
             return (await this.request("GET", "/bundles")).bundles.map((b) => b.id);
         },
-        /** Delete these bundles if they still exist; the ids of those deleted. */
+        /** Delete these bundles if they still exist, then their trash entries; the ids of the bundles deleted. */
         async removeBundles(ids) {
             const removed = [];
             for (const id of ids) {
@@ -112,7 +112,15 @@ const PAGE_HELPERS = () => {
                 await this.request("DELETE", `/bundles/${id}?expected_revision=${revision}`);
                 removed.push(id);
             }
+            const { trash } = await this.request("GET", "/trash");
+            for (const entry of trash.filter((e) => ids.includes(e.id))) {
+                await this.request("DELETE", `/trash/${entry.trash_id}`);
+            }
             return removed;
+        },
+        async trashIds() {
+            const { trash, errors } = await this.request("GET", "/trash");
+            return [...trash, ...errors].map((e) => e.trash_id);
         },
         async createTestBundles() {
             const text = (name, value) => ({ name, type: "text", value });
@@ -250,6 +258,7 @@ async function startSession(name) {
     await page.keyboard.press("Escape");
     const ev = (fn, arg) => page.evaluate(fn, arg);
     const existing = await ev(() => window.__bl.bundleIds());
+    const existingTrash = await ev(() => window.__bl.trashIds());
     const clientIds = new Set([await ev(() => window.__bl.api.clientId)]);
 
     return {
@@ -272,6 +281,10 @@ async function startSession(name) {
             const now = new Set(await ev(() => window.__bl.bundleIds()));
             const lost = existing.filter((id) => !now.has(id));
             check("bundles the session did not make are untouched", lost.length === 0, { before: existing.length, lost });
+            const trashNow = new Set(await ev(() => window.__bl.trashIds()));
+            const lostTrash = existingTrash.filter((id) => !trashNow.has(id));
+            check("trash entries the session did not make are untouched", lostTrash.length === 0,
+                { before: existingTrash.length, lost: lostTrash });
             await browser.close(); // first, so the page cannot queue anything more
             check("test runs removed from the job history (record)", true, { runs: await forgetRuns(clientIds) });
             check("no settings/workflow writes reached the server (blocked list)", true, [...new Set(blocked)]);

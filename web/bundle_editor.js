@@ -4,7 +4,7 @@ import {
     MEDIA, assetURL, createBundle, deleteBundle, duplicateBundle, fileProblem, getBundle,
     thumbnailURL, updateBundle, uploadAsset,
 } from "./api.js";
-import { button, el, formatBytes, formatDuration } from "./dom.js";
+import { button, el, formatBytes, formatDuration, plural } from "./dom.js";
 import { POOL_SIZE } from "./reconcile.js";
 
 const TYPES = [["text", "Text"], ["image", "Image"], ["video", "Video"], ["audio", "Audio"],
@@ -12,8 +12,6 @@ const TYPES = [["text", "Text"], ["image", "Image"], ["video", "Video"], ["audio
 const BLANK = { text: "", boolean: false, int: 0, float: 0 };
 const NOUN = { image: "an image", video: "a video", audio: "an audio file" };
 const MAX_TEXT_HEIGHT = 320;
-
-const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 /** The editable part of a bundle, as the API takes it. */
 function editable(bundle) {
@@ -615,7 +613,7 @@ export class BundleEditor {
     async remove() {
         const confirmed = await this.modal.confirm(
             `Delete '${this.saved.name}'?`,
-            "The bundle moves to the library's trash folder. Workflows that use it will report it as missing.",
+            "The bundle moves to the trash, from where it can be restored. Until then, workflows that use it report it as missing.",
             "Delete", { danger: true });
         if (!confirmed) return;
         try {

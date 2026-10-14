@@ -1,10 +1,11 @@
 // The library modal: the bundle list on the left, the editor on the right.
 // It is a document.body overlay of its own: ComfyUI's dialogs need Vue
 // components, and they would open underneath it.
-import { CHANGED_EVENT, getBundle, listBundles, searchBundleIds, thumbnailURL } from "./api.js";
+import { CHANGED_EVENT, getBundle, listBundles, listTrash, searchBundleIds, thumbnailURL } from "./api.js";
 import { BundleEditor } from "./bundle_editor.js";
 import { button, el } from "./dom.js";
 import { slotStatuses } from "./reconcile.js";
+import { TrashPanel } from "./trash_panel.js";
 
 let current = null;
 
@@ -29,18 +30,21 @@ class LibraryModal {
         this.all = [];
         this.matches = null;
         this.editor = null;
+        this.trashPanel = null; // shown in the pane instead of an editor
         this.layer = null;
         // Answers that arrive after a newer request was made are dropped: each
         // kind of request counts its generations.
         this.editorGeneration = 0; // what the editor pane shows
         this.listGeneration = 0;
         this.searchGeneration = 0;
+        this.trashGeneration = 0;
         this.onBeforeUnload = (e) => {
             if (this.unsaved) e.preventDefault();
         };
         this.build();
         this.showPlaceholder();
         void this.reload(selected);
+        void this.refreshTrashCount();
     }
 
     build() {
@@ -76,9 +80,13 @@ class LibraryModal {
         header.append(title, this.search, this.tagFilter, this.sort, create, close);
 
         const body = el("div", "bl-modal-body");
+        const side = el("div", "bl-modal-side");
         this.list = el("div", "bl-modal-list");
+        this.trashButton = button("🗑 Trash", "bl-btn bl-trash-button");
+        this.trashButton.addEventListener("click", () => void this.showTrash());
+        side.append(this.list, this.trashButton);
         this.pane = el("div", "bl-modal-editor");
-        body.append(this.list, this.pane);
+        body.append(side, this.pane);
 
         const footer = el("div", "bl-modal-footer");
         this.statusLine = el("div", "bl-status");
@@ -313,14 +321,46 @@ class LibraryModal {
         this.showPane(editor.root, editor);
     }
 
+    async showTrash() {
+        if (this.trashPanel) {
+            void this.trashPanel.refresh(); // the button reads the trash again
+            return;
+        }
+        if (!(await this.leaveEditor())) return;
+        this.selectedId = null;
+        const panel = new TrashPanel(this);
+        this.showPane(panel.root, null, panel);
+        this.renderList();
+    }
+
+    /** The trash button says how many bundles are in the trash. */
+    trashCounted(count) {
+        this.trashGeneration++; // a count still on its way is older
+        this.trashButton.textContent = count ? `🗑 Trash (${count})` : "🗑 Trash";
+    }
+
+    async refreshTrashCount() {
+        const generation = ++this.trashGeneration;
+        let count;
+        try {
+            const { trash, errors } = await listTrash();
+            count = trash.length + errors.length;
+        } catch {
+            return; // the count is only a hint
+        }
+        if (generation === this.trashGeneration) this.trashCounted(count);
+    }
+
     showPlaceholder() {
         this.showPane(el("div", "bl-empty-state", "Select a bundle on the left, or create one with + New bundle."));
     }
 
     /** Put `content` in the editor pane, dropping the editor shown before; the new generation. */
-    showPane(content, editor = null) {
+    showPane(content, editor = null, trashPanel = null) {
         if (this.editor !== editor) this.editor?.dispose();
         this.editor = editor;
+        this.trashPanel = trashPanel;
+        this.trashButton.classList.toggle("selected", !!trashPanel);
         this.pane.replaceChildren(content);
         this.pane.scrollTop = 0;
         this.keepFocus();
@@ -338,8 +378,9 @@ class LibraryModal {
     async bundleDeleted(bundle) {
         this.selectedId = null;
         this.showPlaceholder();
+        void this.refreshTrashCount();
         await this.reload();
-        this.status(`Deleted '${bundle.name}'.`);
+        this.status(`Deleted '${bundle.name}'. It is in the trash.`);
     }
 
     discardDraft() {
@@ -411,10 +452,13 @@ class LibraryModal {
         else this.keepFocus();
     }
 
-    /** Resolves to the value of the chosen button; dismissing picks the last one. */
-    choose(title, message, choices) {
+    /**
+     * Resolves to the value of the chosen button; dismissing picks the last one.
+     * `message` is a paragraph or a list of them; `extra`, an element to show below.
+     */
+    choose(title, message, choices, extra = null) {
         return new Promise((resolve) => {
-            const box = el("div", "bl-confirm");
+            const box = el("div", extra ? "bl-confirm wide" : "bl-confirm");
             const row = el("div", "bl-confirm-buttons");
             const finish = (value) => {
                 this.hideLayer();
@@ -425,7 +469,8 @@ class LibraryModal {
                 choice.addEventListener("click", () => finish(value));
                 row.append(choice);
             }
-            box.append(el("div", "bl-confirm-title", title), el("div", "bl-confirm-text", message), row);
+            box.append(el("div", "bl-confirm-title", title),
+                ...[message].flat().map((text) => el("div", "bl-confirm-text", text)), ...(extra ? [extra] : []), row);
             this.showLayer(box, () => finish(choices.at(-1)[1]));
             row.lastChild.focus(); // the safe choice
         });

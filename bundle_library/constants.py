@@ -1,6 +1,6 @@
 """Values shared by the node, the routes and (mirrored in web/reconcile.js) the browser."""
 
-VERSION = "0.0.9"
+VERSION = "0.0.10"
 
 API_PREFIX = "/bundle-library/v1"
 
@@ -63,3 +63,6 @@ VIDEO_EXTENSIONS = {"mp4": "video/mp4", "mov": "video/mp4", "webm": "video/webm"
 AUDIO_EXTENSIONS = {"wav": "audio/wav", "flac": "audio/flac", "mp3": "audio/mpeg", "ogg": "audio/ogg",
                     "m4a": "audio/mp4"}
 THUMBNAIL_SIZES = (128, 256, 512)
+# A cleanup deletes a file nothing uses only once it was stored (or uploaded
+# again) this long ago: the editor uploads a file before its bundle is saved.
+ASSET_GRACE_SECONDS = 24 * 60 * 60
