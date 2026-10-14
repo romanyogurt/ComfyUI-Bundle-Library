@@ -34,11 +34,16 @@ export function openLibrary({ onPick } = {}) {
     overlay.addEventListener("pointerdown", (e) => {
         if (e.target === overlay) shut();
     });
-    // The canvas listens on window; nothing typed here may reach it.
+    // The canvas listens on window; nothing typed here may reach it. Its
+    // handler is also what cancels the browser's own action for a shortcut
+    // (Ctrl+S would save the page), so shortcuts the library keeps for itself
+    // are cancelled here.
     for (const type of ["keydown", "keyup", "keypress"]) {
         overlay.addEventListener(type, (e) => {
             e.stopPropagation();
-            if (type === "keydown" && e.key === "Escape") shut();
+            if (type !== "keydown") return;
+            if (e.key === "Escape") shut();
+            else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") e.preventDefault();
         });
     }
     overlay.addEventListener("wheel", (e) => e.stopPropagation());

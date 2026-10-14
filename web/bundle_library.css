@@ -45,7 +45,7 @@
     display: grid;
     grid-template-columns: minmax(48px, max-content) max-content 1fr;
     gap: 6px;
-    align-items: center;
+    align-items: start;
 }
 
 .bl-name {

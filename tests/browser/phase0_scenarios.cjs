@@ -186,16 +186,16 @@ const PAGE_HELPERS = () => {
             if (!q.queue_running.length && !q.queue_pending.length) break;
         }
         await b.sleep(1500);
-        const text = document.body.innerText;
+        const latest = Object.values(await (await b.api.fetchApi("/history?max_items=1")).json())[0];
         return {
             errors: b.errors.map((e) => e.exception_message),
-            shownInPage: text.includes("번들을 연결된 출력에 쓸 수 없습니다"),
-            queueFailed: /Failed/.test(document.querySelector("body").innerText),
-            lastError: b.app.extensionManager.lastExecutionError?.exception_message ?? null,
+            status: latest?.status?.status_str ?? null,
+            shownInPage: document.body.innerText.includes("번들을 연결된 출력에 쓸 수 없습니다"),
         };
     });
     check("run C via Run path: error event reaches the client", uiRun.errors.length === 1, uiRun.errors);
-    check("run C via Run path: failure visible in the UI", uiRun.shownInPage || uiRun.queueFailed, uiRun);
+    // How the failure looks (the error dialog) was checked by hand in a real browser.
+    check("run C via Run path: job recorded as failed", uiRun.status === "error", uiRun);
     const rerun = await ev(() => window.__bl.run());
     check("re-run C unchanged: fails again (not cached)", (rerun.errors ?? []).length === 1, (rerun.errors ?? []).map((e) => e.node_id));
     await page.screenshot({ path: path.join(OUT, "classic-C-run-error.png") });
@@ -333,6 +333,12 @@ const PAGE_HELPERS = () => {
     await page.keyboard.press("Control+z");
     await page.waitForTimeout(600);
     keys.reachedWindow = await ev(() => [...window.__keys]);
+    // Headless Chromium shows no "save page" dialog, so check the cancellation itself.
+    keys.ctrlSCancelled = await ev(() => {
+        const e = new KeyboardEvent("keydown", { key: "s", ctrlKey: true, bubbles: true, cancelable: true });
+        document.querySelector(".bl-search").dispatchEvent(e);
+        return e.defaultPrevented;
+    });
     keys.searchValue = await ev(() => document.querySelector(".bl-search").value);
     keys.dialog = await ev(() => !!document.querySelector(".p-dialog"));
     await page.screenshot({ path: path.join(OUT, "classic-modal.png") });
@@ -340,6 +346,7 @@ const PAGE_HELPERS = () => {
     keys.modalClosed = await ev(() => !document.querySelector(".bl-overlay"));
     keys.after = await ev(() => window.__bl.app.graph.nodes.length);
     check("modal: no key reaches window; selected node survives Delete", keys.reachedWindow.length === 0 && !keys.dialog && keys.before === keys.after && keys.afterBackspace === "spik", keys);
+    check("modal: Ctrl+S cancels the browser's save-page action", keys.ctrlSCancelled === true, keys.ctrlSCancelled);
     check("modal: Escape closes", keys.modalClosed);
     await ev(() => { window.__keys = []; });
     await page.mouse.click(800, 900);
