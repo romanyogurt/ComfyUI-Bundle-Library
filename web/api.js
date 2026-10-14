@@ -19,8 +19,7 @@ let listing = null;
 /** All bundle summaries. Cached until `fresh` is set or `forgetBundles()` runs. */
 export async function listBundles({ fresh = false } = {}) {
     if (fresh || !listing) {
-        // The loader still runs on the Phase 0 test bundles; Phase 2 moves it to /bundles.
-        listing = request("/spike/bundles").then((body) => body.bundles);
+        listing = request("/bundles").then((body) => body.bundles);
         listing.catch(() => { listing = null; });
     }
     return listing;
@@ -30,6 +29,6 @@ export function forgetBundles() {
     listing = null;
 }
 
-export function thumbnailURL(bundleId, fieldName) {
-    return api.apiURL(`${PREFIX}/spike/thumb/${encodeURIComponent(bundleId)}/${encodeURIComponent(fieldName)}`);
+export function thumbnailURL(sha256, size = 128) {
+    return api.apiURL(`${PREFIX}/assets/${sha256}/thumb?size=${size}`);
 }

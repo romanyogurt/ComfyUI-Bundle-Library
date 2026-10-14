@@ -1,6 +1,6 @@
-// Phase 0 stand-in for the library modal: a document.body overlay with a
-// search box and a bundle list, enough to check keyboard isolation and the
-// picker flow. Phase 4 replaces it with the real editor.
+// The library modal, so far a document.body overlay with a search box and
+// the bundle list: enough for picking a bundle and for the keyboard isolation
+// checks. Phase 4 turns it into the editor.
 import { listBundles } from "./api.js";
 
 function el(tag, className, text) {
@@ -19,11 +19,11 @@ export function openLibrary({ onPick } = {}) {
     const overlay = el("div", "bl-overlay");
     const dialog = el("div", "bl-dialog");
     const header = el("div", "bl-dialog-header");
-    const title = el("div", "bl-dialog-title", onPick ? "Bundle Library — 번들 선택" : "Bundle Library");
+    const title = el("div", "bl-dialog-title", onPick ? "Bundle Library — pick a bundle" : "Bundle Library");
     const close = el("button", "bl-close", "✕");
     const search = el("input", "bl-search");
     search.type = "search";
-    search.placeholder = "이름·필드 검색";
+    search.placeholder = "Search names and fields";
     const list = el("div", "bl-list");
     header.append(title, close);
     dialog.append(header, search, list);
@@ -60,7 +60,7 @@ export function openLibrary({ onPick } = {}) {
             info.append(el("div", "bl-list-name", bundle.name), el("div", "bl-list-fields", fieldSummary(bundle)));
             row.append(info);
             if (onPick) {
-                const use = el("button", "bl-use", "이 번들 사용");
+                const use = el("button", "bl-use", "Use this bundle");
                 use.addEventListener("click", () => {
                     onPick(bundle);
                     shut();
@@ -82,7 +82,7 @@ export function openLibrary({ onPick } = {}) {
 export function renderSidebar(container) {
     container.replaceChildren();
     const root = el("div", "bl-sidebar");
-    const open = el("button", "bl-use", "라이브러리 열기");
+    const open = el("button", "bl-use", "Open library");
     open.addEventListener("click", () => openLibrary());
     const list = el("div", "bl-list");
     root.append(open, list);

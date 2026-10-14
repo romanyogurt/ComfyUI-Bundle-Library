@@ -32,14 +32,15 @@ class Api:
     def __init__(self, base):
         self.base = base.rstrip("/")
 
-    def call(self, method, path, body=None, headers=None, raw=False):
+    def call(self, method, path, body=None, headers=None, raw=False, prefix=P):
+        """`path` is under the Bundle Library API unless `prefix` says otherwise."""
         headers = dict(headers or {})
         if method != "GET":
             headers["X-Bundle-Library"] = "1"
         if isinstance(body, dict):
             body = json.dumps(body).encode()
             headers["Content-Type"] = "application/json"
-        request = urllib.request.Request(self.base + P + path, data=body, method=method, headers=headers)
+        request = urllib.request.Request(self.base + prefix + path, data=body, method=method, headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=30) as response:
                 data = response.read()

@@ -6,37 +6,56 @@
 
 ## 상태
 
-Phase 1(번들 저장소와 API)까지 진행했다.
+Phase 2(Load Bundle 노드)까지 진행했다.
 
-- 번들과 이미지는 ComfyUI 사용자 디렉토리의 `bundle_library/`에 저장되고 HTTP API로 만들고
+- 번들과 이미지는 ComfyUI 사용자 디렉토리의 `bundle_library/`에 저장되고, HTTP API로 만들고
   고칠 수 있다. 형식과 API는 [docs/data-format.md](docs/data-format.md)에 있다.
-- Load Bundle 노드는 아직 Phase 0의 검증용 고정 번들(`bundle_library/spike_store.py`)을 쓴다.
-  Phase 2에서 저장소의 번들을 읽도록 바꾼다.
-- 편집 화면은 Phase 4에서 만든다.
+- Load Bundle은 저장소의 번들을 읽는다. 이미지는 core Load Image와 같은 텐서로 변환한다.
+- 편집 화면은 Phase 4에서 만든다. 그 전까지 번들은 API로 만든다
+  (`tests/e2e/api_smoke.py`가 예제 번들 두 개를 만든다).
 
 설계와 단계는 comfy-docker 저장소의 `docs/bundle-library-plan.md`, Phase 0 검증 결과는
 [docs/compatibility.md](docs/compatibility.md)에 있다.
 
+## 개발 규칙
+
+- 코드에 나오는 문자열(UI, 오류·로그 메시지, 자동으로 만드는 이름)은 영어로 쓴다. 문서는
+  한국어로 쓴다.
+
 ## 테스트
 
+`docker compose` 명령은 comfy-docker 저장소 루트에서 실행한다.
+
 ```bash
-# Python 단위 테스트 (컨테이너 안, ComfyUI 서버가 필요 없음)
+# Python 단위 테스트 (ComfyUI 서버가 필요 없음)
 docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library comfyui \
     python -m unittest discover -s tests -t .
 
-# 실행 중인 서버의 API: 샘플 번들 "Sample A (red)", "Sample B (blue)"를 만들고 확인
+# 이미지 변환이 core LoadImage와 같은지 (CPU 모드, 서버와 별개)
+docker compose exec -T -e CUDA_VISIBLE_DEVICES= -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library \
+    comfyui python tests/e2e/compare_load_image.py
+
+# 실행 중인 서버: 예제 번들 "Sample A (red)", "Sample B (blue)"를 만들고 API로 확인
 docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library comfyui \
     python tests/e2e/api_smoke.py            # --verify-only 는 확인만
 
+# 실행 중인 서버: 예제 번들로 Load Bundle을 실행해 출력, 캐시, 오류를 확인
+docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library comfyui \
+    python tests/e2e/node_smoke.py
+
 # 슬롯 조정 순수 함수 (호스트의 Node.js)
-node --test "tests/js/*.test.mjs"
+node --test "custom_nodes/ComfyUI-Bundle-Library/tests/js/*.test.mjs"
 
 # 실행 중인 ComfyUI 대상 브라우저 시나리오
 npm install --prefix /tmp/bl-pw playwright-core@1.60.0
-NODE_PATH=/tmp/bl-pw/node_modules node tests/browser/phase0_scenarios.cjs
+BL_LIBRARY_DIR=user/bundle_library NODE_PATH=/tmp/bl-pw/node_modules \
+    node custom_nodes/ComfyUI-Bundle-Library/tests/browser/loader_scenarios.cjs
 ```
 
-`docker compose` 명령은 comfy-docker 저장소 루트에서 실행한다. 브라우저 시나리오는
-`http://127.0.0.1:8188`(`COMFY_URL`로 변경)에 접속한다. 설정·워크플로 저장 같은 쓰기 요청은
-브라우저에서 가로채 서버로 보내지 않으며, 프리뷰 노드만 있는 작은 그래프를 실행한다. 생성
-작업이 없을 때 실행한다.
+- `node_smoke.py`는 예제 번들 A를 잠시 고쳤다가 되돌린다.
+- 브라우저 시나리오는 `http://127.0.0.1:8188`(`COMFY_URL`로 변경)에 접속한다.
+  - 설정·워크플로 저장 같은 쓰기 요청은 브라우저에서 가로채 서버로 보내지 않는다.
+  - 프리뷰 노드만 있는 작은 그래프를 실행한다.
+  - 시작할 때 `[test] …` 번들 5개를 만들고 끝나면 지운다. `BL_LIBRARY_DIR`을 주면 휴지통에
+    옮겨진 파일까지 지운다.
+- 실행 중인 서버를 쓰는 테스트는 생성 작업이 없을 때 실행한다.

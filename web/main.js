@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { NODE_ID, setupLoaderNode } from "./loader_node.js";
-import { openLibrary, renderSidebar } from "./spike_modal.js";
+import { openLibrary, renderSidebar } from "./library_modal.js";
 
 const stylesheet = document.createElement("link");
 stylesheet.rel = "stylesheet";

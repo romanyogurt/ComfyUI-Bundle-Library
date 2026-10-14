@@ -1,17 +1,32 @@
-// Phase 0 browser scenarios for Load Bundle against a running ComfyUI (see docs/compatibility.md).
+// Browser scenarios for the Load Bundle node against a running ComfyUI
+// (started in Phase 0, see docs/compatibility.md).
 // Safety: every non-GET request except /api/prompt and the bundle-library API
 // is answered locally (never reaches the server), so settings and workflows on
 // the server are not changed. Only tiny preview graphs are queued.
+// The run adds five bundles named "[test] ..." to the library and deletes them
+// at the end. Deleting moves a bundle to trash/; set BL_LIBRARY_DIR to the
+// library folder (user/bundle_library) to also remove those trash files.
 const { chromium } = require("playwright-core");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
 const BASE = process.env.COMFY_URL || "http://127.0.0.1:8188";
-const OUT = process.env.BL_TEST_OUT || path.join(os.tmpdir(), "bundle-library-phase0");
+const OUT = process.env.BL_TEST_OUT || path.join(os.tmpdir(), "bundle-library-browser");
 fs.mkdirSync(OUT, { recursive: true });
-const ID = (s) => `5a1e0000-0000-4000-8000-0000000000${s}`;
-const A = ID("a1"), B = ID("b2"), C = ID("c3"), D = ID("d4"), E = ID("e5");
+
+function purgeTrash(ids) {
+    const dir = process.env.BL_LIBRARY_DIR && path.join(process.env.BL_LIBRARY_DIR, "trash");
+    if (!dir || !fs.existsSync(dir)) return 0;
+    let removed = 0;
+    for (const file of fs.readdirSync(dir)) {
+        if (ids.some((id) => file.startsWith(`${id}.`))) {
+            fs.unlinkSync(path.join(dir, file));
+            removed++;
+        }
+    }
+    return removed;
+}
 
 const results = [];
 function check(name, ok, detail) {
@@ -33,6 +48,64 @@ const PAGE_HELPERS = () => {
             }
         },
         sleep: (ms) => new Promise((r) => setTimeout(r, ms)),
+        async request(method, route, body) {
+            const headers = method === "GET" ? {} : { "X-Bundle-Library": "1" };
+            let payload = body;
+            if (body && !(body instanceof FormData)) {
+                headers["Content-Type"] = "application/json";
+                payload = JSON.stringify(body);
+            }
+            const res = await this.api.fetchApi(`/bundle-library/v1${route}`, { method, headers, body: payload });
+            const json = await res.json();
+            if (!res.ok) throw new Error(`${method} ${route}: ${res.status} ${JSON.stringify(json)}`);
+            return json;
+        },
+        async image(name, color, label) {
+            const canvas = new OffscreenCanvas(512, 768);
+            const g = canvas.getContext("2d");
+            g.fillStyle = color;
+            g.fillRect(0, 0, 512, 768);
+            g.fillStyle = "white";
+            g.font = "64px sans-serif";
+            g.fillText(label, 32, 96);
+            const form = new FormData();
+            form.append("file", await canvas.convertToBlob({ type: "image/png" }), `${label}.png`);
+            const { asset } = await this.request("POST", "/assets", form);
+            return { name, type: "image", asset: { sha256: asset.sha256, original_name: `${label}.png` } };
+        },
+        async removeTestBundles() {
+            const { bundles } = await this.request("GET", "/bundles");
+            const removed = [];
+            for (const b of bundles.filter((x) => x.name.startsWith("[test] "))) {
+                await this.request("DELETE", `/bundles/${b.id}?expected_revision=${b.revision}`);
+                removed.push(b.id);
+            }
+            return removed;
+        },
+        async createTestBundles() {
+            const text = (name, value) => ({ name, type: "text", value });
+            const bool = (name, value) => ({ name, type: "boolean", value });
+            const specs = {
+                A: ["[test] A (red)", [text("prompt", "Red dress girl\n\n  두 줄 공백과 앞뒤 공백을 그대로 둔다  \n"),
+                    await this.image("ref_1", "#b3261e", "A ref_1"), await this.image("ref_2", "#e8710a", "A ref_2"),
+                    bool("use_bgm", true)]],
+                B: ["[test] B (blue)", [text("prompt", "Blue shirt girl"),
+                    await this.image("ref_1", "#1a56db", "B ref_1"), await this.image("ref_2", "#0e7490", "B ref_2"),
+                    bool("use_bgm", false)]],
+                C: ["[test] C (no ref_2)", [text("prompt", "Cat mascot"),
+                    await this.image("ref_1", "#15803d", "C ref_1"), { name: "seed", type: "int", value: 42 }]],
+                D: ["[test] D (ref_2 is text)", [text("prompt", "Type mismatch case"),
+                    await this.image("ref_1", "#6d28d9", "D ref_1"), text("ref_2", "not an image"), bool("use_bgm", true)]],
+                E: ["[test] E (empty ref_2)", [text("prompt", "Empty image case"),
+                    await this.image("ref_1", "#374151", "E ref_1"), { name: "ref_2", type: "image", asset: null },
+                    bool("use_bgm", true), { name: "cfg", type: "float", value: 4.5 }]],
+            };
+            const ids = {};
+            for (const [key, [name, fields]] of Object.entries(specs)) {
+                ids[key] = (await this.request("POST", "/bundles", { name, tags: ["test"], fields })).id;
+            }
+            return ids;
+        },
         loaders(graph = this.app.graph) { return graph.nodes.filter((n) => n.type === "BundleLibraryLoad"); },
         outs(node) {
             return node.outputs.map((o) => ({ label: o.label, name: o.name, type: o.type, links: o.links?.length ?? 0 }));
@@ -106,6 +179,9 @@ const PAGE_HELPERS = () => {
     await page.keyboard.press("Escape");
     const ev = (fn, arg) => page.evaluate(fn, arg);
 
+    purgeTrash(await ev(() => window.__bl.removeTestBundles()));  // left over from an interrupted run
+    const { A, B, C, D, E } = await ev(() => window.__bl.createTestBundles());
+
     // ---- classic renderer --------------------------------------------------
     const vue0 = await ev(() => window.__bl.app.extensionManager.setting.get("Comfy.VueNodes.Enabled"));
     check("renderer starts as classic (user setting)", vue0 === false, vue0);
@@ -168,7 +244,7 @@ const PAGE_HELPERS = () => {
     check("B -> C: linked ref_2/use_bgm kept, seed appended", JSON.stringify(afterC.map((o) => [o.label, o.type, o.links])) === JSON.stringify([
         ["prompt", "STRING", 1], ["ref_1", "IMAGE", 1], ["ref_2", "IMAGE", 1], ["use_bgm", "BOOLEAN", 1], ["seed", "INT", 0]]), afterC);
     const panelC = await ev(() => window.__node.bundlePanel.preview.innerText);
-    check("panel marks missing slots", (panelC.match(/실행 시 오류/g) ?? []).length === 2, panelC);
+    check("panel marks missing slots", (panelC.match(/running will fail/g) ?? []).length === 2, panelC);
     await page.screenshot({ path: path.join(OUT, "classic-C-missing.png") });
     run = await ev(() => window.__bl.run());
     const errC = (run.errors ?? []).map((e) => [String(e.node_id), e.exception_message]);
@@ -190,7 +266,7 @@ const PAGE_HELPERS = () => {
         return {
             errors: b.errors.map((e) => e.exception_message),
             status: latest?.status?.status_str ?? null,
-            shownInPage: document.body.innerText.includes("번들을 연결된 출력에 쓸 수 없습니다"),
+            shownInPage: document.body.innerText.includes("cannot fill the connected outputs"),
         };
     });
     check("run C via Run path: error event reaches the client", uiRun.errors.length === 1, uiRun.errors);
@@ -210,15 +286,15 @@ const PAGE_HELPERS = () => {
     const afterD = await ev(() => window.__bl.outs(window.__node));
     run = await ev(() => window.__bl.run());
     check("A -> D: linked ref_2 keeps IMAGE type", afterD[2].type === "IMAGE", afterD[2]);
-    check("run D: type mismatch fails the loader", (run.errors ?? []).some((e) => String(e.node_id) === loaderId && e.exception_message.includes("text입니다")), (run.errors ?? []).map((e) => e.exception_message));
+    check("run D: type mismatch fails the loader", (run.errors ?? []).some((e) => String(e.node_id) === loaderId && e.exception_message.includes("is text, not image")), (run.errors ?? []).map((e) => e.exception_message));
 
     await ev((id) => window.__bl.pick(window.__node, id), E);
     run = await ev(() => window.__bl.run());
-    check("run E: empty image fails the loader", (run.errors ?? []).some((e) => String(e.node_id) === loaderId && e.exception_message.includes("이미지가 없습니다")), (run.errors ?? []).map((e) => e.exception_message));
-    const unlinkedMissing = await ev(async () => {
+    check("run E: empty image fails the loader", (run.errors ?? []).some((e) => String(e.node_id) === loaderId && e.exception_message.includes("has no image")), (run.errors ?? []).map((e) => e.exception_message));
+    const unlinkedMissing = await ev(async (bundleC) => {
         const b = window.__bl;
         const prompt = {
-            "1": { class_type: "BundleLibraryLoad", inputs: { bundle_id: "5a1e0000-0000-4000-8000-0000000000c3",
+            "1": { class_type: "BundleLibraryLoad", inputs: { bundle_id: bundleC,
                 slot_spec: JSON.stringify({ v: 1, slots: [{ name: "prompt", type: "text" }, { name: "ref_2", type: "image" }] }) } },
             "2": { class_type: "PreviewAny", inputs: { source: ["1", 0] } },
         };
@@ -229,7 +305,7 @@ const PAGE_HELPERS = () => {
             if (h?.status?.status_str) return { status: h.status.status_str, text: h.outputs?.["2"]?.text };
         }
         return null;
-    });
+    }, C);
     check("missing field on an unlinked slot does not fail the run", unlinkedMissing?.status === "success" && unlinkedMissing.text?.[0] === "Cat mascot", unlinkedMissing);
     const afterE = await ev(() => window.__bl.outs(window.__node));
     check("D -> E: cfg (float) appended", afterE.at(-1).label === "cfg" && afterE.at(-1).type === "FLOAT", afterE.map((o) => o.label));
@@ -243,7 +319,7 @@ const PAGE_HELPERS = () => {
         w.value = keep;
         return r;
     });
-    check("unknown bundle fails validation", unknown.status === 400 && JSON.stringify(unknown.body).includes("번들을 찾을 수 없습니다"), unknown.body?.node_errors);
+    check("unknown bundle fails validation", unknown.status === 400 && JSON.stringify(unknown.body).includes("Bundle not found"), unknown.body?.node_errors);
 
     // reload from serialized workflow
     const reload = await ev(async () => {
@@ -374,7 +450,7 @@ const PAGE_HELPERS = () => {
         await b.app.extensionManager.command.execute("Workspace.ToggleSidebarTab.bundle-library");
         return text;
     });
-    check("sidebar tab renders list", sidebar && sidebar.includes("Spike A"), sidebar);
+    check("sidebar tab renders list", sidebar && sidebar.includes("[test] A (red)"), sidebar);
 
     // subgraph
     const sub = await ev(async () => {
@@ -449,6 +525,9 @@ const PAGE_HELPERS = () => {
         window.__bl.app.graph.clear();
     });
 
+    const removed = await ev(() => window.__bl.removeTestBundles());
+    const purged = purgeTrash(removed);
+    check("test bundles removed", removed.length === 5, { removed: removed.length, trashFilesPurged: purged });
     check("no settings/workflow writes reached the server (blocked list)", true, [...new Set(blocked)]);
     check("browser console errors (record)", true, consoleErrors.slice(0, 20));
     fs.writeFileSync(path.join(OUT, "results.json"), JSON.stringify({ results, blocked: [...new Set(blocked)], consoleErrors }, null, 2));

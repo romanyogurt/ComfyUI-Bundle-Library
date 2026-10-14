@@ -121,7 +121,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415).
 | GET | `/bundles/{id}` | — | 번들 |
 | PUT | `/bundles/{id}` | `{"expected_revision", "name", "tags", "note", "fields"}` | 번들 (revision +1) |
 | DELETE | `/bundles/{id}?expected_revision=N` | — | `{"deleted": id}`. 파일은 `trash/`로 옮긴다 |
-| POST | `/bundles/{id}/duplicate` | `{"mode": "values" 또는 "structure", "name"?}` | 201, 새 번들. 이름을 비우면 "<이름> 복사본" |
+| POST | `/bundles/{id}/duplicate` | `{"mode": "values" 또는 "structure", "name"?}` | 201, 새 번들. 이름을 비우면 `<이름> copy`, 이미 있으면 `<이름> copy 2` … |
 | POST | `/assets` | multipart의 `file` 필드 하나 | `{"asset": {"sha256", "ext", "mime", "width", "height", "bytes", "original_name"}}`. 새 파일이면 201, 이미 있으면 200 |
 | GET | `/assets/{sha256}` | — | 원본. `Cache-Control: immutable`, `X-Content-Type-Options: nosniff` |
 | GET | `/assets/{sha256}/thumb?size=256` | — | WebP 썸네일 |
@@ -132,7 +132,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415).
 ### 오류
 
 오류 본문은 `{"error": {"code", "message", ...}}`이다. `message`는 화면에 그대로 보여 줄 수
-있는 문장이고, 파일 경로를 담지 않는다.
+있는 영어 문장이고, 파일 경로를 담지 않는다. 프로그램은 `code`로 경우를 구분한다.
 
 | 상태 | `code` | 경우 |
 | --- | --- | --- |

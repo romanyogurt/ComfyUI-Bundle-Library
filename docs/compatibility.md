@@ -4,6 +4,10 @@
 모달, 쓰기 보호, 실행 오류 처리가 설치된 ComfyUI에서 실제로 동작하는지 확인하고, 결과에
 따라 설계 두 가지를 바꿨다.
 
+이 기록은 Phase 0 당시의 상태다. Phase 2에서 검증용 고정 번들을 지우고 노드를 실제 저장소에
+연결했으며, 브라우저 시나리오는 `tests/browser/loader_scenarios.cjs`로 이름을 바꿨다. 화면과
+오류 메시지도 영어로 바꿨으므로, 아래에 인용한 한국어 메시지는 당시의 것이다.
+
 ## 환경
 
 | 항목 | 값 |
@@ -160,8 +164,10 @@
 ```bash
 node --test "tests/js/*.test.mjs"
 npm install --prefix /tmp/bl-pw playwright-core@1.60.0
-NODE_PATH=/tmp/bl-pw/node_modules node tests/browser/phase0_scenarios.cjs
+BL_LIBRARY_DIR=<comfy-docker>/user/bundle_library NODE_PATH=/tmp/bl-pw/node_modules \
+    node tests/browser/loader_scenarios.cjs
 ```
 
-브라우저 시나리오는 기본적으로 스크린샷과 `results.json`을 `$TMPDIR/bundle-library-phase0`에
-저장한다 (`BL_TEST_OUT`으로 변경). 생성 작업이 없을 때 실행한다.
+브라우저 시나리오는 스크린샷과 `results.json`을 `$TMPDIR/bundle-library-browser`에 저장한다
+(`BL_TEST_OUT`으로 변경). Phase 2부터는 시작할 때 `[test] …` 번들 5개를 만들고 끝나면 지운다.
+생성 작업이 없을 때 실행한다.

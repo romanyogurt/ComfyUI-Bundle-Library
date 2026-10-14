@@ -52,7 +52,7 @@ def _reason(error):
 
 
 def _not_found(bundle_id):
-    return LibraryError(404, "not_found", f"번들을 찾을 수 없습니다: {bundle_id}")
+    return LibraryError(404, "not_found", f"Bundle not found: {bundle_id}")
 
 
 class BundleStore:
@@ -81,17 +81,17 @@ class BundleStore:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         if not isinstance(data, dict) or data.get("format") != FORMAT:
-            raise ValueError("번들 파일 형식이 아닙니다.")
+            raise ValueError("not a bundle file")
         if data.get("schema_version") != SCHEMA_VERSION:
-            raise ValueError(f"지원하지 않는 schema_version입니다: {data.get('schema_version')!r}")
+            raise ValueError(f"unsupported schema_version {data.get('schema_version')!r}")
         if data.get("id") != path.stem:
-            raise ValueError("파일 이름과 id가 다릅니다.")
+            raise ValueError("the file name and the id differ")
         revision = data.get("revision")
         if isinstance(revision, bool) or not isinstance(revision, int) or revision < 1:
-            raise ValueError("revision이 잘못되었습니다.")
+            raise ValueError("invalid revision")
         for key in ("created_at", "updated_at"):
             if not isinstance(data.get(key), str):
-                raise ValueError(f"{key}가 없습니다.")
+                raise ValueError(f"{key} is missing")
         try:
             editable = normalize_bundle(data)
         except LibraryError as e:
@@ -107,7 +107,7 @@ class BundleStore:
             return self._read(path)
         except (OSError, ValueError) as e:
             raise LibraryError(500, "corrupt_bundle",
-                               f"번들 파일을 읽을 수 없습니다 ({path.name}): {_reason(e)}") from None
+                               f"Cannot read bundle file {path.name}: {_reason(e)}") from None
 
     def _scan(self):
         """Refresh the summary cache from the bundle folder; only changed files are reread."""
@@ -162,7 +162,7 @@ class BundleStore:
         key = name_key(name)
         for bundle in self._bundles():
             if bundle["id"] != own_id and name_key(bundle["name"]) == key:
-                raise LibraryError(409, "name_conflict", f"같은 이름의 번들이 이미 있습니다: {bundle['name']}")
+                raise LibraryError(409, "name_conflict", f"A bundle named '{bundle['name']}' already exists.")
 
     def _resolve_assets(self, fields):
         """Fill each image field's metadata from the stored file itself."""
@@ -173,7 +173,7 @@ class BundleStore:
             info = self.assets.info(asset["sha256"])
             if info is None:
                 raise LibraryError(400, "unknown_asset",
-                                   f"필드 '{field['name']}': 올린 적 없는 이미지입니다 ({asset['sha256'][:12]}…).")
+                                   f"Field '{field['name']}': image {asset['sha256'][:12]}… has not been uploaded.")
             resolved = {k: info[k] for k in ("sha256", "ext", "width", "height", "bytes")}
             if asset.get("original_name"):
                 resolved["original_name"] = asset["original_name"]
@@ -199,11 +199,11 @@ class BundleStore:
 
     def _current(self, bundle_id, expected_revision):
         if isinstance(expected_revision, bool) or not isinstance(expected_revision, int):
-            raise LibraryError(400, "invalid", "expected_revision(정수)이 필요합니다.")
+            raise LibraryError(400, "invalid", "expected_revision (an integer) is required.")
         current = self.get(bundle_id)
         if current["revision"] != expected_revision:
             raise LibraryError(409, "revision_conflict",
-                               f"번들이 그사이 바뀌었습니다 (현재 revision {current['revision']}).",
+                               f"The bundle has changed since it was loaded (now revision {current['revision']}).",
                                current_revision=current["revision"])
         return current
 
@@ -233,7 +233,7 @@ class BundleStore:
     def duplicate(self, bundle_id, mode="values", name=None):
         """A new bundle with the same fields; mode "structure" leaves the values empty."""
         if mode not in ("values", "structure"):
-            raise LibraryError(400, "invalid", "mode는 'values' 또는 'structure'입니다.")
+            raise LibraryError(400, "invalid", "mode must be 'values' or 'structure'.")
         with self._lock:
             self._scan()
             source = self.get(bundle_id)
@@ -245,11 +245,11 @@ class BundleStore:
     def _copy_name(self, name):
         taken = {name_key(b["name"]) for b in self._bundles()}
         for n in range(1, 1000):
-            suffix = " 복사본" if n == 1 else f" 복사본 {n}"
+            suffix = " copy" if n == 1 else f" copy {n}"
             candidate = name[:MAX_BUNDLE_NAME - len(suffix)] + suffix
             if name_key(candidate) not in taken:
                 return candidate
-        raise LibraryError(409, "name_conflict", "복사본 이름을 정할 수 없습니다. 이름을 직접 지정하세요.")
+        raise LibraryError(409, "name_conflict", "Could not find a free name for the copy; give one explicitly.")
 
 
 def _search_text(bundle):

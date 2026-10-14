@@ -57,7 +57,7 @@ def _api(handler):
         except Exception:
             logging.exception("[Bundle Library] %s %s failed", request.method, request.path)
             return _error_response(
-                LibraryError(500, "internal", "서버 오류가 발생했습니다. ComfyUI 로그를 확인하세요."))
+                LibraryError(500, "internal", "Server error; see the ComfyUI log for details."))
     return wrapped
 
 
@@ -66,18 +66,18 @@ def _writes(handler):
     async def wrapped(request):
         problem = write_guard_error(request)
         if problem:
-            raise LibraryError(403, problem, "이 요청은 Bundle Library 화면에서만 보낼 수 있습니다.")
+            raise LibraryError(403, problem, "Changes to the library must come from the ComfyUI page.")
         return await handler(request)
     return wrapped
 
 
 def _too_large(limit):
-    return LibraryError(413, "too_large", f"요청이 너무 큽니다. {limit // (1024 * 1024)}MB까지 보낼 수 있습니다.")
+    return LibraryError(413, "too_large", f"Request too large; the limit is {limit // (1024 * 1024)} MB.")
 
 
 async def _read_json(request):
     if request.content_type != "application/json":
-        raise LibraryError(415, "unsupported_media_type", "본문은 JSON(application/json)이어야 합니다.")
+        raise LibraryError(415, "unsupported_media_type", "The body must be JSON (application/json).")
     if request.content_length is not None and request.content_length > MAX_JSON_BODY:
         raise _too_large(MAX_JSON_BODY)
     chunks, total = [], 0
@@ -89,9 +89,9 @@ async def _read_json(request):
     try:
         data = json.loads(b"".join(chunks))
     except (UnicodeDecodeError, json.JSONDecodeError):
-        raise LibraryError(400, "invalid_json", "JSON을 읽을 수 없습니다.") from None
+        raise LibraryError(400, "invalid_json", "The body is not valid JSON.") from None
     if not isinstance(data, dict):
-        raise LibraryError(400, "invalid", "본문은 JSON 객체여야 합니다.")
+        raise LibraryError(400, "invalid", "The body must be a JSON object.")
     return data
 
 
@@ -110,7 +110,7 @@ def register(routes, get_store):
     async def list_bundles(request):
         sort = request.query.get("sort", "name")
         if sort not in ("name", "updated"):
-            raise LibraryError(400, "invalid", "sort는 'name' 또는 'updated'입니다.")
+            raise LibraryError(400, "invalid", "sort must be 'name' or 'updated'.")
         listing = await asyncio.to_thread(
             get_store().list, request.query.get("q", ""), request.query.get("tag", ""), sort)
         return web.json_response(listing)
@@ -145,7 +145,7 @@ def register(routes, get_store):
         try:
             expected = int(request.query["expected_revision"])
         except (KeyError, ValueError):
-            raise LibraryError(400, "invalid", "expected_revision(정수)이 필요합니다.") from None
+            raise LibraryError(400, "invalid", "expected_revision (an integer) is required.") from None
         await asyncio.to_thread(get_store().delete, bundle_id, expected)
         return web.json_response({"deleted": bundle_id})
 
@@ -167,14 +167,14 @@ def register(routes, get_store):
         size limit: ComfyUI's --max-upload-size does not apply to multipart()."""
         assets = get_store().assets
         if not request.content_type.startswith("multipart/"):
-            raise LibraryError(415, "unsupported_media_type", "multipart/form-data로 올려야 합니다.")
+            raise LibraryError(415, "unsupported_media_type", "Upload files as multipart/form-data.")
         reader = await request.multipart()
         part = await reader.next()
         while part is not None and getattr(part, "name", None) != "file":
             await part.release()
             part = await reader.next()
         if part is None:
-            raise LibraryError(400, "invalid", "'file' 필드가 없습니다.")
+            raise LibraryError(400, "invalid", "The 'file' field is missing.")
         temp = assets.temp_path()
         digest, total = hashlib.sha256(), 0
         try:
@@ -186,7 +186,7 @@ def register(routes, get_store):
                     digest.update(chunk)
                     f.write(chunk)
             if total == 0:
-                raise LibraryError(400, "invalid", "빈 파일입니다.")
+                raise LibraryError(400, "invalid", "The file is empty.")
             info, created = await asyncio.to_thread(assets.finalize, temp, digest.hexdigest(), part.filename)
         finally:
             temp.unlink(missing_ok=True)
@@ -198,7 +198,7 @@ def register(routes, get_store):
         sha256 = check_sha256(request.match_info["sha256"])
         path = await asyncio.to_thread(get_store().assets.path, sha256)
         if path is None:
-            raise LibraryError(404, "not_found", "이미지를 찾을 수 없습니다.")
+            raise LibraryError(404, "not_found", "Image not found.")
         return web.FileResponse(path, headers={"Content-Type": MIME_TYPES[path.suffix[1:]], **IMMUTABLE})
 
     @routes.get(prefix + "/assets/{sha256}/thumb")
@@ -208,8 +208,8 @@ def register(routes, get_store):
         try:
             size = int(request.query.get("size", "256"))
         except ValueError:
-            raise LibraryError(400, "invalid", "size는 정수여야 합니다.") from None
+            raise LibraryError(400, "invalid", "size must be an integer.") from None
         path = await asyncio.to_thread(get_store().assets.thumbnail, sha256, size)
         if path is None:
-            raise LibraryError(404, "not_found", "이미지를 찾을 수 없습니다.")
+            raise LibraryError(404, "not_found", "Image not found.")
         return web.FileResponse(path, headers={"Content-Type": "image/webp", **IMMUTABLE})

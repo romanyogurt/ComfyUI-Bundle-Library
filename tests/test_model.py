@@ -58,7 +58,7 @@ class NormalizeBundleTest(unittest.TestCase):
 
     def test_field_names_are_unique_and_not_reserved(self):
         twice = [{"name": "p", "type": "text", "value": ""}, {"name": "p", "type": "int", "value": 1}]
-        self.assertIn("겹칩니다", self.assertRefused(bundle(fields=twice)))
+        self.assertIn("Duplicate field name", self.assertRefused(bundle(fields=twice)))
         self.assertRefused(with_field(name="@name", type="text", value=""))
         # Different case is a different field: the loader matches names exactly.
         both = [{"name": "Ref", "type": "text", "value": ""}, {"name": "ref", "type": "text", "value": ""}]

@@ -1,14 +1,14 @@
 import { app } from "../../scripts/app.js";
 import { listBundles, thumbnailURL } from "./api.js";
 import { COMFY_TYPES, parseSpec, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
-import { openLibrary } from "./spike_modal.js";
+import { openLibrary } from "./library_modal.js";
 
 export const NODE_ID = "BundleLibraryLoad";
 
 const OUTPUT = 2; // LiteGraph.OUTPUT
 const STATUS_TEXT = {
-    missing: "이 번들에 없음 — 실행 시 오류",
-    type_mismatch: "타입이 다름 — 실행 시 오류",
+    missing: "not in this bundle; running will fail",
+    type_mismatch: "another type in this bundle; running will fail",
 };
 
 function widget(node, name) {
@@ -84,7 +84,7 @@ export function selectBundle(node, bundle) {
         app.extensionManager?.toast?.add({
             severity: "warn",
             summary: "Load Bundle",
-            detail: `출력은 ${slots.length}개까지라 필드 ${overflow}개를 표시하지 못했습니다.`,
+            detail: `A node has ${slots.length} outputs at most, so ${overflow} field(s) are not shown.`,
             life: 6000,
         });
     }
@@ -95,10 +95,10 @@ export function selectBundle(node, bundle) {
 
 function previewValue(bundle, field) {
     if (field.type === "image") {
-        if (!field.preview) return el("span", "bl-empty", "(이미지 없음)");
+        if (!field.preview) return el("span", "bl-empty", "(no image)");
         const img = el("img", "bl-thumb");
         img.loading = "lazy";
-        img.src = thumbnailURL(bundle.id, field.name);
+        img.src = thumbnailURL(field.preview.sha256);
         img.alt = field.name;
         return img;
     }
@@ -112,12 +112,12 @@ function renderPreview(node, bundle) {
     preview.replaceChildren();
     const slots = specOf(node);
     if (!widget(node, "bundle_id")?.value) {
-        preview.append(el("div", "bl-note", "번들을 고르세요."));
+        preview.append(el("div", "bl-note", "Select a bundle."));
         return;
     }
     if (!bundle) {
         const name = node.properties.bundle_name ?? widget(node, "bundle_id").value;
-        preview.append(el("div", "bl-note bl-bad", `⚠ 번들을 찾을 수 없습니다: ${name}`));
+        preview.append(el("div", "bl-note bl-bad", `⚠ Bundle not found: ${name}`));
         return;
     }
     const statuses = slotStatuses(slots, bundle.fields);
@@ -135,19 +135,19 @@ function fillSelect(node, bundles) {
     const { select } = node.bundlePanel;
     const selected = widget(node, "bundle_id")?.value ?? "";
     const linked = specOf(node).filter((_, i) => isLinked(node.outputs[i]));
-    select.replaceChildren(el("option", null, "번들 선택…"));
+    select.replaceChildren(el("option", null, "Select a bundle…"));
     select.firstChild.value = "";
     for (const bundle of bundles) {
         const lacking = linked.filter((s) => slotStatuses([s], bundle.fields)[0] !== "ok");
         const label = lacking.length
-            ? `${bundle.name}  ⚠ ${lacking.map((s) => s.name).join(", ")} 없음`
+            ? `${bundle.name}  ⚠ no ${lacking.map((s) => s.name).join(", ")}`
             : bundle.name;
         const option = el("option", null, label);
         option.value = bundle.id;
         select.append(option);
     }
     if (selected && !bundles.some((b) => b.id === selected)) {
-        const option = el("option", null, `⚠ 찾을 수 없음: ${node.properties.bundle_name ?? selected}`);
+        const option = el("option", null, `⚠ Not found: ${node.properties.bundle_name ?? selected}`);
         option.value = selected;
         select.append(option);
     }
@@ -160,7 +160,7 @@ async function refreshPanel(node, { fresh = false } = {}) {
     try {
         bundles = await listBundles({ fresh });
     } catch (error) {
-        node.bundlePanel.preview.replaceChildren(el("div", "bl-note bl-bad", `⚠ 목록을 불러오지 못했습니다: ${error.message}`));
+        node.bundlePanel.preview.replaceChildren(el("div", "bl-note bl-bad", `⚠ Could not load the bundle list: ${error.message}`));
         return;
     }
     fillSelect(node, bundles);
@@ -179,7 +179,7 @@ function addPanel(node) {
     const bar = el("div", "bl-bar");
     const select = el("select", "bl-select");
     const open = el("button", "bl-open", "📚");
-    open.title = "Bundle Library 열기";
+    open.title = "Open the Bundle Library";
     const preview = el("div", "bl-preview");
     bar.append(select, open);
     root.append(bar, preview);

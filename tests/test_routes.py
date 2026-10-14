@@ -97,7 +97,7 @@ class RoutesTest(AioHTTPTestCase):
 
         copy = await self.body(await self.client.post(f"{P}/bundles/{bundle_id}/duplicate",
                                                       json={"mode": "structure"}, headers=WRITE), 201)
-        self.assertEqual(copy["name"], "Renamed 복사본")
+        self.assertEqual(copy["name"], "Renamed copy")
         self.assertIsNone(copy["fields"][1]["asset"])
 
         await self.error(await self.client.delete(f"{P}/bundles/{bundle_id}", headers=WRITE), 400, "invalid")

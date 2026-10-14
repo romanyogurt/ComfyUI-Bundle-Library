@@ -36,13 +36,13 @@ def invalid(message, **details):
 
 def check_bundle_id(value):
     if not isinstance(value, str) or not UUID_RE.match(value):
-        raise LibraryError(400, "invalid_id", f"번들 ID 형식이 잘못되었습니다: {value!r}")
+        raise LibraryError(400, "invalid_id", f"Invalid bundle id: {value!r}")
     return value
 
 
 def check_sha256(value):
     if not isinstance(value, str) or not SHA256_RE.match(value):
-        raise LibraryError(400, "invalid_id", f"에셋 ID 형식이 잘못되었습니다: {value!r}")
+        raise LibraryError(400, "invalid_id", f"Invalid asset id: {value!r}")
     return value
 
 
@@ -58,61 +58,61 @@ def clean_original_name(name):
 
 def _name(value, label, limit):
     if not isinstance(value, str):
-        raise invalid(f"{label}: 문자열이어야 합니다.")
+        raise invalid(f"{label}: must be a string.")
     text = unicodedata.normalize("NFC", value.strip())
     if not text:
-        raise invalid(f"{label}: 비어 있습니다.")
+        raise invalid(f"{label}: must not be empty.")
     if len(text) > limit:
-        raise invalid(f"{label}: {limit}자까지입니다.")
+        raise invalid(f"{label}: at most {limit} characters.")
     if any(unicodedata.category(c) == "Cc" or c in _FORBIDDEN_IN_NAMES for c in text):
-        raise invalid(f"{label}: 줄바꿈이나 제어 문자를 쓸 수 없습니다.")
+        raise invalid(f"{label}: line breaks and control characters are not allowed.")
     return text
 
 
 def _tags(value):
     if not isinstance(value, list):
-        raise invalid("태그: 문자열 배열이어야 합니다.")
+        raise invalid("Tags: must be an array of strings.")
     tags, seen = [], set()
     for item in value:
-        tag = _name(item, "태그", MAX_TAG_LENGTH)
+        tag = _name(item, "Tag", MAX_TAG_LENGTH)
         if tag.casefold() not in seen:
             seen.add(tag.casefold())
             tags.append(tag)
     if len(tags) > MAX_TAGS:
-        raise invalid(f"태그: {MAX_TAGS}개까지입니다.")
+        raise invalid(f"Tags: at most {MAX_TAGS}.")
     return tags
 
 
 def _note(value):
     if not isinstance(value, str):
-        raise invalid("메모: 문자열이어야 합니다.")
+        raise invalid("Note: must be a string.")
     if len(value) > MAX_NOTE:
-        raise invalid(f"메모: {MAX_NOTE}자까지입니다.")
+        raise invalid(f"Note: at most {MAX_NOTE} characters.")
     return value
 
 
 def _value(field_type, value, label):
     if field_type == "text":
         if not isinstance(value, str):
-            raise invalid(f"{label}: 텍스트 값은 문자열이어야 합니다.")
+            raise invalid(f"{label}: a text value must be a string.")
         if len(value.encode("utf-8")) > MAX_TEXT_BYTES:
-            raise invalid(f"{label}: 텍스트는 {MAX_TEXT_BYTES // (1024 * 1024)}MB까지입니다.")
+            raise invalid(f"{label}: text is limited to {MAX_TEXT_BYTES // (1024 * 1024)} MB.")
         return value
     if field_type == "boolean":
         if not isinstance(value, bool):
-            raise invalid(f"{label}: true 또는 false여야 합니다.")
+            raise invalid(f"{label}: must be true or false.")
         return value
     if field_type == "int":
         if isinstance(value, bool) or not isinstance(value, int):
-            raise invalid(f"{label}: 정수여야 합니다.")
+            raise invalid(f"{label}: must be an integer.")
         if not INT_MIN <= value <= INT_MAX:
-            raise invalid(f"{label}: 64비트 정수 범위를 벗어납니다.")
+            raise invalid(f"{label}: outside the 64-bit integer range.")
         return value
     # float
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise invalid(f"{label}: 숫자여야 합니다.")
+        raise invalid(f"{label}: must be a number.")
     if not math.isfinite(value):
-        raise invalid(f"{label}: 유한한 숫자여야 합니다.")
+        raise invalid(f"{label}: must be a finite number.")
     return float(value)
 
 
@@ -123,15 +123,15 @@ def _asset(value, label):
     if value is None:
         return None
     if not isinstance(value, dict):
-        raise invalid(f"{label}: asset은 객체나 null이어야 합니다.")
+        raise invalid(f"{label}: asset must be an object or null.")
     sha = value.get("sha256")
     if not isinstance(sha, str) or not SHA256_RE.match(sha):
-        raise invalid(f"{label}: asset.sha256이 올바른 SHA-256 값이 아닙니다.")
+        raise invalid(f"{label}: asset.sha256 is not a SHA-256 digest.")
     asset = {"sha256": sha}
     original = value.get("original_name")
     if original is not None:
         if not isinstance(original, str):
-            raise invalid(f"{label}: asset.original_name은 문자열이어야 합니다.")
+            raise invalid(f"{label}: asset.original_name must be a string.")
         asset["original_name"] = clean_original_name(original)
     ext = value.get("ext")
     if ext is not None and ext in {e for e, _ in IMAGE_FORMATS.values()}:
@@ -145,20 +145,20 @@ def _asset(value, label):
 
 def _field(value, index):
     if not isinstance(value, dict):
-        raise invalid(f"필드 {index + 1}: 객체여야 합니다.")
-    name = _name(value.get("name"), f"필드 {index + 1}의 이름", MAX_FIELD_NAME)
+        raise invalid(f"Field {index + 1}: must be an object.")
+    name = _name(value.get("name"), f"Field {index + 1} name", MAX_FIELD_NAME)
     if name.startswith("@"):
-        raise invalid(f"필드 '{name}': '@'로 시작하는 이름은 예약되어 있습니다.")
+        raise invalid(f"Field '{name}': names starting with '@' are reserved.")
     field_type = value.get("type")
     if field_type not in FIELD_TYPES:
         raise LibraryError(400, "unsupported_type",
-                           f"필드 '{name}': 지원하지 않는 타입입니다 ({field_type!r}). "
-                           f"쓸 수 있는 타입: {', '.join(FIELD_TYPES)}")
-    label = f"필드 '{name}'"
+                           f"Field '{name}': unsupported type {field_type!r}. "
+                           f"Supported types: {', '.join(FIELD_TYPES)}.")
+    label = f"Field '{name}'"
     if field_type == "image":
         return {"name": name, "type": "image", "asset": _asset(value.get("asset"), label)}
     if "value" not in value:
-        raise invalid(f"{label}: value가 없습니다.")
+        raise invalid(f"{label}: value is missing.")
     return {"name": name, "type": field_type, "value": _value(field_type, value["value"], label)}
 
 
@@ -166,20 +166,20 @@ def normalize_bundle(data):
     """The editable part of a bundle (name, tags, note, fields), checked and
     normalized. Raises LibraryError(400) on the first problem."""
     if not isinstance(data, dict):
-        raise invalid("번들은 JSON 객체여야 합니다.")
+        raise invalid("A bundle must be a JSON object.")
     fields_value = data.get("fields", [])
     if not isinstance(fields_value, list):
-        raise invalid("fields: 배열이어야 합니다.")
+        raise invalid("fields: must be an array.")
     if len(fields_value) > MAX_FIELDS:
-        raise invalid(f"fields: 필드는 {MAX_FIELDS}개까지입니다.")
+        raise invalid(f"fields: at most {MAX_FIELDS} fields.")
     fields = [_field(f, i) for i, f in enumerate(fields_value)]
     seen = set()
     for field in fields:
         if field["name"] in seen:
-            raise invalid(f"필드 이름이 겹칩니다: '{field['name']}'")
+            raise invalid(f"Duplicate field name: '{field['name']}'")
         seen.add(field["name"])
     return {
-        "name": _name(data.get("name"), "번들 이름", MAX_BUNDLE_NAME),
+        "name": _name(data.get("name"), "Bundle name", MAX_BUNDLE_NAME),
         "tags": _tags(data.get("tags", [])),
         "note": _note(data.get("note", "")),
         "fields": fields,

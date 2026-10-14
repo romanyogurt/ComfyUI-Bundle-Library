@@ -63,18 +63,18 @@ class AssetStore:
                 if width * height > self.max_pixels:
                     raise LibraryError(
                         413, "too_many_pixels",
-                        f"이미지가 너무 큽니다 ({width}×{height}). {self.max_pixels:,}픽셀까지 올릴 수 있습니다.")
+                        f"The image is too large ({width}×{height}); the limit is {self.max_pixels:,} pixels.")
                 turned = image.getexif().get(0x0112) in _SWAPS_SIDES
                 image.load()  # decode it all: a broken file is refused now, not at run time
                 image_format = image.format
         except LibraryError:
             raise
         except Image.DecompressionBombError:
-            raise LibraryError(413, "too_many_pixels", "이미지가 너무 큽니다.") from None
+            raise LibraryError(413, "too_many_pixels", "The image is too large.") from None
         except UnidentifiedImageError:
-            raise LibraryError(415, "unsupported_format", "PNG, JPEG, WebP 이미지만 올릴 수 있습니다.") from None
+            raise LibraryError(415, "unsupported_format", "Only PNG, JPEG and WebP images are accepted.") from None
         except (OSError, SyntaxError, ValueError):
-            raise LibraryError(400, "corrupt_image", "이미지를 끝까지 읽을 수 없습니다. 손상된 파일일 수 있습니다.") from None
+            raise LibraryError(400, "corrupt_image", "The image could not be decoded completely; the file may be damaged.") from None
         return (height, width, image_format) if turned else (width, height, image_format)
 
     def path(self, sha256):
@@ -108,7 +108,7 @@ class AssetStore:
     def thumbnail(self, sha256, size):
         """A WebP preview at most `size` pixels on a side, made on first request."""
         if size not in THUMBNAIL_SIZES:
-            raise LibraryError(400, "invalid", f"썸네일 크기는 {', '.join(map(str, THUMBNAIL_SIZES))} 중 하나입니다.")
+            raise LibraryError(400, "invalid", f"Thumbnail size must be one of {', '.join(map(str, THUMBNAIL_SIZES))}.")
         source = self.path(sha256)
         if source is None:
             return None

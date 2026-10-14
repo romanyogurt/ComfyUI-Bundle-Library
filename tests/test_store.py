@@ -122,11 +122,11 @@ class StoreTest(unittest.TestCase):
     def test_duplicate(self):
         source = self.store.create(self.data("Red"))
         copy = self.store.duplicate(source["id"])
-        self.assertEqual(copy["name"], "Red 복사본")
+        self.assertEqual(copy["name"], "Red copy")
         self.assertEqual(copy["fields"], source["fields"])
         self.assertNotEqual(copy["id"], source["id"])
         empty = self.store.duplicate(source["id"], "structure")
-        self.assertEqual(empty["name"], "Red 복사본 2")
+        self.assertEqual(empty["name"], "Red copy 2")
         self.assertEqual([(f["name"], f["type"]) for f in empty["fields"]],
                          [(f["name"], f["type"]) for f in source["fields"]])
         self.assertEqual(empty["fields"][0]["value"], "")
