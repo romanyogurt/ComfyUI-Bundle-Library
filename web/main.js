@@ -17,7 +17,7 @@ app.registerExtension({
             function: () => openLibrary(),
         },
     ],
-    menuCommands: [{ path: ["Extensions", "Bundle Library"], commands: ["BundleLibrary.Open"] }],
+    menuCommands: [{ path: ["Extensions"], commands: ["BundleLibrary.Open"] }],
 
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name === NODE_ID) setupLoaderNode(nodeType);

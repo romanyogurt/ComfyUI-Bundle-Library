@@ -1,7 +1,8 @@
 import { app } from "../../scripts/app.js";
 import { CHANGED_EVENT, forgetBundles, listBundles, thumbnailURL } from "./api.js";
-import { COMFY_TYPES, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
+import { el } from "./dom.js";
 import { openLibrary } from "./library_modal.js";
+import { COMFY_TYPES, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
 
 export const NODE_ID = "BundleLibraryLoad";
 
@@ -41,13 +42,6 @@ const outputName = (index) => `field_${String(index + 1).padStart(2, "0")}`;
 /** The node's slots with whether each output is linked, as planSlots() takes them. */
 function currentSlots(node) {
     return specOf(node).map((slot, i) => ({ ...slot, linked: isLinked(node.outputs[i]) }));
-}
-
-function el(tag, className, text) {
-    const element = document.createElement(tag);
-    if (className) element.className = className;
-    if (text !== undefined) element.textContent = text;
-    return element;
 }
 
 /** Show output `index` as the field `slot` describes. */
@@ -267,7 +261,11 @@ function addPanel(node) {
     });
     select.addEventListener("change", () => void pick(node, select.value));
     select.addEventListener("focus", () => void refreshPanel(node, { fresh: true }));
-    open.addEventListener("click", () => openLibrary({ onPick: (bundle) => selectBundle(node, bundle) }));
+    open.addEventListener("click", () => openLibrary({
+        onPick: (bundle) => selectBundle(node, bundle),
+        linked: currentSlots(node).filter((s) => s.linked),
+        selected: widget(node, "bundle_id")?.value || null,
+    }));
     // Keep wheel scrolling inside the preview instead of zooming the canvas.
     preview.addEventListener("wheel", (e) => {
         if (preview.scrollHeight > preview.clientHeight) e.stopPropagation();

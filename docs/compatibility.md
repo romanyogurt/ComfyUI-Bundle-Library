@@ -151,6 +151,10 @@
      추가했다 (헤드리스 Chromium은 저장 대화상자를 띄우지 않아 처음 검사에서 놓쳤다).
    - Phase 4의 편집기는 자기가 쓰는 단축키를 직접 처리해야 한다. ComfyUI가 가로채던 다른
      단축키(`Ctrl+O` 등)의 브라우저 기본 동작도 막을지는 Phase 4에서 정한다.
+   - Phase 4에서 정했다: 모달은 `Ctrl/Cmd+S`(번들 저장)와 `Ctrl/Cmd+O`(취소만)를 직접 처리한다.
+     편집기가 다시 그려지면서 포커스가 `<body>`로 빠지는 경우도 있어서, 모달이 열려 있는 동안
+     모달 밖을 대상으로 한 키·붙여넣기 이벤트를 `window` 캡처 단계에서 막고 포커스를 모달로
+     되돌린다.
 4. (선택) Nodes 2.0에서 1~2를 반복하는 항목은 진행하지 않았다.
 
 ## 남은 제약
@@ -167,8 +171,10 @@ node --test "tests/js/*.test.mjs"
 npm install --prefix /tmp/bl-pw playwright-core@1.60.0
 BL_LIBRARY_DIR=<comfy-docker>/user/bundle_library NODE_PATH=/tmp/bl-pw/node_modules \
     node tests/browser/loader_scenarios.cjs
+BL_LIBRARY_DIR=<comfy-docker>/user/bundle_library NODE_PATH=/tmp/bl-pw/node_modules \
+    node tests/browser/library_scenarios.cjs
 ```
 
-브라우저 시나리오는 스크린샷과 `results.json`을 `$TMPDIR/bundle-library-browser`에 저장한다
-(`BL_TEST_OUT`으로 변경). Phase 2부터는 시작할 때 `[test] …` 번들 5개를 만들고 끝나면 지운다.
-생성 작업이 없을 때 실행한다.
+브라우저 시나리오는 스크린샷과 `results.json`을 `$TMPDIR/bundle-library-loader`,
+`$TMPDIR/bundle-library-library`에 저장한다 (`BL_TEST_OUT`으로 변경). Phase 2부터는 시작할 때
+`[test] …` 번들 5개를 만들고 끝나면 지운다. 생성 작업이 없을 때 실행한다.
