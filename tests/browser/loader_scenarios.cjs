@@ -48,23 +48,64 @@ const { startSession } = require("./harness.cjs");
     const panelA = await ev(async (bundleA) => {
         const b = window.__bl, { preview, rows, notice } = window.__node.bundlePanel;
         const summary = (await b.request("GET", "/bundles")).bundles.find((x) => x.id === bundleA);
-        const shown = [...rows.querySelectorAll(".bl-row")].map((row) => ({
-            name: row.querySelector(".bl-name").textContent,
-            type: row.querySelector(".bl-type").textContent,
-            text: row.querySelector(".bl-text")?.textContent ?? null,
-            img: row.querySelector("img")?.getAttribute("src") ?? null,
-            value: row.querySelector(".bl-value")?.textContent ?? null,
-        }));
-        return { summary, shown, spare: preview.clientHeight - rows.offsetHeight - (notice.hidden ? 0 : notice.offsetHeight + 4) };
+        const shown = Object.fromEntries([...rows.querySelectorAll("[data-field]")].map((item) => [item.dataset.field, {
+            type: item.dataset.type,
+            kind: item.className,
+            text: item.querySelector(".bl-text")?.textContent ?? null,
+            img: item.querySelector("img")?.getAttribute("src") ?? null,
+            value: item.querySelector(".bl-value")?.textContent ?? null,
+            box: [item.offsetWidth, item.offsetHeight],
+        }]));
+        const padding = parseFloat(getComputedStyle(preview).paddingTop) + parseFloat(getComputedStyle(preview).paddingBottom);
+        return { summary, shown, spare: preview.clientHeight - padding - rows.offsetHeight - (notice.hidden ? 0 : notice.offsetHeight + 6) };
     }, A);
     check("panel height fits its content (at most a small margin left)", panelA.spare >= 0 && panelA.spare <= 16, panelA.spare);
     const fieldsA = Object.fromEntries(panelA.summary.fields.map((f) => [f.name, f]));
-    check("preview shows each field of the bundle", JSON.stringify(panelA.shown.map((r) => [r.name, r.type])) === JSON.stringify(
-        panelA.summary.fields.map((f) => [f.name, f.type])), panelA.shown);
+    check("preview shows each field of the bundle", JSON.stringify(Object.entries(panelA.shown).map(([name, item]) => [name, item.type]).sort())
+        === JSON.stringify(panelA.summary.fields.map((f) => [f.name, f.type]).sort()), panelA.shown);
+    check("preview: images in the gallery, then the text, then the value chip",
+        JSON.stringify(Object.values(panelA.shown).map((item) => item.kind)) === JSON.stringify(["bl-tile", "bl-tile", "bl-text-block", "bl-value-chip"]),
+        Object.keys(panelA.shown));
     check("preview: text, thumbnails and value match the bundle",
-        panelA.shown[0].text === fieldsA.prompt.preview
-        && panelA.shown[1].img.includes(fieldsA.ref_1.preview.sha256) && panelA.shown[2].img.includes(fieldsA.ref_2.preview.sha256)
-        && panelA.shown[3].value === "✓ true", panelA.shown);
+        panelA.shown.prompt.text === fieldsA.prompt.preview
+        && panelA.shown.ref_1.img.includes(fieldsA.ref_1.preview.sha256) && panelA.shown.ref_2.img.includes(fieldsA.ref_2.preview.sha256)
+        && panelA.shown.use_bgm.value === "true", panelA.shown);
+    const tileA = panelA.shown.ref_1.box;
+    check("gallery: a tile keeps the image's aspect ratio, at most 240px high",
+        Math.abs(tileA[0] / tileA[1] - 512 / 768) < 0.02 && tileA[1] <= 240 && tileA[1] >= 150, tileA);
+    const narrow = await ev(async () => {
+        const b = window.__bl, n = window.__node;
+        const before = n.size.slice();
+        const height = () => n.bundlePanel.preview.querySelector(".bl-tile").offsetHeight;
+        const wide = height();
+        n.setSize([260, n.size[1]]);
+        b.app.canvas.setDirty(true, true);
+        await b.sleep(400);
+        const small = height();
+        n.setSize(before);
+        b.app.canvas.setDirty(true, true);
+        await b.sleep(400);
+        return { wide, small, back: height() };
+    });
+    check("gallery: the tiles follow the node's width", narrow.small < narrow.wide && narrow.back === narrow.wide, narrow);
+    await ev(() => {
+        window.__keys = [];
+        window.addEventListener("keydown", (e) => window.__keys.push(e.key));
+    });
+    const nodeCount = await ev(() => window.__bl.app.graph.nodes.length);
+    await page.locator(".bl-panel .bl-tile").first().click();
+    const lightbox = await page.waitForFunction(() => {
+        const img = document.querySelector(".bl-lightbox img");
+        return img?.complete && img.naturalWidth > 0 && { src: img.getAttribute("src"), width: img.naturalWidth };
+    }, null, { timeout: 10000 }).then((h) => h.jsonValue(), () => null);
+    check("clicking a tile shows the full image", lightbox && lightbox.src.endsWith(`/assets/${fieldsA.ref_1.preview.sha256}`) && lightbox.width === 512, lightbox);
+    await shot("classic-lightbox.png");
+    await ev(() => window.__bl.app.canvas.selectNode(window.__node)); // Delete would remove it if the key got through
+    await page.keyboard.press("Delete");
+    await page.keyboard.press("Escape");
+    const afterBox = await ev(() => ({ open: !!document.querySelector(".bl-lightbox"), keys: [...window.__keys], nodes: window.__bl.app.graph.nodes.length }));
+    check("the image view closes with Escape; its keys never reach ComfyUI (Delete kept the node)",
+        !afterBox.open && afterBox.keys.length === 0 && afterBox.nodes === nodeCount, afterBox);
 
     let run = await ev(() => window.__bl.run());
     const p = await ev(() => window.__p);
@@ -133,6 +174,8 @@ const { startSession } = require("./harness.cjs");
     check("run D: type mismatch fails the loader", (run.errors ?? []).some((e) => String(e.node_id) === loaderId && e.exception_message.includes("is text, not image")), (run.errors ?? []).map((e) => e.exception_message));
 
     await ev((id) => window.__bl.pick(window.__node, id), E);
+    const emptyTile = await ev(() => window.__node.bundlePanel.rows.querySelector('[data-field="ref_2"] .bl-tile-empty')?.textContent ?? null);
+    check("preview: a connected empty image warns that running will fail", emptyTile === "⚠ No image; running will fail", emptyTile);
     run = await ev(() => window.__bl.run());
     check("run E: empty image fails the loader", (run.errors ?? []).some((e) => String(e.node_id) === loaderId && e.exception_message.includes("has no image")), (run.errors ?? []).map((e) => e.exception_message));
     const unlinkedMissing = await ev(async (bundleC) => {
@@ -202,7 +245,7 @@ const { startSession } = require("./harness.cjs");
         n.bundlePanel.toggle.click();
         await b.sleep(300);
         return { outs: b.outs(n), selected: select.selectedOptions[0]?.textContent, collapsed,
-                 rows: preview.querySelectorAll(".bl-row").length, expanded: !preview.hidden && !n.properties.preview_collapsed };
+                 rows: preview.querySelectorAll("[data-field]").length, expanded: !preview.hidden && !n.properties.preview_collapsed };
     }, savedGraph);
     check("page reload: outputs, links and selection restored", JSON.stringify(pageReload.outs) === JSON.stringify(outs)
         && pageReload.selected === "[test] A (red)", pageReload);
@@ -461,6 +504,8 @@ const { startSession } = require("./harness.cjs");
     const vueId = await ev(() => String(window.__node.id));
     let text = await domText(vueId);
     check("vue: DOM shows A slot labels", text && ["prompt", "ref_1", "ref_2", "use_bgm"].every((s) => text.includes(s)), text);
+    const vueTiles = await ev(() => [...window.__node.bundlePanel.preview.querySelectorAll(".bl-tile")].map((t) => [t.offsetWidth, t.offsetHeight]));
+    check("vue: the gallery shows both images", vueTiles.length === 2 && vueTiles.every(([w, h]) => w > 50 && h > 50 && h <= 240), vueTiles);
     const vueCollapse = await ev(async (nid) => {
         const b = window.__bl, n = window.__node;
         n.bundlePanel.toggle.click();
@@ -468,7 +513,7 @@ const { startSession } = require("./harness.cjs");
         const collapsedText = document.querySelector(`[data-node-id="${nid}"]`)?.innerText ?? "";
         n.bundlePanel.toggle.click();
         await b.sleep(400);
-        return { collapsedHasPreview: collapsedText.includes("BOOLEAN"), expanded: !n.bundlePanel.preview.hidden };
+        return { collapsedHasPreview: collapsedText.includes("Red dress girl"), expanded: !n.bundlePanel.preview.hidden };
     }, vueId);
     check("vue: collapse hides the preview and expands it again", !vueCollapse.collapsedHasPreview && vueCollapse.expanded, vueCollapse);
     await ev(() => {

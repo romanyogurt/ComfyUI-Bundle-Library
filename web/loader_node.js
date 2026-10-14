@@ -1,15 +1,18 @@
 import { app } from "../../scripts/app.js";
-import { CHANGED_EVENT, forgetBundles, listBundles, thumbnailURL } from "./api.js";
+import { CHANGED_EVENT, assetURL, forgetBundles, listBundles, thumbnailURL } from "./api.js";
 import { el } from "./dom.js";
 import { openLibrary } from "./library_modal.js";
 import { COMFY_TYPES, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
+import { showImage } from "./viewer.js";
 
 export const NODE_ID = "BundleLibraryLoad";
 
 const OUTPUT = 2; // LiteGraph.OUTPUT
 const MARGIN = 4; // around the panel inside its widget area
-const GAP = 6; // between the bar and the preview (bundle_library.css)
-const MAX_PREVIEW = 320; // a taller preview scrolls
+const GAP = 6; // between the bar and the preview, and between the preview's parts (bundle_library.css)
+const PADDING = 6; // inside the preview (bundle_library.css)
+const MAX_PREVIEW = 560; // a taller preview scrolls
+const TEXT_PREVIEW = 200; // characters of a text field in the bundle list (bundle_library/store.py)
 const PROBLEMS = { missing: "not in this bundle", type_mismatch: "another type in this bundle" };
 
 // Nodes showing a panel, for the refreshes that concern them all.
@@ -64,9 +67,15 @@ function panelHeight(node) {
     const { bar, preview, rows, notice } = node.bundlePanel;
     const barHeight = bar.offsetHeight || 26;
     if (preview.hidden) return barHeight + 2 * MARGIN;
-    const content = (rows.offsetHeight || 22 * Math.max(specOf(node).length, 1))
-        + (notice.hidden ? 0 : (notice.offsetHeight || 30) + 4);
+    const content = (rows.offsetHeight || estimatedRows(node))
+        + (notice.hidden ? 0 : (notice.offsetHeight || 30) + GAP) + 2 * PADDING;
     return barHeight + GAP + Math.min(content, MAX_PREVIEW) + 2 * MARGIN;
+}
+
+function estimatedRows(node) {
+    const slots = specOf(node);
+    const images = slots.filter((s) => s.type === "image").length;
+    return (images ? 180 : 0) + 22 * Math.max(slots.length - images, images ? 0 : 1);
 }
 
 /** Size the node to its content. Only after the user changed something:
@@ -125,17 +134,63 @@ export function selectBundle(node, bundle) {
     void refreshPanel(node); // the dropdown's marks depend on the new links and outputs
 }
 
-function previewValue(field) {
-    if (field.type === "image") {
-        if (!field.preview) return el("span", "bl-empty", "(no image)");
-        const img = el("img", "bl-thumb");
-        img.src = thumbnailURL(field.preview.sha256);
-        img.alt = field.name;
-        return img;
+// The preview groups the slots by kind: problems, then a gallery of the
+// images, then text excerpts, then the other values as chips. Every item
+// carries data-field and data-type.
+
+function item(tag, className, slot) {
+    const element = el(tag, className);
+    element.dataset.field = slot.name;
+    element.dataset.type = slot.type;
+    return element;
+}
+
+function problemLine(slot, status, linked) {
+    const line = item("div", `bl-problem ${linked ? "bl-bad" : "bl-dim"}`, slot);
+    line.append(el("span", "bl-problem-name", slot.name),
+        el("span", null, linked ? `⚠ ${PROBLEMS[status]}; running will fail` : `${PROBLEMS[status]} (not connected)`));
+    return line;
+}
+
+function imageTile(slot, field, linked) {
+    const tile = item("div", "bl-tile", slot);
+    const image = field.preview;
+    // Tiles share rows by aspect ratio and grow with the node's width (bundle_library.css).
+    const ratio = image ? Math.min(Math.max(image.width / image.height, 0.25), 4) : 1;
+    tile.style.setProperty("--ratio", String(ratio));
+    if (image) {
+        const img = el("img", "bl-tile-img");
+        img.src = thumbnailURL(image.sha256, 512);
+        img.alt = slot.name;
+        img.draggable = false;
+        const size = `${image.width} × ${image.height}`;
+        tile.title = `${slot.name} · ${size} · click to enlarge`;
+        tile.addEventListener("click", () => showImage(assetURL(image.sha256), `${slot.name} · ${size}`));
+        tile.append(img);
+    } else {
+        tile.classList.add("empty");
+        tile.append(el("div", `bl-tile-empty${linked ? " bl-bad" : ""}`, linked ? "⚠ No image; running will fail" : "No image"));
     }
-    if (field.type === "text") return el("span", "bl-text", field.preview);
-    if (field.type === "boolean") return el("span", "bl-value", field.preview ? "✓ true" : "✗ false");
-    return el("span", "bl-value", String(field.preview));
+    tile.append(el("div", "bl-tile-name", slot.name));
+    return tile;
+}
+
+function textBlock(slot, field) {
+    const block = item("div", "bl-text-block", slot);
+    const text = field.preview;
+    block.append(el("div", "bl-text-name", slot.name), text
+        ? el("div", "bl-text", text.length >= TEXT_PREVIEW ? `${text}…` : text)
+        : el("div", "bl-text bl-dim", "(empty)"));
+    return block;
+}
+
+function valueChip(slot, field) {
+    const chip = item("div", "bl-value-chip", slot);
+    const value = field.type === "boolean"
+        ? el("span", `bl-value bl-bool${field.preview ? " on" : ""}`, String(field.preview))
+        : el("span", "bl-value", String(field.preview));
+    chip.append(el("span", "bl-value-name", slot.name), value);
+    return chip;
 }
 
 function renderNotice(node, bundle) {
@@ -152,7 +207,14 @@ function renderNotice(node, bundle) {
 }
 
 function renderPreview(node, bundle) {
-    const { rows, notice } = node.bundlePanel;
+    const panel = node.bundlePanel;
+    const { rows, notice } = panel;
+    // Rebuilding reloads the images and resets the scroll position, so skip it
+    // when nothing shown has changed (the list is read again on many occasions).
+    const signature = JSON.stringify([widget(node, "bundle_id")?.value, bundle?.revision ?? null,
+        specOf(node), node.outputs.map(isLinked)]);
+    if (panel.previewSignature === signature) return;
+    panel.previewSignature = signature;
     rows.replaceChildren();
     notice.hidden = true;
     if (!widget(node, "bundle_id")?.value) {
@@ -167,18 +229,18 @@ function renderPreview(node, bundle) {
     const slots = specOf(node);
     const statuses = slotStatuses(slots, bundle.fields);
     const fields = new Map(bundle.fields.map((f) => [f.name, f]));
+    const parts = { problems: el("div", "bl-problems"), gallery: el("div", "bl-gallery"),
+        texts: el("div", "bl-texts"), values: el("div", "bl-values") };
     slots.forEach((slot, i) => {
-        const row = el("div", "bl-row");
-        row.append(el("span", "bl-name", slot.name), el("span", "bl-type", slot.type));
-        if (statuses[i] === "ok") {
-            row.append(previewValue(fields.get(slot.name)));
-        } else if (isLinked(node.outputs[i])) {
-            row.append(el("span", "bl-bad", `⚠ ${PROBLEMS[statuses[i]]}; running will fail`));
-        } else {
-            row.append(el("span", "bl-dim", `${PROBLEMS[statuses[i]]} (not connected)`));
-        }
-        rows.append(row);
+        const linked = isLinked(node.outputs[i]);
+        const field = fields.get(slot.name);
+        if (statuses[i] !== "ok") parts.problems.append(problemLine(slot, statuses[i], linked));
+        else if (slot.type === "image") parts.gallery.append(imageTile(slot, field, linked));
+        else if (slot.type === "text") parts.texts.append(textBlock(slot, field));
+        else parts.values.append(valueChip(slot, field));
     });
+    rows.append(...Object.values(parts).filter((part) => part.childElementCount));
+    if (!slots.length) rows.append(el("div", "bl-note", "This bundle has no fields."));
     renderNotice(node, bundle);
 }
 
@@ -215,6 +277,7 @@ async function refreshPanel(node, { fresh = false } = {}) {
     try {
         bundles = await listBundles({ fresh });
     } catch (error) {
+        node.bundlePanel.previewSignature = null;
         node.bundlePanel.rows.replaceChildren(
             el("div", "bl-note bl-bad", `⚠ Could not load the bundle list: ${error.message}`));
         return;

@@ -238,11 +238,12 @@ export class BundleEditor {
             return wrap;
         }
         if (field.type === "boolean") {
-            const label = el("label", "bl-check");
+            const label = el("label", "bl-switch");
             const box = el("input");
             box.type = "checkbox";
+            box.setAttribute("role", "switch");
             box.checked = field.value;
-            const text = el("span", null, String(field.value));
+            const text = el("span", "bl-switch-text", String(field.value));
             box.addEventListener("change", () => {
                 field.value = box.checked;
                 text.textContent = String(box.checked);

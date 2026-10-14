@@ -48,13 +48,16 @@
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
+    padding: 6px;
+    border-radius: 6px;
+    background: rgb(0 0 0 / 0.18);
 }
 
 .bl-rows {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
 }
 
 .bl-notice {
@@ -72,41 +75,157 @@
     min-width: 120px;
 }
 
-.bl-row {
-    display: grid;
-    grid-template-columns: minmax(48px, max-content) max-content 1fr;
-    gap: 6px;
-    align-items: start;
+.bl-problems {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
 }
 
-.bl-name {
+.bl-problem {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 6px;
+}
+
+.bl-problem-name {
     font-weight: 600;
+}
+
+/* Images share rows like a justified gallery: each tile starts at its share
+   of a 96px-high row (flex-basis), grows with the row's free width in
+   proportion to its aspect ratio, and stops at 240px high (max-width). */
+.bl-gallery {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.bl-tile {
+    position: relative;
+    flex: var(--ratio) 1 calc(var(--ratio) * 96px);
+    max-width: calc(var(--ratio) * 240px);
+    min-width: 0;
+    aspect-ratio: var(--ratio);
+    overflow: hidden;
+    border-radius: 4px;
+    background: rgb(0 0 0 / 0.25);
+    cursor: zoom-in;
+}
+
+.bl-tile.empty {
+    max-width: calc(var(--ratio) * 96px);
+    border: 1px dashed var(--border-color, #444);
+    box-sizing: border-box;
+    cursor: default;
+}
+
+.bl-tile-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.bl-tile:not(.empty):hover .bl-tile-img {
+    filter: brightness(1.1);
+}
+
+.bl-tile-name {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 12px 6px 3px;
+    background: linear-gradient(transparent, rgb(0 0 0 / 0.7));
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    pointer-events: none;
 }
 
-.bl-type {
-    font-size: 10px;
-    opacity: 0.7;
-    text-transform: uppercase;
+.bl-tile-empty {
+    position: absolute;
+    inset: 0 0 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    text-align: center;
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.bl-texts {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.bl-text-name,
+.bl-value-name {
+    opacity: 0.65;
+}
+
+.bl-text-name {
+    font-size: 11px;
+    font-weight: 600;
 }
 
 .bl-text {
     white-space: pre-wrap;
+    line-height: 1.4;
     display: -webkit-box;
-    -webkit-line-clamp: 3;
+    -webkit-line-clamp: 4;
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
 
-.bl-thumb {
-    height: 48px;
-    width: auto;
-    border-radius: 3px;
+.bl-values {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
 }
 
-.bl-note,
-.bl-empty {
+.bl-value-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 8%, transparent);
+    border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+}
+
+.bl-value {
+    font-weight: 600;
+}
+
+/* A small switch drawn before "true" / "false", like the editor's toggle. */
+.bl-bool {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.bl-bool::before {
+    content: "";
+    flex: none;
+    width: 22px;
+    height: 12px;
+    border-radius: 6px;
+    background: radial-gradient(circle, #fff 3.5px, transparent 4.5px) no-repeat 0 50% / 12px 12px,
+        color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.bl-bool.on::before {
+    background: radial-gradient(circle, #fff 3.5px, transparent 4.5px) no-repeat 10px 50% / 12px 12px, #2563eb;
+}
+
+.bl-note {
     opacity: 0.7;
 }
 
@@ -478,11 +597,46 @@
     color: var(--descrip-text, #999);
 }
 
-.bl-check {
+/* The boolean toggle: a checkbox drawn as a switch (the knob is a gradient). */
+.bl-switch {
     display: inline-flex;
     align-items: center;
     gap: 8px;
     cursor: pointer;
+    user-select: none;
+}
+
+.bl-switch input {
+    appearance: none;
+    flex: none;
+    width: 36px;
+    height: 20px;
+    margin: 0;
+    border: 1px solid var(--border-color, #4e4e4e);
+    border-radius: 10px;
+    background-color: var(--comfy-input-bg, #222);
+    background-image: radial-gradient(circle, var(--descrip-text, #999) 6px, transparent 7px);
+    background-size: 18px 18px;
+    background-position: 0 50%;
+    background-repeat: no-repeat;
+    cursor: pointer;
+    transition: background-position 0.15s, background-color 0.15s, border-color 0.15s;
+}
+
+.bl-switch input:checked {
+    border-color: #2563eb;
+    background-color: #2563eb;
+    background-image: radial-gradient(circle, #fff 6px, transparent 7px);
+    background-position: 16px 50%;
+}
+
+.bl-switch input:focus-visible {
+    outline: 2px solid #2563eb;
+    outline-offset: 2px;
+}
+
+.bl-switch-text {
+    min-width: 3em;
 }
 
 .bl-number {
@@ -574,6 +728,15 @@
 
 .bl-viewer-caption {
     color: var(--descrip-text, #999);
+}
+
+.bl-lightbox {
+    z-index: 3100; /* above the library modal */
+    cursor: zoom-out;
+}
+
+.bl-lightbox .bl-viewer img {
+    max-height: calc(100vh - 80px);
 }
 
 /* ---- sidebar tab --------------------------------------------------------- */

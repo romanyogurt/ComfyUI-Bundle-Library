@@ -213,7 +213,15 @@ const LIB_HELPERS = () => {
         ["prompt", "text"], ["ref_file", "image"], ["ref_paste", "image"], ["ref_drop", "image"],
         ["flag", "boolean"], ["steps", "int"], ["cfg", "float"]]), st.fields.map((f) => [f.name, f.type]));
     await fields.nth(0).locator("textarea").fill(TEXT);
-    await fields.nth(4).locator("input[type=checkbox]").check();
+    const toggle = fields.nth(4).locator("input[type=checkbox]");
+    const switchOff = await lib(() => {
+        const card = window.__lib.card(4);
+        return { role: card.querySelector("input[type=checkbox]").getAttribute("role"), text: card.querySelector(".bl-switch-text").textContent };
+    });
+    await toggle.check();
+    const switchOn = await lib(() => window.__lib.card(4).querySelector(".bl-switch-text").textContent);
+    check("a boolean is a switch that reads false, then true", switchOff.role === "switch" && switchOff.text === "false" && switchOn === "true",
+        { switchOff, switchOn });
     await fields.nth(5).locator("input.bl-number").fill("4.5");
     st = await state();
     check("integer: 4.5 is refused on the card and blocks saving",
