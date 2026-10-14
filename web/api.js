@@ -19,7 +19,8 @@ let listing = null;
 /** All bundle summaries. Cached until `fresh` is set or `forgetBundles()` runs. */
 export async function listBundles({ fresh = false } = {}) {
     if (fresh || !listing) {
-        listing = request("/bundles").then((body) => body.bundles);
+        // The loader still runs on the Phase 0 test bundles; Phase 2 moves it to /bundles.
+        listing = request("/spike/bundles").then((body) => body.bundles);
         listing.catch(() => { listing = null; });
     }
     return listing;
