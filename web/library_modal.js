@@ -30,6 +30,11 @@ class LibraryModal {
         this.matches = null;
         this.editor = null;
         this.layer = null;
+        // Answers that arrive after a newer request was made are dropped: each
+        // kind of request counts its generations.
+        this.editorGeneration = 0; // what the editor pane shows
+        this.listGeneration = 0;
+        this.searchGeneration = 0;
         this.onBeforeUnload = (e) => {
             if (this.unsaved) e.preventDefault();
         };
@@ -150,12 +155,15 @@ class LibraryModal {
     // -- list ------------------------------------------------------------------
 
     async reload(selectId = null) {
+        const generation = ++this.listGeneration;
+        let all = [];
         try {
-            this.all = await listBundles({ fresh: true });
+            all = await listBundles({ fresh: true });
         } catch (error) {
-            this.all = [];
-            this.status(error.message, "error");
+            if (generation === this.listGeneration) this.status(error.message, "error");
         }
+        if (generation !== this.listGeneration) return; // a newer reload answers instead
+        this.all = all;
         this.renderTags();
         if (this.search.value.trim()) await this.applySearch();
         else this.renderList();
@@ -163,13 +171,16 @@ class LibraryModal {
     }
 
     async applySearch() {
+        const generation = ++this.searchGeneration;
         const query = this.search.value.trim();
+        let matches = null;
         try {
-            this.matches = query ? await searchBundleIds(query) : null;
+            matches = query ? await searchBundleIds(query) : null;
         } catch (error) {
-            this.matches = null;
-            this.status(error.message, "error");
+            if (generation === this.searchGeneration) this.status(error.message, "error");
         }
+        if (generation !== this.searchGeneration) return; // the query changed meanwhile
+        this.matches = matches;
         this.renderList();
     }
 
@@ -256,6 +267,10 @@ class LibraryModal {
 
     /** Ask before an unsaved draft would be lost; true when it may go. */
     async leaveEditor() {
+        if (this.editor?.saving) {
+            this.status("Wait until the bundle is saved.");
+            return false;
+        }
         if (!this.unsaved) return true;
         return this.confirm("Discard unsaved changes?",
             `Your changes to '${this.editor.draft.name || "this bundle"}' have not been saved.`, "Discard", { danger: true });
@@ -264,13 +279,22 @@ class LibraryModal {
     async open(id, { force = false } = {}) {
         if (this.editor?.saved?.id === id && !this.editor.dirty) return;
         if (!force && !(await this.leaveEditor())) return;
+        this.selectedId = id;
+        const generation = this.showPane(el("div", "bl-empty-state bl-loading", "Loading…"));
+        this.renderList();
+        let bundle;
         try {
-            this.show(new BundleEditor(this, await getBundle(id)));
-            this.selectedId = id;
-            this.renderList();
+            bundle = await getBundle(id);
         } catch (error) {
+            if (generation !== this.editorGeneration) return;
+            this.selectedId = null;
+            this.showPlaceholder();
+            this.renderList();
             this.status(error.message, "error");
+            return;
         }
+        if (generation !== this.editorGeneration) return; // another bundle or a new draft was opened meanwhile
+        this.show(new BundleEditor(this, bundle));
     }
 
     async newBundle() {
@@ -286,18 +310,22 @@ class LibraryModal {
     }
 
     show(editor) {
-        this.editor = editor;
-        this.pane.replaceChildren(editor.root);
-        this.pane.scrollTop = 0;
-        this.keepFocus();
-        this.editorChanged();
+        this.showPane(editor.root, editor);
     }
 
     showPlaceholder() {
-        this.editor = null;
-        this.pane.replaceChildren(el("div", "bl-empty-state", "Select a bundle on the left, or create one with + New bundle."));
+        this.showPane(el("div", "bl-empty-state", "Select a bundle on the left, or create one with + New bundle."));
+    }
+
+    /** Put `content` in the editor pane, dropping the editor shown before; the new generation. */
+    showPane(content, editor = null) {
+        if (this.editor !== editor) this.editor?.dispose();
+        this.editor = editor;
+        this.pane.replaceChildren(content);
+        this.pane.scrollTop = 0;
         this.keepFocus();
         this.editorChanged();
+        return ++this.editorGeneration;
     }
 
     // Called by the editor.
@@ -346,6 +374,7 @@ class LibraryModal {
     }
 
     close() {
+        this.editor?.dispose();
         this.overlay.remove();
         for (const type of STRAY_EVENTS) window.removeEventListener(type, this.onStrayEvent, true);
         window.removeEventListener("focusin", this.onStrayFocus, true);
@@ -419,15 +448,20 @@ class LibraryModal {
 
 // The list of the sidebar tab while it is shown.
 let sidebarList = null;
+let sidebarGeneration = 0;
 
 function fillSidebar(list, fresh = false) {
+    const generation = ++sidebarGeneration;
     listBundles({ fresh }).then((bundles) => {
+        if (generation !== sidebarGeneration) return; // a newer list is on its way
         list.replaceChildren(...(bundles.length ? bundles.map((bundle) => {
             const item = button(bundle.name, "bl-sidebar-item");
             item.addEventListener("click", () => openLibrary({ selected: bundle.id }));
             return item;
         }) : [el("div", "bl-empty-state", "No bundles yet.")]));
-    }, (error) => list.replaceChildren(el("div", "bl-bad", `⚠ ${error.message}`)));
+    }, (error) => {
+        if (generation === sidebarGeneration) list.replaceChildren(el("div", "bl-bad", `⚠ ${error.message}`));
+    });
 }
 
 window.addEventListener(CHANGED_EVENT, () => {

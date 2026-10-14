@@ -321,15 +321,20 @@ function fillSelect(node, bundles) {
 
 async function refreshPanel(node, { fresh = false } = {}) {
     if (!node.bundlePanel) return;
+    const generation = (node.bundlePanel.generation ?? 0) + 1;
+    node.bundlePanel.generation = generation;
+    const latest = () => node.bundlePanel?.generation === generation; // older answers are dropped
     let bundles;
     try {
         bundles = await listBundles({ fresh });
     } catch (error) {
+        if (!latest()) return;
         node.bundlePanel.previewSignature = null;
         node.bundlePanel.rows.replaceChildren(
             el("div", "bl-note bl-bad", `⚠ Could not load the bundle list: ${error.message}`));
         return;
     }
+    if (!latest()) return;
     fillSelect(node, bundles);
     renderPreview(node, bundles.find((b) => b.id === widget(node, "bundle_id")?.value));
 }

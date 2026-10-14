@@ -65,7 +65,9 @@ export class BundleEditor {
         this.modal = modal;
         this.saved = bundle;
         this.draft = bundle ? draftOf(bundle) : { name: newName, tags: [], note: "", fields: [] };
-        this.uploads = 0;
+        // Uploads running, by field: { controller, name, sent, bar }. Only the
+        // file chosen last for a field counts; an earlier upload is stopped.
+        this.transfers = new Map();
         this.saving = false;
         this.cards = [];
         this.invalid = new Set(); // fields whose number input does not parse
@@ -78,6 +80,11 @@ export class BundleEditor {
             }
         });
         this.render();
+    }
+
+    /** How many uploads are running. */
+    get uploads() {
+        return this.transfers.size;
     }
 
     get dirty() {
@@ -295,16 +302,14 @@ export class BundleEditor {
         picker.type = "file";
         picker.accept = MEDIA[kind].accept;
         picker.hidden = true;
-        const progress = el("progress", "bl-progress");
-        progress.max = 1;
-        progress.hidden = true;
         picker.addEventListener("change", () => {
-            if (picker.files[0]) void this.setFile(field, picker.files[0], error, progress);
+            if (picker.files[0]) void this.setFile(field, picker.files[0], error);
             picker.value = "";
         });
         const choose = button(field.asset ? "Replace…" : `Choose ${NOUN[kind]}…`);
         choose.addEventListener("click", () => picker.click());
         const verb = kind === "image" ? "Drop or paste" : "Drop";
+        const upload = this.uploadStatus(field);
         if (field.asset) {
             const meta = el("div", "bl-media-meta");
             meta.append(el("div", null, describeAsset(kind, field.asset)));
@@ -316,12 +321,14 @@ export class BundleEditor {
             });
             const actions = el("div", "bl-row-buttons");
             actions.append(choose, clear);
-            meta.append(actions, progress, el("div", "bl-hint", `${verb} ${NOUN[kind]} to replace it.`));
+            meta.append(actions, upload ?? el("div", "bl-hint", `${verb} ${NOUN[kind]} to replace it.`));
             box.append(this.mediaPreview(field), meta);
+        } else if (upload) {
+            box.append(upload);
         } else {
             const drop = el("div", "bl-drop", `${verb} ${NOUN[kind]} here, or `);
             drop.append(choose);
-            box.append(drop, progress);
+            box.append(drop);
         }
         box.append(picker);
         // The card takes drops and, once focused (click it), pastes.
@@ -336,15 +343,30 @@ export class BundleEditor {
             e.preventDefault();
             card.classList.remove("drop-target");
             const file = e.dataTransfer?.files?.[0];
-            if (file) void this.setFile(field, file, error, progress);
+            if (file) void this.setFile(field, file, error);
         });
         card.addEventListener("paste", (e) => {
             const file = e.clipboardData?.files?.[0];
             if (!file) return;
             e.preventDefault();
-            void this.setFile(field, file, error, progress);
+            void this.setFile(field, file, error);
         });
         return box;
+    }
+
+    /** The field's upload in progress, with a Cancel button, or null when none runs. */
+    uploadStatus(field) {
+        const transfer = this.transfers.get(field);
+        if (!transfer) return null;
+        const status = el("div", "bl-upload");
+        const bar = el("progress", "bl-progress");
+        bar.max = 1;
+        bar.value = transfer.sent;
+        transfer.bar = bar; // a re-render makes a new bar; progress goes to the latest
+        const cancel = button("Cancel upload");
+        cancel.addEventListener("click", () => this.cancelUpload(field));
+        status.append(el("div", null, `Uploading ${transfer.name}…`), bar, cancel);
+        return status;
     }
 
     mediaPreview(field) {
@@ -366,33 +388,68 @@ export class BundleEditor {
         return player;
     }
 
-    async setFile(field, file, error, progress) {
+    async setFile(field, file, error) {
         const kind = field.type;
         error.hidden = true;
-        const fail = (message) => {
+        const problem = fileProblem(file, kind);
+        if (problem) return this.fileFailed(error, problem);
+        this.stopUpload(field);
+        const name = file.name || (kind === "image" ? "pasted.png" : kind);
+        const transfer = { controller: new AbortController(), name, sent: 0, bar: null };
+        this.transfers.set(field, transfer);
+        this.render();
+        this.modal.status(`Uploading ${name}…`);
+        let asset;
+        try {
+            asset = await uploadAsset(file, kind, {
+                name,
+                signal: transfer.controller.signal,
+                onProgress: (sent) => {
+                    transfer.sent = sent;
+                    if (transfer.bar) transfer.bar.value = sent;
+                },
+            });
+        } catch (e) {
+            if (this.transfers.get(field) !== transfer) return; // stopped: another file, Cancel, or the field went
+            this.transfers.delete(field);
+            this.render();
+            this.fileFailed(this.cards.find((card) => card.field === field)?.error, e.message);
+            return;
+        }
+        if (this.transfers.get(field) !== transfer) return;
+        this.transfers.delete(field);
+        field.asset = asset;
+        this.render();
+        this.modal.status(`Uploaded ${asset.original_name ?? `the ${kind}`}.`);
+    }
+
+    fileFailed(error, message) {
+        if (error) {
             error.textContent = message;
             error.hidden = false;
-            this.modal.status(message, "error");
-        };
-        const problem = fileProblem(file, kind);
-        if (problem) return fail(problem);
-        this.uploads++;
-        this.refreshState();
-        this.modal.status(`Uploading ${file.name || `the ${kind}`}…`);
-        progress.value = 0;
-        progress.hidden = false;
-        try {
-            field.asset = await uploadAsset(file, kind, (sent) => { progress.value = sent; },
-                file.name || (kind === "image" ? "pasted.png" : kind));
-            this.modal.status(`Uploaded ${field.asset.original_name ?? `the ${kind}`}.`);
-            this.render();
-        } catch (e) {
-            progress.hidden = true;
-            fail(e.message);
-        } finally {
-            this.uploads--;
-            this.refreshState();
         }
+        this.modal.status(message, "error");
+    }
+
+    /** Stop the field's upload, if one runs; its result will be ignored. */
+    stopUpload(field) {
+        const transfer = this.transfers.get(field);
+        if (!transfer) return null;
+        this.transfers.delete(field);
+        transfer.controller.abort();
+        return transfer;
+    }
+
+    cancelUpload(field) {
+        const transfer = this.stopUpload(field);
+        if (!transfer) return;
+        this.render();
+        this.modal.status(`Cancelled the upload of ${transfer.name}.`);
+    }
+
+    /** Stop everything still running; the modal calls this when it drops the editor. */
+    dispose() {
+        for (const field of [...this.transfers.keys()]) this.stopUpload(field);
     }
 
     renderAdd() {
@@ -428,6 +485,7 @@ export class BundleEditor {
                 "Remove", { danger: true });
             if (!confirmed) return;
         }
+        this.stopUpload(field);
         this.draft.fields.splice(index, 1);
         this.render();
     }
@@ -461,8 +519,9 @@ export class BundleEditor {
     refreshState() {
         const dirty = this.dirty;
         const blocker = this.blocker;
-        this.stateMark.textContent = !this.saved ? "● New, not saved yet" : dirty ? "● Unsaved changes" : "Saved";
-        this.stateMark.classList.toggle("clean", !dirty);
+        this.stateMark.textContent = this.saving ? "Saving…"
+            : !this.saved ? "● New, not saved yet" : dirty ? "● Unsaved changes" : "Saved";
+        this.stateMark.classList.toggle("clean", !dirty && !this.saving);
         this.saveButton.disabled = !dirty || !!blocker || this.saving;
         this.saveButton.title = blocker ?? "Save (Ctrl+S)";
         this.revertButton.disabled = !dirty;
@@ -480,8 +539,7 @@ export class BundleEditor {
             return;
         }
         const data = editable(this.draft);
-        this.saving = true;
-        this.saveButton.disabled = true;
+        this.setSaving(true);
         try {
             const saved = this.saved
                 ? await updateBundle(this.saved.id, data, this.saved.revision)
@@ -491,9 +549,17 @@ export class BundleEditor {
             if (error.code === "revision_conflict") await this.resolveConflict(data, error.details.current_revision);
             else this.modal.status(error.message, "error");
         } finally {
-            this.saving = false;
-            this.refreshState();
+            this.setSaving(false);
         }
+    }
+
+    /** While a save is out the editor takes no input: its answer replaces the draft. */
+    setSaving(saving) {
+        this.saving = saving;
+        if (saving && this.root.contains(document.activeElement)) this.modal.dialog.focus({ preventScroll: true });
+        this.root.inert = saving;
+        this.root.classList.toggle("saving", saving);
+        this.refreshState();
     }
 
     async adopt(saved, message) {
@@ -530,6 +596,7 @@ export class BundleEditor {
             this.modal.discardDraft();
             return;
         }
+        this.dispose(); // uploads for the dropped draft
         this.draft = draftOf(this.saved);
         this.render();
         this.modal.status("Changes discarded.");

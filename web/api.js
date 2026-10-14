@@ -99,15 +99,18 @@ export const duplicateBundle = (id, mode) => request(`/bundles/${id}/duplicate`,
 
 /**
  * Upload one file for a field of `kind` (image, video or audio); resolves to
- * the stored asset's metadata. `onProgress` gets the sent fraction (0..1):
+ * the stored asset's metadata. `onProgress` gets the sent fraction (0..1).
+ * Aborting `signal` stops the upload, which then rejects with code "aborted".
  * fetch() cannot report upload progress, so this uses XMLHttpRequest, with
  * the headers api.fetchApi() would add.
  */
-export function uploadAsset(file, kind = "image", onProgress = null, name = null) {
+export function uploadAsset(file, kind = "image", { onProgress = null, name = null, signal = null } = {}) {
     const form = new FormData();
     form.append("kind", kind); // before the file: it picks the size limit
     form.append("file", file, name ?? (file.name || "upload"));
     return new Promise((resolve, reject) => {
+        const aborted = () => reject(new ApiError("Upload cancelled.", 0, "aborted"));
+        if (signal?.aborted) return aborted();
         const xhr = new XMLHttpRequest();
         xhr.open("POST", api.apiURL(`${PREFIX}/assets`));
         xhr.setRequestHeader("X-Bundle-Library", "1");
@@ -124,6 +127,8 @@ export function uploadAsset(file, kind = "image", onProgress = null, name = null
             else reject(new ApiError(detail?.message ?? `Upload failed: HTTP ${xhr.status}`, xhr.status, detail?.code, detail));
         });
         xhr.addEventListener("error", () => reject(new ApiError("Could not reach ComfyUI.", 0, "network")));
+        xhr.addEventListener("abort", aborted);
+        signal?.addEventListener("abort", () => xhr.abort(), { once: true });
         xhr.send(form);
     });
 }
