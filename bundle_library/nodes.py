@@ -131,7 +131,10 @@ class LoadBundle(io.ComfyNode):
                 values.append(None)  # not linked, so nothing reads it
             elif field_type in MEDIA_TYPES:
                 load = {"image": load_image, "video": load_video, "audio": load_audio}[field_type]
-                values.append(load(store.assets.path(field["asset"]["sha256"])))
+                try:
+                    values.append(load(store.assets.path(field["asset"]["sha256"])))
+                except ValueError as e:
+                    raise ValueError(f"Bundle '{bundle['name']}', field '{name}': {e}") from e
             else:
                 values.append(field["value"])
         values += [None] * (POOL_SIZE - len(values))

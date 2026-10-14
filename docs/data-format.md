@@ -62,9 +62,9 @@ bundle_library/
 | `text` | `value`: 문자열 | STRING | 빈 값 허용. 공백·개행을 바꾸지 않는다. UTF-8로 1MB까지 |
 | `image` | `asset`: 객체 또는 `null` | IMAGE | `asset.sha256`은 먼저 올린 이미지 파일이어야 한다 |
 | `video` | `asset`: 객체 또는 `null` | VIDEO | 먼저 올린 비디오 파일. core Load Video처럼 파일을 그대로 넘기고, 쓰일 때 디코딩한다 |
-| `audio` | `asset`: 객체 또는 `null` | AUDIO | 먼저 올린 오디오 파일. core Load Audio처럼 전부 디코딩해 `{"waveform": [1, 채널, 샘플], "sample_rate"}`로 내보낸다 |
+| `audio` | `asset`: 객체 또는 `null` | AUDIO | 먼저 올린 오디오 파일. core Load Audio처럼 전부 디코딩해 `{"waveform": [1, 채널, 샘플], "sample_rate"}`로 내보낸다. waveform은 float32이고, 64비트 float 파일만 core처럼 float64다 |
 | `boolean` | `value`: `true`/`false` | BOOLEAN | 0·1은 받지 않는다 |
-| `int` | `value`: 정수 | INT | 64비트 범위. `true`/`false`는 받지 않는다 |
+| `int` | `value`: 정수 | INT | ±9,007,199,254,740,991(±(2^53−1), JavaScript의 안전 정수). 브라우저가 JSON 숫자를 double로 읽으므로 이보다 큰 값은 편집기를 거치며 바뀐다. `true`/`false`는 받지 않는다 |
 | `float` | `value`: 숫자 | FLOAT | 유한값만 |
 
 - 파일 필드(`image`, `video`, `audio`)의 `asset`에는 `sha256`과 표시용 `original_name` 말고도
@@ -74,7 +74,8 @@ bundle_library/
   - `image`: `width`, `height` (EXIF 방향을 적용해 보이는 크기)
   - `video`: `width`, `height`, `fps`, `duration`(초), `codec`, `has_audio`, 소리가 있으면
     `audio_codec`
-  - `audio`: `duration`(초), `sample_rate`, `channels`, `codec`
+  - `audio`: `duration`(초), `sample_rate`, `channels`, `codec`. `duration`은 파일 헤더의 길이이고,
+    헤더에 없으면 디코딩해 센 길이다
 - 파일의 종류는 필드 타입과 같아야 한다. 이미지 파일을 `video` 필드에 넣으면 `wrong_kind`로
   거부한다.
 - 필드 이름은 번들 안에서 고유하다. 대소문자를 구분하는데, 로더가 이름을 그대로 비교하기
@@ -93,18 +94,23 @@ bundle_library/
 | JSON 요청 본문 | 4MB |
 | 이미지 | PNG, JPEG, WebP. 파일 50MB, 6,400만 픽셀 |
 | 비디오 | MP4, WebM(VP8·VP9·AV1과 Opus·Vorbis), MOV. 파일 1GB, 프레임당 7680×4320 픽셀 |
-| 오디오 | WAV, FLAC, MP3, OGG(Opus·Vorbis), M4A. 파일 200MB, 길이 10분 |
+| 오디오 | WAV, FLAC, MP3, OGG(Opus·Vorbis), M4A. 파일 200MB, 길이 10분, 채널 8개, 샘플레이트 192kHz, 샘플 5,760만 개(모든 채널 합계, 48kHz 스테레오 10분). 샘플 형식은 16·24·32비트 정수와 32·64비트 float |
 | 썸네일 크기 | 128, 256, 512 |
 
 ## 에셋
 
 - 확장자와 MIME 타입을 믿지 않는다.
   - 이미지는 Pillow의 PNG·JPEG·WebP 디코더로만 열어 끝까지 디코딩해 본다.
-  - 비디오와 오디오는 PyAV로 열어 컨테이너와 코덱을 확인하고 첫 프레임을 디코딩해 본다.
-    MP4·MOV·M4A는 같은 형식(ISO 미디어)이라 브랜드와 스트림으로 구분한다. 브랜드가 `qt`면
+  - 비디오와 오디오는 PyAV로 열어 컨테이너와 코덱을 확인한다. 비디오는 첫 프레임을 디코딩해
+    본다. MP4·MOV·M4A는 같은 형식(ISO 미디어)이라 브랜드와 스트림으로 구분한다. 브랜드가 `qt`면
     MOV, 비디오 스트림이 있으면 MP4, 소리만 있으면 M4A다. MP3·M4A의 앨범 그림은 비디오로 보지
     않는다.
-  - 허용하지 않는 형식이나 종류가 다른 파일은 415, 깨진 파일은 400, 픽셀 수·길이 초과는 413이다.
+  - 오디오는 실행할 때 메모리에 통째로 디코딩되므로, 올릴 때 끝까지 디코딩해 실제 샘플 수로
+    길이와 샘플 제한을 판정한다. 헤더의 길이는 믿지 않는다. 8비트·64비트 정수 샘플처럼 core의
+    AUDIO 변환이 받지 않는 형식은 거부한다. 실행할 때도 같은 제한을 넘으면 그 자리에서 디코딩을
+    멈추고 실패한다.
+  - 허용하지 않는 형식이나 종류가 다른 파일, 채널·샘플레이트·샘플 형식이 범위 밖인 오디오는
+    415, 깨진 파일은 400, 픽셀 수·길이·샘플 수 초과는 413이다.
 - 원본 바이트를 바꾸지 않고 SHA-256 이름으로 저장한다. 같은 내용을 다시 올리면 기존 파일을
   쓴다.
 - 지운 번들이 쓰던 파일도 남겨 둔다. 쓰이지 않는 파일 정리는 다음 단계의 관리 기능이다.
@@ -163,11 +169,11 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415).
 | 400 | `unsupported_type` | 지원하지 않는 필드 타입 |
 | 400 | `unknown_asset` | 올린 적 없는 파일을 가리킴 |
 | 400 | `wrong_kind` | 파일의 종류가 필드 타입과 다름 (예: `video` 필드의 이미지) |
-| 400 | `corrupt_image`, `corrupt_media` | 이미지를 끝까지, 또는 비디오·오디오의 첫 프레임을 디코딩할 수 없음 |
+| 400 | `corrupt_image`, `corrupt_media` | 이미지나 오디오를 끝까지, 또는 비디오의 첫 프레임을 디코딩할 수 없음 |
 | 403 | `missing_header`, `cross_site`, `origin_mismatch` | 쓰기 요청의 조건 위반 |
 | 404 | `not_found` | 번들이나 파일이 없음, 오디오의 썸네일 |
 | 409 | `name_conflict` | 같은 이름의 번들이 있음 |
 | 409 | `revision_conflict` | `expected_revision`이 현재와 다름. `current_revision`을 함께 준다 |
-| 413 | `too_large`, `too_many_pixels`, `too_long` | 본문·파일 크기, 픽셀 수, 오디오 길이 초과 |
+| 413 | `too_large`, `too_many_pixels`, `too_long`, `too_many_samples` | 본문·파일 크기, 픽셀 수, 오디오 길이, 오디오 샘플 수 초과 |
 | 415 | `unsupported_media_type`, `unsupported_format` | 본문 형식이 맞지 않음, 허용하지 않는 파일 형식이거나 필드와 종류가 다른 파일 |
 | 500 | `corrupt_bundle`, `internal` | 번들 파일을 읽을 수 없음, 그 밖의 서버 오류 (자세한 내용은 ComfyUI 로그) |

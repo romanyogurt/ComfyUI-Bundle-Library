@@ -38,7 +38,17 @@ MAX_IMAGE_PIXELS = 64_000_000
 MAX_VIDEO_BYTES = 1024 * 1024 * 1024
 MAX_VIDEO_PIXELS = 7680 * 4320  # per frame
 MAX_AUDIO_BYTES = 200 * 1024 * 1024
-MAX_AUDIO_SECONDS = 10 * 60  # audio is decoded whole into memory when it runs
+# Audio is decoded whole into memory when it runs, so its decoded size is
+# limited too: samples of all channels together, as many as 10 minutes of
+# 48 kHz stereo (about 230 MB as float32). Uploads are decoded to the end to
+# count them; the length a file's header claims is not trusted.
+MAX_AUDIO_SECONDS = 10 * 60
+MAX_AUDIO_SAMPLES = 48_000 * 2 * 10 * 60
+MAX_AUDIO_CHANNELS = 8
+MAX_AUDIO_RATE = 192_000
+# Decoded sample formats (PyAV names) that core's AUDIO conversion takes:
+# 16- and 32-bit integers (24-bit files decode as 32-bit) and floats.
+AUDIO_SAMPLE_FORMATS = {"s16", "s16p", "s32", "s32p", "flt", "fltp", "dbl", "dblp"}
 
 # Pillow format -> (stored extension, MIME type). Nothing else is accepted.
 IMAGE_FORMATS = {

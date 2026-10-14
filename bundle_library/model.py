@@ -14,7 +14,9 @@ ASSET_EXTENSIONS = {e for e, _ in IMAGE_FORMATS.values()} | set(VIDEO_EXTENSIONS
 CODEC_RE = re.compile(r"^[a-z0-9_.-]{1,32}$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-INT_MIN, INT_MAX = -(2 ** 63), 2 ** 63 - 1
+# JavaScript's safe integers: the browser reads JSON numbers as doubles, so a
+# larger value would change on its way through the editor.
+INT_MIN, INT_MAX = -(2 ** 53 - 1), 2 ** 53 - 1
 
 # Characters that may not appear in a name: line breaks and the bidi controls
 # that make a name read differently from what it is.
@@ -108,7 +110,7 @@ def _value(field_type, value, label):
         if isinstance(value, bool) or not isinstance(value, int):
             raise invalid(f"{label}: must be an integer.")
         if not INT_MIN <= value <= INT_MAX:
-            raise invalid(f"{label}: outside the 64-bit integer range.")
+            raise invalid(f"{label}: must be between {INT_MIN:,} and {INT_MAX:,}.")
         return value
     # float
     if isinstance(value, bool) or not isinstance(value, (int, float)):

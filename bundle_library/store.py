@@ -19,6 +19,7 @@ from .model import LibraryError, check_bundle_id, empty_value, name_key, normali
 FORMAT = "comfyui-bundle-library/bundle"
 SCHEMA_VERSION = 1
 TEXT_PREVIEW = 200
+SYNC_FOLDERS = os.name != "nt"  # Windows cannot open a folder to sync it
 
 
 def _now():
@@ -37,11 +38,12 @@ def _write_json(path, data, tmp_dir):
         os.replace(temp, path)
     finally:
         temp.unlink(missing_ok=True)
-    folder = os.open(path.parent, os.O_RDONLY)
-    try:
-        os.fsync(folder)
-    finally:
-        os.close(folder)
+    if SYNC_FOLDERS:
+        folder = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(folder)
+        finally:
+            os.close(folder)
 
 
 def _reason(error):

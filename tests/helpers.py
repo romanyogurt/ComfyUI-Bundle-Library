@@ -38,6 +38,14 @@ def gif():
     return encode(Image.new("P", (8, 8)), "GIF")
 
 
+def apng(frames=24, size=(64, 48)):
+    """An animated PNG whose frames differ in colour."""
+    images = [Image.new("RGB", size, (i * 10, 255 - i * 10, 128)) for i in range(frames)]
+    out = io.BytesIO()
+    images[0].save(out, "PNG", save_all=True, append_images=images[1:], duration=40)
+    return out.getvalue()
+
+
 def _samples(sample_format, channels, count, amplitude=0.2, step=0):
     """`count` samples of a tone in the layout and type an encoder wants."""
     t = (np.arange(count) + step) / 8000
@@ -45,6 +53,8 @@ def _samples(sample_format, channels, count, amplitude=0.2, step=0):
     planar = sample_format.endswith("p")
     kind = sample_format.rstrip("p")
     data = np.stack([tone] * channels) if planar else np.repeat(tone, channels)[None, :]
+    if kind == "u8":
+        return (data * 127 + 128).astype(np.uint8)
     if kind == "s16":
         return (data * 32767).astype(np.int16)
     if kind == "s32":
@@ -62,6 +72,8 @@ def _audio_stream(container, codec, rate, channels=2):
 def _encode_tone(container, stream, rate, seconds):
     channels = stream.codec_context.channels
     sample_format = stream.codec_context.format.name
+    # PyAV makes no s64 frames from arrays; the encoder converts s32 ones.
+    sample_format = {"s64": "s32", "s64p": "s32p"}.get(sample_format, sample_format)
     size = stream.codec_context.frame_size or 1024
     total = int(rate * seconds)
     for start in range(0, total, size):
@@ -99,6 +111,15 @@ def audio(fmt="wav", codec="pcm_s16le", seconds=1.0, rate=8000, channels=2):
     with av.open(out, "w", format=fmt) as container:
         _encode_tone(container, _audio_stream(container, codec, rate, channels), rate, seconds)
     return out.getvalue()
+
+
+def flac_claiming(samples, seconds=2.0, rate=8000):
+    """A FLAC of `seconds` whose header claims `samples` per channel (0: unknown length)."""
+    data = bytearray(audio("flac", "flac", seconds=seconds, rate=rate))
+    # STREAMINFO bytes 18-25: sample rate (20 bits), channels (3), bits (5), total samples (36)
+    word = int.from_bytes(data[18:26], "big")
+    data[18:26] = (word & ~((1 << 36) - 1) | samples).to_bytes(8, "big")
+    return bytes(data)
 
 
 def mp3_with_cover():

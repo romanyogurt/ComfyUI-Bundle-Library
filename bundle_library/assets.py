@@ -12,7 +12,8 @@ import av
 from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .constants import (
-    AUDIO_EXTENSIONS, IMAGE_FORMATS, MAX_AUDIO_BYTES, MAX_AUDIO_SECONDS, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS,
+    AUDIO_EXTENSIONS, AUDIO_SAMPLE_FORMATS, IMAGE_FORMATS, MAX_AUDIO_BYTES, MAX_AUDIO_CHANNELS, MAX_AUDIO_RATE,
+    MAX_AUDIO_SAMPLES, MAX_AUDIO_SECONDS, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS,
     MAX_VIDEO_BYTES, MAX_VIDEO_PIXELS, THUMBNAIL_SIZES, VIDEO_EXTENSIONS,
 )
 from .model import LibraryError, check_sha256, clean_original_name
@@ -51,7 +52,8 @@ class AssetStore:
         self.limits = {
             "image": {"bytes": max_bytes, "pixels": max_pixels},
             "video": {"bytes": MAX_VIDEO_BYTES, "pixels": MAX_VIDEO_PIXELS},
-            "audio": {"bytes": MAX_AUDIO_BYTES, "seconds": MAX_AUDIO_SECONDS},
+            "audio": {"bytes": MAX_AUDIO_BYTES, "seconds": MAX_AUDIO_SECONDS, "samples": MAX_AUDIO_SAMPLES,
+                      "channels": MAX_AUDIO_CHANNELS, "rate": MAX_AUDIO_RATE},
         }
         self._meta = {}  # sha256 -> metadata read from the file; files never change
 
@@ -111,7 +113,8 @@ class AssetStore:
 
     def _check_media(self, path, kind):
         """(extension, metadata) of a file that must be a video or audio file of
-        an accepted kind within the limits, whose first frame decodes."""
+        an accepted kind within the limits. A video's first frame must decode;
+        audio is decoded to the end, since it is loaded whole when it runs."""
         limits = self.limits[kind]
         try:
             container = av.open(str(path))
@@ -124,15 +127,14 @@ class AssetStore:
                     413, "too_many_pixels",
                     f"The video is too large ({meta['width']}×{meta['height']}); "
                     f"the limit is {limits['pixels']:,} pixels per frame.")
-            if kind == "audio" and meta.get("duration", 0) > limits["seconds"]:
-                raise _too_long(meta["duration"], limits["seconds"])
+            if kind == "audio":
+                _check_audio_shape(meta, limits)
             try:
-                frames = container.decode(_video_stream(container) if kind == "video" else container.streams.audio[0])
-                first = next(frames)  # a broken file is refused now, not at run time
-                if kind == "audio" and "duration" not in meta:
-                    meta["duration"] = _measure(first, frames, limits["seconds"])
-                    if meta["duration"] > limits["seconds"]:
-                        raise _too_long(meta["duration"], limits["seconds"])
+                if kind == "video":
+                    next(container.decode(_video_stream(container)))  # a broken file is refused now, not at run time
+                else:
+                    seconds = _decode_audio(container, limits, meta.get("duration"))
+                    meta.setdefault("duration", seconds)  # the header's length is shown when it has one
             except LibraryError:
                 raise
             except (StopIteration, av.error.FFmpegError, OSError, ValueError):
@@ -256,7 +258,10 @@ def _read_meta(path, kind):
                 width, height = height, width
         return {"width": width, "height": height}
     with av.open(str(path)) as container:
-        return _describe(container, kind)[1]
+        meta = _describe(container, kind)[1]
+        if kind == "audio" and "duration" not in meta:
+            meta["duration"] = _decode_audio(container)
+        return meta
 
 
 def _codec(stream):
@@ -275,19 +280,59 @@ def _duration(container, stream):
     return None
 
 
-def _measure(first, frames, limit):
-    """Seconds of audio, counted by decoding; stops a little past `limit`."""
-    seconds = first.samples / first.sample_rate
-    for frame in frames:
-        seconds += frame.samples / frame.sample_rate
-        if seconds > limit:
-            break
-    return round(seconds, 3)
+def _check_audio_shape(meta, limits):
+    channels, rate = meta["channels"], meta["sample_rate"]
+    if channels > limits["channels"]:
+        raise LibraryError(415, "unsupported_format",
+                           f"The audio has {channels} channels; the limit is {limits['channels']}.")
+    if rate > limits["rate"]:
+        raise LibraryError(415, "unsupported_format",
+                           f"The audio's sample rate is {rate / 1000:g} kHz; the limit is {limits['rate'] / 1000:g} kHz.")
 
 
-def _too_long(seconds, limit):
-    return LibraryError(413, "too_long",
-                        f"The audio is too long ({_clock(seconds)}); the limit is {limit // 60} minutes.")
+def _decode_audio(container, limits=None, claimed=None):
+    """Seconds of audio in the container's first audio stream, counted by
+    decoding all of it. With `limits`, refuses a sample format the loader
+    cannot output and stops at the first frame past a limit; `claimed` is the
+    length the header gives, for the message."""
+    stream = container.streams.audio[0]
+    rate, channels = stream.codec_context.sample_rate, stream.channels
+    samples = 0
+    for frame in container.decode(stream):
+        samples += frame.samples
+        if limits is None:
+            continue
+        if frame.format.name not in AUDIO_SAMPLE_FORMATS:
+            name = {"u8": "8-bit", "u8p": "8-bit", "s64": "64-bit integer", "s64p": "64-bit integer"}.get(
+                frame.format.name, frame.format.name)
+            raise LibraryError(415, "unsupported_format",
+                               f"The audio's sample format ({name}) cannot be loaded; "
+                               "use 16-, 24- or 32-bit PCM, or floating point.")
+        problem = audio_overflow(samples, channels, rate, limits, claimed)
+        if problem:
+            raise LibraryError(413, *problem)
+    if samples == 0:
+        raise ValueError("no audio frames")
+    return round(samples / rate, 3)
+
+
+def audio_overflow(samples, channels, rate, limits, claimed=None):
+    """(code, message) if `samples` per channel of audio pass the `limits`
+    (seconds, and samples of all channels), else None. Used on upload and when
+    the audio is loaded; `claimed` is a length in seconds to show if known."""
+    if samples > limits["seconds"] * rate:
+        length = f" ({_clock(claimed)})" if claimed and claimed > limits["seconds"] else ""
+        return "too_long", f"The audio is too long{length}; the limit is {_span(limits['seconds'])}."
+    if samples * channels > limits["samples"]:
+        return "too_many_samples", (
+            f"The audio is too large to load: with {channels} channel{'s' if channels > 1 else ''} at "
+            f"{rate / 1000:g} kHz it may last at most {_clock(limits['samples'] / channels / rate)}.")
+    return None
+
+
+def _span(seconds):
+    count, unit = (seconds // 60, "minute") if seconds % 60 == 0 else (seconds, "second")
+    return f"{count:g} {unit}{'' if count == 1 else 's'}"
 
 
 def _clock(seconds):

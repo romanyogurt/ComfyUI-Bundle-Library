@@ -99,6 +99,39 @@ class MediaTest(unittest.TestCase):
         message = self.refused(helpers.audio(seconds=121), "audio", 413, "too_long")
         self.assertIn("(2:01); the limit is 2 minutes", message)
 
+    def test_audio_length_is_counted_not_read_from_the_header(self):
+        self.assets.limits["audio"]["seconds"] = 1
+        claims_less = helpers.flac_claiming(800)  # the header says 0.1 s; the file holds 2 s
+        self.assertEqual(self.refused(claims_less, "audio", 413, "too_long"),
+                         "The audio is too long; the limit is 1 second.")
+        self.refused(helpers.flac_claiming(0), "audio", 413, "too_long")  # no length in the header
+        self.assets.limits["audio"]["seconds"] = 3
+        info = self.ingest(helpers.flac_claiming(0), "audio")
+        self.assertAlmostEqual(info["duration"], 2.0, delta=0.01)
+        again = AssetStore(self.root, self.root / "tmp").info(info["sha256"])  # read back: counted again
+        self.assertAlmostEqual(again["duration"], 2.0, delta=0.01)
+
+    def test_audio_channels_rate_and_samples_are_limited(self):
+        limits = self.assets.limits["audio"]
+        limits["channels"] = 1
+        self.assertIn("2 channels; the limit is 1", self.refused(helpers.audio(), "audio", 415, "unsupported_format"))
+        limits["channels"], limits["rate"] = 8, 16000
+        self.assertIn("44.1 kHz; the limit is 16 kHz", self.refused(
+            helpers.audio("mp3", "libmp3lame", rate=44100), "audio", 415, "unsupported_format"))
+        limits["samples"] = 16000  # 1 s of 8 kHz stereo, or 2 s of mono
+        message = self.refused(helpers.audio(seconds=1.5), "audio", 413, "too_many_samples")
+        self.assertIn("with 2 channels at 8 kHz it may last at most 0:01", message)
+        self.assertAlmostEqual(self.ingest(helpers.audio(seconds=1.5, channels=1), "audio")["duration"], 1.5, delta=0.01)
+
+    def test_only_sample_formats_the_loader_can_output(self):
+        for codec in ("pcm_s16le", "pcm_s24le", "pcm_s32le", "pcm_f32le", "pcm_f64le"):
+            with self.subTest(codec=codec):
+                self.assertEqual(self.ingest(helpers.audio(codec=codec), "audio")["codec"], codec)
+        for codec, name in (("pcm_u8", "8-bit"), ("pcm_s64le", "64-bit integer")):
+            with self.subTest(codec=codec):
+                message = self.refused(helpers.audio(codec=codec), "audio", 415, "unsupported_format")
+                self.assertIn(f"({name}) cannot be loaded", message)
+
     def test_video_poster(self):
         info = self.ingest(helpers.video("mp4", "libx264", size=(320, 240), frames=24, fps=24), "video")
         path = self.assets.thumbnail(info["sha256"], 128)

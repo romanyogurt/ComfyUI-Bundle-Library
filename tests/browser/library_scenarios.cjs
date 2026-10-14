@@ -227,6 +227,11 @@ const LIB_HELPERS = () => {
     check("integer: 4.5 is refused on the card and blocks saving",
         st.fields[5].error === "Enter a whole number." && !st.buttons.Save && st.saveTitle === "Fix the marked values first.",
         { error: st.fields[5].error, save: st.buttons.Save, title: st.saveTitle });
+    await fields.nth(5).locator("input.bl-number").fill("9007199254740993");
+    st = await state();
+    check("integer: past JavaScript's safe integers is refused with the range",
+        st.fields[5].error === "Whole numbers must be within ±9,007,199,254,740,991." && !st.buttons.Save,
+        { error: st.fields[5].error, save: st.buttons.Save });
     await fields.nth(5).locator("input.bl-number").fill("42");
     await fields.nth(6).locator("input.bl-number").fill("0.35");
     await fields.nth(6).locator(".bl-field-name").fill("prompt");

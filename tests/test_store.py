@@ -7,6 +7,7 @@ import time
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 from bundle_library.model import LibraryError
 from bundle_library.store import BundleStore
@@ -206,6 +207,19 @@ class StoreTest(unittest.TestCase):
         bundle = self.store.create(self.data())
         self.store.update(bundle["id"], self.data(), 1)
         self.assertEqual(list((self.root / "tmp").iterdir()), [])
+
+    def test_saving_on_windows_does_not_sync_the_folder(self):
+        real_open = os.open
+
+        def no_folders(path, flags, *args, **kwargs):
+            if Path(path).is_dir():
+                raise PermissionError(13, "Permission denied")  # what Windows answers
+            return real_open(path, flags, *args, **kwargs)
+
+        with mock.patch("bundle_library.store.SYNC_FOLDERS", False), mock.patch("bundle_library.store.os.open", no_folders):
+            bundle = self.store.create(self.data())
+            self.store.update(bundle["id"], self.data(note="saved"), 1)
+        self.assertEqual(self.store.get(bundle["id"])["note"], "saved")
 
     def test_invalid_ids(self):
         for call in (lambda: self.store.get("../../etc/passwd"), lambda: self.store.delete("x", 1)):

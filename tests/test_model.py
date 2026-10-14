@@ -102,7 +102,8 @@ class NormalizeBundleTest(unittest.TestCase):
             dict(type="boolean", value=1),
             dict(type="int", value=True),
             dict(type="int", value=1.5),
-            dict(type="int", value=2 ** 63),
+            dict(type="int", value=2 ** 53),  # past JavaScript's safe integers
+            dict(type="int", value=-(2 ** 53)),
             dict(type="float", value="1"),
             dict(type="float", value=float("nan")),
             dict(type="float", value=float("inf")),
@@ -111,7 +112,8 @@ class NormalizeBundleTest(unittest.TestCase):
         for field in refused:
             with self.subTest(field=field):
                 self.assertRefused(with_field(**field))
-        self.assertEqual(normalize_bundle(with_field(type="int", value=-(2 ** 63)))["fields"][0]["value"], -(2 ** 63))
+        for edge in (2 ** 53 - 1, -(2 ** 53 - 1)):
+            self.assertEqual(normalize_bundle(with_field(type="int", value=edge))["fields"][0]["value"], edge)
         self.assertEqual(normalize_bundle(with_field(type="text", value=""))["fields"][0]["value"], "")
 
     def test_tags_are_deduplicated_and_limited(self):

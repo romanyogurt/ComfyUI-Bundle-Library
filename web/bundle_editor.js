@@ -275,7 +275,9 @@ export class BundleEditor {
                     field.value = value;
                     this.invalid.delete(field);
                 } else {
-                    error.textContent = field.type === "int" ? "Enter a whole number." : "Enter a number.";
+                    error.textContent = field.type !== "int" ? "Enter a number."
+                        : Number.isInteger(value) ? `Whole numbers must be within ±${Number.MAX_SAFE_INTEGER.toLocaleString("en-US")}.`
+                        : "Enter a whole number.";
                     this.invalid.add(field);
                 }
                 this.refreshState();
