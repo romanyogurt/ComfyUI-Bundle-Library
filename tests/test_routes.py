@@ -86,6 +86,12 @@ class RoutesTest(AioHTTPTestCase):
             "delete for good": lambda headers: self.client.delete(f"{P}/trash/{SOME_ID}", headers=headers),
             "empty trash": lambda headers: self.client.delete(P + "/trash", headers=headers),
             "cleanup": lambda headers: self.client.post(P + "/cleanup", json={"sha256": []}, headers=headers),
+            "new category": lambda headers: self.client.post(P + "/categories", json={"name": "x"}, headers=headers),
+            "rename category": lambda headers: self.client.patch(f"{P}/categories/{SOME_ID}", json={"name": "y"},
+                                                                 headers=headers),
+            "delete category": lambda headers: self.client.delete(f"{P}/categories/{SOME_ID}", headers=headers),
+            "place": lambda headers: self.client.put(path + "/category", json={"category": None}, headers=headers),
+            "star": lambda headers: self.client.put(path + "/favorite", json={"favorite": True}, headers=headers),
         }
         refusals = [({}, "missing_header"), ({**WRITE, "Sec-Fetch-Site": "same-site"}, "cross_site"),
                     ({**WRITE, "Origin": "null"}, "origin_mismatch"),
@@ -251,6 +257,31 @@ class RoutesTest(AioHTTPTestCase):
         await self.error(await self.client.get(P + "/cleanup"), 409, "unreadable_bundles")
         await self.body(await self.client.delete(f"{P}/trash/{newer}?unreadable=1", headers=WRITE), 200)
         self.assertFalse((self.root / "bundles" / f"{newer}.json").exists())
+
+    async def test_categories_and_favorites(self):
+        heroes = await self.body(await self.client.post(P + "/categories", json={"name": "Heroes"}, headers=WRITE), 201)
+        await self.error(await self.client.post(P + "/categories", json={"name": "heroes"}, headers=WRITE),
+                         409, "category_conflict")
+        await self.error(await self.client.post(P + "/categories", json={"name": "Child", "parent": heroes["id"]},
+                                                headers=WRITE), 400, "nesting_not_supported")
+        data = {**await self.bundle_data(), "category": heroes["id"]}
+        bundle = await self.body(await self.client.post(P + "/bundles", json=data, headers=WRITE), 201)
+        self.assertNotIn("placement_error", bundle)
+        await self.body(await self.client.put(f"{P}/bundles/{bundle['id']}/favorite", json={"favorite": True},
+                                              headers=WRITE), 200)
+        listing = await self.body(await self.client.get(P + "/bundles"), 200)
+        self.assertEqual((listing["bundles"][0]["category"], listing["bundles"][0]["favorite"]), (heroes["id"], True))
+        self.assertEqual([(c["name"], c["count"]) for c in listing["categories"]], [("Heroes", 1)])
+        renamed = await self.body(await self.client.patch(f"{P}/categories/{heroes['id']}", json={"name": "Allies"},
+                                                          headers=WRITE), 200)
+        self.assertEqual(renamed["name"], "Allies")
+        self.assertEqual((await self.body(await self.client.get(P + "/categories"), 200))["categories"][0]["name"],
+                         "Allies")
+        deleted = await self.body(await self.client.delete(f"{P}/categories/{heroes['id']}", headers=WRITE), 200)
+        self.assertEqual(deleted["uncategorized"], 1)
+        await self.error(await self.client.put(f"{P}/bundles/{bundle['id']}/category", json={"category": "../x"},
+                                               headers=WRITE), 400, "invalid_id")
+        self.assertEqual((await self.body(await self.client.get(f"{P}/bundles/{bundle['id']}"), 200))["revision"], 1)
 
     async def test_writes_from_a_page_of_another_version_are_refused(self):
         data = await self.bundle_data()

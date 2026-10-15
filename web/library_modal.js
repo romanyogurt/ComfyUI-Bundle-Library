@@ -1,9 +1,13 @@
-// The library modal: the bundle list on the left, the editor on the right.
-// It is a document.body overlay of its own: ComfyUI's dialogs need Vue
-// components, and they would open underneath it.
-import { CHANGED_EVENT, getBundle, listBundles, listTrash, searchBundleIds, thumbnailURL } from "./api.js";
+// The library modal: the bundle list on the left, grouped by category, and
+// the editor on the right. It is a document.body overlay of its own: ComfyUI's
+// dialogs need Vue components, and they would open underneath it.
+import {
+    CHANGED_EVENT, createCategory, deleteCategory, getBundle, listLibrary, listTrash, purgeBundle, renameCategory,
+    searchBundleIds, setCategory, setFavorite, thumbnailURL,
+} from "./api.js";
 import { BundleEditor } from "./bundle_editor.js";
-import { button, el } from "./dom.js";
+import { button, el, menu } from "./dom.js";
+import { ATTENTION, CATEGORY, FAVORITES, UNCATEGORIZED, compactGroups, groupBundles, groupLabel } from "./groups.js";
 import { displayNames } from "./names.js";
 import { slotStatuses } from "./reconcile.js";
 import { TrashPanel } from "./trash_panel.js";
@@ -12,6 +16,37 @@ let current = null;
 
 // Caught on window while the modal is open; see build().
 const STRAY_EVENTS = ["keydown", "keyup", "keypress", "paste", "copy", "cut"];
+
+// What a bundle row carries while dragged onto a group. Files dragged in from
+// outside do not have it and are not taken for a move.
+const DRAG_TYPE = "application/x-bundle-library-bundle";
+
+// The groups collapsed in this browser. Only a convenience: without storage
+// every group starts expanded.
+const COLLAPSED_KEY = "bundle-library.collapsed-groups";
+
+function loadCollapsed() {
+    try {
+        const keys = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]");
+        return new Set(Array.isArray(keys) ? keys.filter((key) => typeof key === "string") : []);
+    } catch {
+        return new Set();
+    }
+}
+
+function saveCollapsed(keys) {
+    try {
+        localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...keys]));
+    } catch {
+        // not kept for the next time
+    }
+}
+
+const EMPTY_GROUP = {
+    [FAVORITES]: "Star a bundle (☆) to list it here as well.",
+    [CATEGORY]: "No bundles. Drag one here, or choose this category in the editor.",
+    [UNCATEGORIZED]: "Every bundle is in a category.",
+};
 
 /**
  * Open the library. With `onPick` it is the bundle picker of a Load Bundle
@@ -29,6 +64,13 @@ class LibraryModal {
         this.linked = linked;
         this.selectedId = selected;
         this.all = [];
+        this.errors = []; // the files this version cannot use, shown under Needs attention
+        this.categories = [];
+        this.organization = { revision: 0, state: "missing" };
+        this.collapsed = loadCollapsed();
+        // Changes of categories and favorites go out one after another (see organize()).
+        this.organizeQueue = Promise.resolve();
+        this.organizing = 0;
         this.matches = null;
         this.editor = null;
         this.trashPanel = null; // shown in the pane instead of an editor
@@ -83,9 +125,13 @@ class LibraryModal {
         const body = el("div", "bl-modal-body");
         const side = el("div", "bl-modal-side");
         this.list = el("div", "bl-modal-list");
+        const sideFooter = el("div", "bl-side-footer");
+        this.newCategoryButton = button("+ New category", "bl-btn bl-new-category");
+        this.newCategoryButton.addEventListener("click", () => void this.newCategory());
         this.trashButton = button("🗑 Trash", "bl-btn bl-trash-button");
         this.trashButton.addEventListener("click", () => void this.showTrash());
-        side.append(this.list, this.trashButton);
+        sideFooter.append(this.newCategoryButton, this.trashButton);
+        side.append(this.list, sideFooter);
         this.pane = el("div", "bl-modal-editor");
         body.append(side, this.pane);
 
@@ -102,6 +148,12 @@ class LibraryModal {
         }
         this.dialog.append(header, body, footer);
         this.overlay.append(this.dialog);
+        // One listener for every popup menu: a click elsewhere closes it.
+        this.dialog.addEventListener("pointerdown", (e) => {
+            for (const open of this.dialog.querySelectorAll(".bl-menu:not([hidden])")) {
+                if (!open.parentElement.contains(e.target)) open.hidden = true;
+            }
+        });
 
         // Nothing done in here may reach ComfyUI: its keyboard shortcuts listen
         // on window, and it handles paste, copy, drops and context menus on
@@ -165,18 +217,29 @@ class LibraryModal {
 
     async reload(selectId = null) {
         const generation = ++this.listGeneration;
-        let all = [];
+        let library = {};
         try {
-            all = await listBundles({ fresh: true });
+            library = await listLibrary({ fresh: true });
         } catch (error) {
             if (generation === this.listGeneration) this.status(error.message, "error");
         }
         if (generation !== this.listGeneration) return; // a newer reload answers instead
-        this.all = all;
+        this.all = library.bundles ?? [];
+        this.errors = library.errors ?? [];
+        this.categories = library.categories ?? [];
+        this.organization = library.organization ?? { revision: 0, state: "missing" };
+        this.newCategoryButton.disabled = !!this.organizeBlocker;
+        this.newCategoryButton.title = this.organizeBlocker ?? "";
         this.renderTags();
         if (this.search.value.trim()) await this.applySearch();
         else this.renderList();
+        this.editor?.organizationChanged();
         if (selectId && this.all.some((b) => b.id === selectId)) await this.open(selectId, { force: true });
+    }
+
+    /** The list's summary of a bundle (with its category and star), or null. */
+    summary(id) {
+        return this.all.find((b) => b.id === id) ?? null;
     }
 
     async applySearch() {
@@ -226,30 +289,99 @@ class LibraryModal {
 
     renderList() {
         this.labels = displayNames(this.all);
-        const items = this.visible();
-        const focused = this.list.contains(document.activeElement) ? document.activeElement.dataset.id : null;
-        if (!this.all.length) {
+        const filtering = !!this.matches || !!this.tagFilter.value;
+        const groups = groupBundles(this.visible(), this.categories, this.errors, { filtering });
+        const focus = this.focusedRow();
+        if (!this.all.length && !this.errors.length && !this.categories.length) {
             this.list.replaceChildren(el("div", "bl-empty-state", "No bundles yet. Create one with + New bundle."));
-        } else if (!items.length) {
+        } else if (!groups.length) {
             this.list.replaceChildren(el("div", "bl-empty-state", "No bundles match."));
         } else {
-            this.list.replaceChildren(...items.map((bundle) => this.renderItem(bundle)));
+            this.list.replaceChildren(...groups.map((group) => this.renderGroup(group, filtering)));
         }
-        if (focused) [...this.list.children].find((item) => item.dataset.id === focused)?.focus({ preventScroll: true });
+        this.restoreFocus(focus);
         this.keepFocus();
         this.editorChanged();
+    }
+
+    /** A group: its heading (collapse, count, the menu of a category) and its rows. */
+    renderGroup(group, filtering) {
+        const root = el("div", `bl-group ${group.kind}`);
+        root.dataset.group = group.key;
+        const collapsed = !filtering && this.collapsed.has(group.key); // a search shows every match
+        const head = el("div", "bl-group-head");
+        const toggle = button("", "bl-group-toggle", filtering ? "" : collapsed ? "Expand" : "Collapse");
+        toggle.disabled = filtering;
+        toggle.setAttribute("aria-expanded", String(!collapsed));
+        toggle.append(el("span", "bl-group-sign", filtering ? "" : collapsed ? "+" : "−"),
+            el("span", "bl-group-name", groupLabel(group)),
+            el("span", "bl-group-count", String(group.bundles.length + group.errors.length)));
+        toggle.addEventListener("click", () => {
+            if (this.collapsed.has(group.key)) this.collapsed.delete(group.key);
+            else this.collapsed.add(group.key);
+            saveCollapsed(this.collapsed);
+            this.renderList();
+        });
+        head.append(toggle);
+        if (group.kind === CATEGORY && !this.organizeBlocker) {
+            const actions = menu("⋯", [
+                ["Rename…", () => void this.askRename(group.category)],
+                ["Delete…", () => void this.askDelete(group.category)],
+            ], "bl-btn icon bl-group-menu", `Rename or delete '${group.name}'`);
+            head.append(actions.root);
+        }
+        const rows = el("div", "bl-group-rows");
+        rows.hidden = collapsed;
+        rows.append(...group.errors.map((entry) => this.renderError(entry)),
+            ...group.bundles.map((bundle) => this.renderItem(bundle)));
+        if (!group.bundles.length && !group.errors.length) rows.append(el("div", "bl-group-empty", EMPTY_GROUP[group.kind]));
+        root.append(head, rows);
+        if (group.kind !== ATTENTION && !this.organizeBlocker) this.dropTarget(root, group);
+        return root;
+    }
+
+    /** Dropping a bundle on a category puts it there, on Uncategorized takes it out, on Favorites stars it. */
+    dropTarget(root, group) {
+        const carries = (e) => e.dataTransfer?.types.includes(DRAG_TYPE);
+        let depth = 0; // dragenter and dragleave also come from the rows inside
+        root.addEventListener("dragenter", (e) => {
+            if (!carries(e)) return;
+            depth++;
+            root.classList.add("drop-target");
+        });
+        root.addEventListener("dragleave", (e) => {
+            if (carries(e) && --depth <= 0) {
+                depth = 0;
+                root.classList.remove("drop-target");
+            }
+        });
+        root.addEventListener("dragover", (e) => {
+            if (!carries(e)) return;
+            e.preventDefault(); // allows the drop
+            e.dataTransfer.dropEffect = group.kind === FAVORITES ? "copy" : "move";
+        });
+        root.addEventListener("drop", (e) => {
+            depth = 0;
+            root.classList.remove("drop-target");
+            if (!carries(e)) return;
+            e.preventDefault();
+            const id = e.dataTransfer.getData(DRAG_TYPE);
+            if (group.kind === FAVORITES) void this.setFavorite(id, true);
+            else void this.moveBundle(id, group.kind === CATEGORY ? group.category.id : null);
+        });
     }
 
     renderItem(bundle) {
         const item = el("div", "bl-list-item");
         item.tabIndex = 0;
         item.dataset.id = bundle.id;
-        item.classList.toggle("selected", bundle.id === this.selectedId);
+        item.classList.toggle("selected", bundle.id === this.selectedId); // in every group it shows in
         const image = bundle.fields.find((f) => (f.type === "image" || f.type === "video") && f.preview);
         const thumb = el(image ? "img" : "div", "bl-list-thumb");
         if (image) {
             thumb.src = thumbnailURL(image.preview.sha256);
             thumb.alt = "";
+            thumb.draggable = false; // the row is dragged, not the picture
         }
         const text = el("div", "bl-list-text");
         text.append(el("div", "bl-list-name", this.labels.get(bundle.id) ?? bundle.name),
@@ -258,10 +390,21 @@ class LibraryModal {
         if (lacking.length) text.append(el("div", "bl-list-warn", `⚠ no ${lacking.join(", ")}`));
         if (bundle.read_only) text.append(el("div", "bl-list-warn", "🔒 Cannot be changed by this version"));
         else if (bundle.warnings) text.append(el("div", "bl-list-warn", "⚠ Fix before saving"));
-        item.append(thumb, text);
+        const star = button(bundle.favorite ? "★" : "☆", "bl-star",
+            this.organizeBlocker ?? (bundle.favorite ? "Remove from the favorites" : "Add to the favorites"));
+        star.classList.toggle("on", !!bundle.favorite);
+        star.setAttribute("aria-pressed", String(!!bundle.favorite));
+        star.disabled = !!this.organizeBlocker;
+        // Starring neither selects the row nor, with a double click, picks the bundle.
+        star.addEventListener("click", (e) => {
+            e.stopPropagation();
+            void this.toggleFavorite(bundle.id);
+        });
+        star.addEventListener("dblclick", (e) => e.stopPropagation());
+        item.append(thumb, text, star);
         item.addEventListener("click", () => void this.open(bundle.id));
         item.addEventListener("keydown", (e) => {
-            if (e.key === "Enter") void this.open(bundle.id);
+            if (e.key === "Enter" && e.target === item) void this.open(bundle.id);
         });
         if (this.onPick) {
             item.addEventListener("dblclick", async () => {
@@ -269,7 +412,199 @@ class LibraryModal {
                 if (this.editor?.saved?.id === bundle.id) this.pick(); // not when opening it was cancelled
             });
         }
+        if (!this.organizeBlocker) {
+            item.draggable = true;
+            item.addEventListener("dragstart", (e) => {
+                e.dataTransfer.setData(DRAG_TYPE, bundle.id);
+                e.dataTransfer.effectAllowed = "copyMove";
+                item.classList.add("dragging");
+            });
+            item.addEventListener("dragend", () => {
+                item.classList.remove("dragging");
+                for (const target of this.list.querySelectorAll(".drop-target")) target.classList.remove("drop-target");
+            });
+        }
         return item;
+    }
+
+    /** A file this version cannot use: why, and a way to delete it on purpose when it is a bundle file. */
+    renderError(entry) {
+        const row = el("div", "bl-error-item");
+        row.dataset.file = entry.file;
+        const text = el("div", "bl-list-text");
+        text.append(el("div", "bl-list-name bl-bad", `⚠ ${entry.file}`), el("div", "bl-list-sub", entry.error));
+        row.append(el("div", "bl-list-thumb"), text);
+        if (entry.id) {
+            const purge = button("Delete forever", "bl-btn danger");
+            purge.addEventListener("click", () => void this.purgeUnreadable(entry));
+            row.append(purge);
+        }
+        return row;
+    }
+
+    /** Where the focus is in the list: the group, the bundle or file, and which part of the row. */
+    focusedRow() {
+        const active = document.activeElement;
+        if (!this.list.contains(active) || active === this.list) return null;
+        const row = active.closest(".bl-list-item, .bl-error-item");
+        return {
+            group: active.closest(".bl-group")?.dataset.group ?? null,
+            id: row?.dataset.id ?? null,
+            file: row?.dataset.file ?? null,
+            part: active.classList.contains("bl-star") ? "star" : active.classList.contains("bl-group-toggle") ? "toggle"
+                : active === row ? "row" : "other",
+        };
+    }
+
+    /** Focus the same place again after the list was rebuilt: in the same group if it is there, else anywhere. */
+    restoreFocus(focus) {
+        if (!focus) return;
+        const groups = [...this.list.querySelectorAll(".bl-group")];
+        const group = groups.find((g) => g.dataset.group === focus.group);
+        let target = null;
+        if (focus.part === "toggle") {
+            target = group?.querySelector(".bl-group-toggle");
+        } else if (focus.id || focus.file) {
+            const rows = (scope) => [...(scope?.querySelectorAll(".bl-list-item, .bl-error-item") ?? [])]
+                .filter((r) => (focus.id ? r.dataset.id === focus.id : r.dataset.file === focus.file));
+            const row = rows(group)[0] ?? rows(this.list)[0];
+            target = focus.part === "star" ? row?.querySelector(".bl-star") : focus.part === "row" ? row : null;
+        }
+        target?.focus({ preventScroll: true });
+    }
+
+    // -- categories and favorites ----------------------------------------------
+
+    /** Why categories and favorites cannot be changed now, or null. */
+    get organizeBlocker() {
+        const { state } = this.organization;
+        return state === "ok" || state === "missing" ? null
+            : "This version of Bundle Library cannot change the categories and favorites: see Needs attention.";
+    }
+
+    /**
+     * Send a change of categories or favorites after those asked for before,
+     * so the server ends with the last one; once none is waiting, read the
+     * list again. The editor is not reopened: a draft that is not saved stays.
+     * Resolves to the answer, or rejects with the request's error.
+     */
+    async organize(request) {
+        this.organizing++;
+        const sent = this.organizeQueue.then(() => request());
+        this.organizeQueue = sent.catch(() => {});
+        try {
+            return await sent;
+        } finally {
+            if (--this.organizing === 0) await this.reload();
+        }
+    }
+
+    /** Show a change to a bundle's summary at once; the list read afterwards has the server's answer. */
+    showOrganized(id, change) {
+        this.all = this.all.map((b) => (b.id === id ? { ...b, ...change } : b));
+        this.renderList();
+        this.editor?.organizationChanged();
+    }
+
+    async setFavorite(id, favorite) {
+        const summary = this.summary(id);
+        if (!summary || this.organizeBlocker || summary.favorite === favorite) return;
+        this.showOrganized(id, { favorite });
+        try {
+            await this.organize(() => setFavorite(id, favorite));
+        } catch (error) {
+            this.status(error.message, "error");
+        }
+    }
+
+    toggleFavorite(id) {
+        const summary = this.summary(id);
+        return summary ? this.setFavorite(id, !summary.favorite) : undefined;
+    }
+
+    /** Put a bundle in a category (an id), or in none with null. */
+    async moveBundle(id, category) {
+        const summary = this.summary(id);
+        if (!summary || this.organizeBlocker || (summary.category ?? null) === category) return;
+        const name = this.categories.find((c) => c.id === category)?.name;
+        this.showOrganized(id, { category });
+        try {
+            await this.organize(() => setCategory(id, category));
+            this.status(category ? `Moved '${summary.name}' to ${name}.` : `'${summary.name}' is uncategorized now.`);
+        } catch (error) {
+            this.status(error.message, "error");
+        }
+    }
+
+    /** Ask for a name and make a category; resolves to it, or to null. */
+    async newCategory() {
+        if (this.organizeBlocker) {
+            this.status(this.organizeBlocker, "error");
+            return null;
+        }
+        let made = null;
+        await this.ask("New category", "Each bundle sits in one category. Choose it in the editor, or drag the "
+            + "bundle onto the category.", {
+            placeholder: "Category name", action: "Create",
+            submit: async (name) => {
+                made = await this.organize(() => createCategory(name));
+            },
+        });
+        if (!made) return null;
+        if (!this.categories.some((c) => c.id === made.id)) { // when the list is read again later
+            this.categories = [...this.categories, { ...made, count: 0 }]
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id));
+            this.renderList();
+            this.editor?.organizationChanged();
+        }
+        this.status(`Created the category '${made.name}'.`);
+        return made;
+    }
+
+    async askRename(category) {
+        let renamed = null;
+        await this.ask(`Rename '${category.name}'`, null, {
+            value: category.name, action: "Rename",
+            submit: async (name) => {
+                renamed = await this.organize(() => renameCategory(category.id, name));
+            },
+        });
+        if (renamed) this.status(`Renamed the category to '${renamed.name}'.`);
+    }
+
+    async askDelete(category) {
+        const count = this.all.filter((b) => b.category === category.id).length;
+        const confirmed = await this.confirm(`Delete the category '${category.name}'?`,
+            count ? `${count === 1 ? "Its bundle moves" : `Its ${count} bundles move`} to Uncategorized. `
+                + "The bundles themselves are not changed."
+                : "It has no bundles.",
+            "Delete category", { danger: true });
+        if (!confirmed) return;
+        try {
+            await this.organize(() => deleteCategory(category.id));
+            this.collapsed.delete(`${CATEGORY}:${category.id}`);
+            saveCollapsed(this.collapsed);
+            this.status(`Deleted the category '${category.name}'.`);
+        } catch (error) {
+            this.status(error.message, "error");
+        }
+    }
+
+    /** Delete a file this version cannot fully read, once the user confirms. */
+    async purgeUnreadable(entry) {
+        const confirmed = await this.confirm(`Delete ${entry.file} for good?`, [
+            `This version of Bundle Library cannot fully read it: ${entry.error}.`,
+            "If a newer Bundle Library saved it, that version loses it too. Deleting cannot be undone.",
+        ], "Delete forever", { danger: true });
+        if (!confirmed) return;
+        try {
+            await purgeBundle(entry.id, { unreadable: true });
+            this.status(`Deleted ${entry.file} for good.`);
+        } catch (error) {
+            this.status(error.message, "error");
+        }
+        void this.refreshTrashCount();
+        await this.reload();
     }
 
     // -- editor ----------------------------------------------------------------
@@ -339,11 +674,10 @@ class LibraryModal {
         this.renderList();
     }
 
-    /** The trash button says how many bundles are in the trash, and ⚠ when some files cannot be read. */
-    trashCounted(count, unreadable = 0) {
+    /** The trash button says how many bundles are in the trash. */
+    trashCounted(count) {
         this.trashGeneration++; // a count still on its way is older
-        this.trashButton.textContent = (count ? `🗑 Trash (${count})` : "🗑 Trash") + (unreadable ? " ⚠" : "");
-        this.trashButton.title = unreadable ? `${unreadable} file(s) this version cannot read; see the trash` : "";
+        this.trashButton.textContent = count ? `🗑 Trash (${count})` : "🗑 Trash";
     }
 
     async refreshTrashCount() {
@@ -354,7 +688,7 @@ class LibraryModal {
         } catch {
             return; // the count is only a hint
         }
-        if (generation === this.trashGeneration) this.trashCounted(listing.trash.length, listing.errors.length);
+        if (generation === this.trashGeneration) this.trashCounted(listing.trash.length);
     }
 
     showPlaceholder() {
@@ -482,6 +816,55 @@ class LibraryModal {
         });
     }
 
+    /**
+     * Ask for a line of text. `submit(value)` does the work: when it throws, its
+     * message shows under the input and the question stays. Resolves to true
+     * once submitted, false when cancelled.
+     */
+    ask(title, message, { value = "", placeholder = "", maxLength = 60, action = "OK", submit }) {
+        return new Promise((resolve) => {
+            const box = el("form", "bl-confirm bl-ask");
+            const input = el("input", "bl-input bl-ask-input");
+            input.value = value;
+            input.placeholder = placeholder;
+            input.maxLength = maxLength;
+            const problem = el("div", "bl-error");
+            problem.hidden = true;
+            const row = el("div", "bl-confirm-buttons");
+            const ok = button(action, "bl-btn primary");
+            ok.type = "submit";
+            const cancel = button("Cancel");
+            let busy = false;
+            const finish = (done) => {
+                this.hideLayer();
+                resolve(done);
+            };
+            cancel.addEventListener("click", () => finish(false));
+            box.addEventListener("submit", async (e) => {
+                e.preventDefault();
+                if (busy) return;
+                busy = ok.disabled = true;
+                try {
+                    await submit(input.value);
+                    finish(true);
+                } catch (error) {
+                    problem.textContent = error.message;
+                    problem.hidden = false;
+                    busy = ok.disabled = false;
+                    input.focus();
+                }
+            });
+            row.append(ok, cancel);
+            box.append(el("div", "bl-confirm-title", title), ...(message ? [el("div", "bl-confirm-text", message)] : []),
+                input, problem, row);
+            this.showLayer(box, () => {
+                if (!busy) finish(false);
+            });
+            input.focus();
+            input.select();
+        });
+    }
+
     async confirm(title, message, label, { danger = false } = {}) {
         return (await this.choose(title, message, [[label, true, danger ? "danger" : "primary"], ["Cancel", false]])) === true;
     }
@@ -503,14 +886,18 @@ let sidebarGeneration = 0;
 
 function fillSidebar(list, fresh = false) {
     const generation = ++sidebarGeneration;
-    listBundles({ fresh }).then((bundles) => {
+    listLibrary({ fresh }).then(({ bundles, categories = [] }) => {
         if (generation !== sidebarGeneration) return; // a newer list is on its way
         const labels = displayNames(bundles);
-        list.replaceChildren(...(bundles.length ? bundles.map((bundle) => {
-            const item = button(labels.get(bundle.id), "bl-sidebar-item");
-            item.addEventListener("click", () => openLibrary({ selected: bundle.id }));
-            return item;
-        }) : [el("div", "bl-empty-state", "No bundles yet.")]));
+        const item = (bundle) => {
+            const entry = button(labels.get(bundle.id), "bl-sidebar-item");
+            entry.addEventListener("click", () => openLibrary({ selected: bundle.id }));
+            return entry;
+        };
+        const groups = compactGroups(bundles, categories);
+        list.replaceChildren(...(!bundles.length ? [el("div", "bl-empty-state", "No bundles yet.")]
+            : groups ? groups.flatMap((group) => [el("div", "bl-sidebar-group", groupLabel(group)), ...group.bundles.map(item)])
+                : bundles.map(item)));
     }, (error) => {
         if (generation === sidebarGeneration) list.replaceChildren(el("div", "bl-bad", `⚠ ${error.message}`));
     });
@@ -520,7 +907,7 @@ window.addEventListener(CHANGED_EVENT, () => {
     if (sidebarList?.isConnected) fillSidebar(sidebarList);
 });
 
-/** The sidebar tab: the bundle names, each opening the library at that bundle. */
+/** The sidebar tab: the bundle names by category, each opening the library at that bundle. */
 export function renderSidebar(container) {
     const root = el("div", "bl-sidebar");
     const open = button("Open library", "bl-btn primary");

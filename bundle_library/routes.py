@@ -128,7 +128,9 @@ def register(routes, get_store):
     @_writes
     async def create_bundle(request):
         data = await _read_json(request)
-        return web.json_response(present(await asyncio.to_thread(get_store().create, data)), status=201)
+        # "category" puts the new bundle in a category too (placement_error if only that failed)
+        bundle = await asyncio.to_thread(get_store().create, data, data.get("category"))
+        return web.json_response(present(bundle), status=201)
 
     @routes.get(prefix + "/bundles/{bundle_id}")
     @_api
@@ -167,6 +169,54 @@ def register(routes, get_store):
         bundle = await asyncio.to_thread(
             get_store().duplicate, bundle_id, data.get("mode", "values"), data.get("name"))
         return web.json_response(present(bundle), status=201)
+
+    @routes.put(prefix + "/bundles/{bundle_id}/category")
+    @_api
+    @_writes
+    async def set_category(request):
+        bundle_id = check_bundle_id(request.match_info["bundle_id"])
+        data = await _read_json(request)
+        category = await asyncio.to_thread(get_store().set_category, bundle_id, data.get("category"))
+        return web.json_response({"id": bundle_id, "category": category})
+
+    @routes.put(prefix + "/bundles/{bundle_id}/favorite")
+    @_api
+    @_writes
+    async def set_favorite(request):
+        bundle_id = check_bundle_id(request.match_info["bundle_id"])
+        data = await _read_json(request)
+        favorite = await asyncio.to_thread(get_store().set_favorite, bundle_id, data.get("favorite"))
+        return web.json_response({"id": bundle_id, "favorite": favorite})
+
+    @routes.get(prefix + "/categories")
+    @_api
+    async def list_categories(request):
+        return web.json_response(await asyncio.to_thread(get_store().categories))
+
+    @routes.post(prefix + "/categories")
+    @_api
+    @_writes
+    async def create_category(request):
+        data = await _read_json(request)
+        category = await asyncio.to_thread(get_store().create_category, data.get("name"), data.get("parent"))
+        return web.json_response(category, status=201)
+
+    @routes.patch(prefix + "/categories/{category_id}")
+    @_api
+    @_writes
+    async def rename_category(request):
+        data = await _read_json(request)
+        category = await asyncio.to_thread(get_store().rename_category, request.match_info["category_id"],
+                                           data.get("name"))
+        return web.json_response(category)
+
+    @routes.delete(prefix + "/categories/{category_id}")
+    @_api
+    @_writes
+    async def delete_category(request):
+        category_id = request.match_info["category_id"]
+        moved = await asyncio.to_thread(get_store().delete_category, category_id)
+        return web.json_response({"deleted": category_id, "uncategorized": moved})
 
     @routes.get(prefix + "/trash")
     @_api

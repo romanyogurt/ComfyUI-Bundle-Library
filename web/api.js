@@ -116,13 +116,22 @@ function json(method, data) {
 
 let listing = null;
 
-/** All bundle summaries. Cached until `fresh` is set or `forgetBundles()` runs. */
-export async function listBundles({ fresh = false } = {}) {
+/**
+ * The library as the list shows it: {bundles (summaries with category and
+ * favorite), errors (files this version cannot use), categories (by name),
+ * organization}. Cached until `fresh` is set or `forgetBundles()` runs.
+ */
+export async function listLibrary({ fresh = false } = {}) {
     if (fresh || !listing) {
-        listing = request("/bundles").then((body) => body.bundles);
+        listing = request("/bundles");
         listing.catch(() => { listing = null; });
     }
     return listing;
+}
+
+/** All bundle summaries in use. */
+export async function listBundles(options) {
+    return (await listLibrary(options)).bundles;
 }
 
 export function forgetBundles() {
@@ -136,12 +145,21 @@ export async function searchBundleIds(query) {
 }
 
 export const getBundle = (id) => request(`/bundles/${id}`);
-export const createBundle = (data) => request("/bundles", json("POST", data));
+/** A new bundle, put in `category` too (an id); `placement_error` in the answer if only that failed. */
+export const createBundle = (data, category = null) =>
+    request("/bundles", json("POST", category ? { ...data, category } : data));
 export const updateBundle = (id, data, expectedRevision) =>
     request(`/bundles/${id}`, json("PUT", { ...data, expected_revision: expectedRevision }));
 export const deleteBundle = (id, revision) =>
     request(`/bundles/${id}?expected_revision=${revision}`, { method: "DELETE" });
 export const duplicateBundle = (id, mode) => request(`/bundles/${id}/duplicate`, json("POST", { mode }));
+
+// Categories and favorites: they organize the list and leave the bundles (and their revisions) alone.
+export const createCategory = (name) => request("/categories", json("POST", { name }));
+export const renameCategory = (id, name) => request(`/categories/${id}`, json("PATCH", { name }));
+export const deleteCategory = (id) => request(`/categories/${id}`, { method: "DELETE" });
+export const setCategory = (bundleId, category) => request(`/bundles/${bundleId}/category`, json("PUT", { category }));
+export const setFavorite = (bundleId, favorite) => request(`/bundles/${bundleId}/favorite`, json("PUT", { favorite }));
 
 /** The bundles in the trash, last deleted first, and the files this version cannot use: {trash, errors}. */
 export const listTrash = () => request("/trash");

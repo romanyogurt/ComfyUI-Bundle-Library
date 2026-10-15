@@ -1,6 +1,7 @@
 import { app } from "../../scripts/app.js";
-import { CHANGED_EVENT, assetURL, forgetBundles, listBundles, thumbnailURL } from "./api.js";
+import { CHANGED_EVENT, assetURL, forgetBundles, listBundles, listLibrary, thumbnailURL } from "./api.js";
 import { el, formatDuration } from "./dom.js";
+import { compactGroups, groupLabel } from "./groups.js";
 import { openLibrary } from "./library_modal.js";
 import { displayNames } from "./names.js";
 import { COMFY_TYPES, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
@@ -338,28 +339,39 @@ function renderPreview(node, bundle) {
     renderNotice(node, bundle);
 }
 
-function fillSelect(node, bundles) {
+/** The dropdown: the bundles by category (★ Favorites first, a starred bundle again in its category). */
+function fillSelect(node, bundles, categories) {
     const { select } = node.bundlePanel;
     const selected = widget(node, "bundle_id")?.value ?? "";
     const linked = currentSlots(node).filter((s) => s.linked);
     const labels = displayNames(bundles);
-    const options = [["", "Select a bundle…"]];
-    for (const bundle of bundles) {
+    const optionOf = (bundle) => {
         const lacking = linked.filter((s) => slotStatuses([s], bundle.fields)[0] !== "ok");
         const label = labels.get(bundle.id);
-        options.push([bundle.id, lacking.length ? `${label}  ⚠ no ${lacking.map((s) => s.name).join(", ")}` : label]);
-    }
+        return [bundle.id, lacking.length ? `${label}  ⚠ no ${lacking.map((s) => s.name).join(", ")}` : label];
+    };
+    const groups = compactGroups(bundles, categories);
+    // [value, label] for an option, {group, options} for an <optgroup>.
+    const entries = [["", "Select a bundle…"],
+        ...(groups ? groups.map((g) => ({ group: groupLabel(g), options: g.bundles.map(optionOf) })) : bundles.map(optionOf))];
     if (selected && !bundles.some((b) => b.id === selected)) {
-        options.push([selected, `⚠ Not found: ${node.properties.bundle_name ?? selected}`]);
+        entries.push([selected, `⚠ Not found: ${node.properties.bundle_name ?? selected}`]);
     }
     // Rebuilding the options of an open dropdown closes it, so only rebuild on a real change.
-    const signature = JSON.stringify(options);
+    const signature = JSON.stringify(entries);
     if (node.bundlePanel.optionsSignature !== signature) {
         node.bundlePanel.optionsSignature = signature;
-        select.replaceChildren(...options.map(([value, label]) => {
-            const option = el("option", null, label);
-            option.value = value;
-            return option;
+        const option = ([value, label]) => {
+            const element = el("option", null, label);
+            element.value = value;
+            return element;
+        };
+        select.replaceChildren(...entries.map((entry) => {
+            if (Array.isArray(entry)) return option(entry);
+            const group = el("optgroup");
+            group.label = entry.group;
+            group.append(...entry.options.map(option));
+            return group;
         }));
     }
     if (select.value !== selected) select.value = selected;
@@ -370,9 +382,9 @@ async function refreshPanel(node, { fresh = false } = {}) {
     const generation = (node.bundlePanel.generation ?? 0) + 1;
     node.bundlePanel.generation = generation;
     const latest = () => node.bundlePanel?.generation === generation; // older answers are dropped
-    let bundles;
+    let library;
     try {
-        bundles = await listBundles({ fresh });
+        library = await listLibrary({ fresh });
     } catch (error) {
         if (!latest()) return;
         node.bundlePanel.previewSignature = null;
@@ -381,8 +393,8 @@ async function refreshPanel(node, { fresh = false } = {}) {
         return;
     }
     if (!latest()) return;
-    fillSelect(node, bundles);
-    renderPreview(node, bundles.find((b) => b.id === widget(node, "bundle_id")?.value));
+    fillSelect(node, library.bundles, library.categories ?? []);
+    renderPreview(node, library.bundles.find((b) => b.id === widget(node, "bundle_id")?.value));
 }
 
 async function pick(node, bundleId) {

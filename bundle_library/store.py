@@ -23,12 +23,12 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-from . import schema
+from . import organization, schema
 from .assets import KINDS, AssetStore
 from .constants import ASSET_GRACE_SECONDS, MAX_BUNDLE_NAME, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MEDIA_TYPES
 from .model import (
-    INT_MAX, INT_MIN, TRASH_ID_RE, LibraryError, check_bundle_id, check_sha256, empty_value, invalid, name_key,
-    normalize_bundle,
+    INT_MAX, INT_MIN, TRASH_ID_RE, UUID_RE, LibraryError, check_bundle_id, check_sha256, empty_value, invalid,
+    name_key, normalize_bundle,
 )
 
 TEXT_PREVIEW = 200
@@ -95,6 +95,8 @@ class BundleStore:
         self.bundle_dir = root / "bundles"
         self.tmp_dir = root / "tmp"
         self.legacy_trash_dir = root / "trash"  # 0.0.10 and earlier; emptied into bundles/ on start
+        self.organization_path = root / "organization.json"  # categories and favorites (organization.py)
+        self._organization_cache = None  # ((mtime_ns, size), Organization)
         for folder in (self.bundle_dir, self.tmp_dir):
             folder.mkdir(parents=True, exist_ok=True)
         # Only this process writes here, so whatever is left is from an interrupted write.
@@ -166,6 +168,10 @@ class BundleStore:
         for path in self._legacy_trash_files():
             errors.append({"file": f"trash/{path.name}", "id": None, "code": "legacy_trash",
                            "error": "left in the old trash folder: " + self._legacy_reason(path)})
+        org = self._organization()
+        if not org.writable:
+            errors.append({"file": "organization.json", "id": None, "code": org.state,
+                           "error": f"{org.problem}; categories and favorites cannot be changed"})
         return errors
 
     def list(self, query="", tag="", sort="name"):
@@ -175,24 +181,38 @@ class BundleStore:
             self._scan()
             loaded = [entry for _, entry in self._files() if entry.readable and not entry.deleted]
             errors = self._errors()
+            org = self._organization()
+        names = {c["id"]: c["name"] for c in self._categories_of(org)}
         query, tag = query.strip().casefold(), tag.strip().casefold()
         if query:
-            loaded = [entry for entry in loaded if query in _search_text(entry.bundle)]
+            loaded = [entry for entry in loaded
+                      if query in _search_text(entry.bundle, names.get(self._category_of(org, entry.bundle["id"])))]
         if tag:
             loaded = [entry for entry in loaded if tag in (t.casefold() for t in entry.bundle["tags"])]
         loaded.sort(key=lambda entry: (name_key(entry.bundle["name"]), entry.bundle["id"]))
         if sort == "updated":
             loaded.sort(key=lambda entry: entry.bundle["updated_at"], reverse=True)  # stable: ties stay by name
-        return {"bundles": [_summary(entry) for entry in loaded], "errors": errors}
+        counts = {}
+        for entry in loaded:
+            category = self._category_of(org, entry.bundle["id"])
+            counts[category] = counts.get(category, 0) + 1
+        return {
+            "bundles": [self._organized(_summary(entry), org) for entry in loaded],
+            "errors": errors,
+            "categories": [{**c, "count": counts.get(c["id"], 0)} for c in self._categories_of(org)],
+            "organization": {"revision": org.revision, "state": org.state if org.exists else "missing"},
+        }
 
     def health(self):
         with self._lock:
             self._scan()
             files = self._files()
             legacy = [path.name for path in self._legacy_trash_files()]
+            org = self._organization()
         by_state = {state: sorted(name for name, loaded in files if loaded.state == state)
                     for state in (schema.CORRUPT, schema.NEWER, schema.UNSUPPORTED)}
         return {
+            "organization": org.state if org.exists else "missing",
             "bundles": sum(1 for _, loaded in files if loaded.readable and not loaded.deleted),
             "trash": sum(1 for _, loaded in files if loaded.deleted),
             "corrupt": by_state[schema.CORRUPT],
@@ -231,14 +251,25 @@ class BundleStore:
         self._cache[path.name] = (stat.st_mtime_ns, stat.st_size, schema.read_file(path, bundle["id"]))
         return bundle
 
-    def create(self, data):
+    def create(self, data, category=None):
+        """A new bundle. With `category`, it is also put in that category; that is
+        a second file, so if only that fails the bundle stays made and the
+        problem comes back as `placement_error` (place it again, do not create
+        it again)."""
         editable = normalize_bundle(data)
         with self._lock:
             self._resolve_assets(editable["fields"])
             now = _now()
             bundle = {"format": schema.FORMAT, "schema_version": schema.SCHEMA_VERSION, "id": str(uuid.uuid4()),
                       "revision": 1, **editable, "created_at": now, "updated_at": now, "deleted_at": None}
-            return self._save(bundle)
+            bundle = self._save(bundle)
+            if category is None:
+                return bundle
+            try:
+                self.set_category(bundle["id"], category)
+            except LibraryError as e:
+                return {**bundle, "placement_error": e.message}
+            return bundle
 
     def _writable(self, bundle_id, expected_revision=None):
         """The bundle of `bundle_id` as stored, if this version may write it."""
@@ -292,7 +323,9 @@ class BundleStore:
             fields = source["fields"] if mode == "values" else [empty_value(f) for f in source["fields"]]
             if name is None:
                 name = source["name"][:MAX_BUNDLE_NAME - len(" copy")] + " copy"
-            return self.create({"name": name, "tags": source["tags"], "note": source["note"], "fields": fields})
+            category = self._category_of(self._organization(), bundle_id)  # the copy goes beside its source
+            return self.create({"name": name, "tags": source["tags"], "note": source["note"], "fields": fields},
+                               category)
 
     # -- the trash -------------------------------------------------------------
 
@@ -303,8 +336,10 @@ class BundleStore:
             self._scan()
             loaded = [entry for _, entry in self._files() if entry.deleted]
             errors = self._errors()
+            org = self._organization()
         loaded.sort(key=lambda entry: (entry.bundle["deleted_at"], entry.bundle["id"]), reverse=True)
-        return {"trash": [{**_summary(entry), "deleted_at": entry.bundle["deleted_at"]} for entry in loaded],
+        return {"trash": [{**self._organized(_summary(entry), org), "deleted_at": entry.bundle["deleted_at"]}
+                          for entry in loaded],
                 "errors": errors}
 
     def restore(self, bundle_id):
@@ -333,6 +368,7 @@ class BundleStore:
                                    "delete it for good only if you are sure.")
             self._path(bundle_id).unlink()
             self._cache.pop(f"{bundle_id}.json", None)
+            self._forget([bundle_id])
 
     def empty_trash(self):
         """Delete every bundle in the trash for good; how many. Files this version
@@ -343,7 +379,156 @@ class BundleStore:
             for name in names:
                 (self.bundle_dir / name).unlink(missing_ok=True)
                 self._cache.pop(name, None)
+            self._forget([name[:-5] for name in names])
             return len(names)
+
+    # -- categories and favorites (organization.json) ----------------------------
+
+    def _organization(self):
+        """organization.json as it is now, read again only when the file changed."""
+        try:
+            stat = self.organization_path.stat()
+        except FileNotFoundError:
+            self._organization_cache = None
+            return organization.empty()
+        key = (stat.st_mtime_ns, stat.st_size)
+        if self._organization_cache is None or self._organization_cache[0] != key:
+            self._organization_cache = (key, organization.read_file(self.organization_path))
+        return self._organization_cache[1]
+
+    @staticmethod
+    def _categories_of(org):
+        """The categories to show, by name: none from a file this version cannot read."""
+        if not org.readable:
+            return []
+        return sorted(org.categories, key=lambda c: (name_key(c["name"]), c["id"]))
+
+    @staticmethod
+    def _category_of(org, bundle_id):
+        return org.category_of(bundle_id) if org.readable else None
+
+    def _organized(self, summary, org):
+        return {**summary, "category": self._category_of(org, summary["id"]),
+                "favorite": org.readable and summary["id"] in org.favorites}
+
+    def _existing_ids(self):
+        """The ids of every bundle file there is: in use, in the trash, unreadable,
+        or still in the old trash folder. Their places and stars are kept."""
+        ids = {entry.name[:-5] for entry in os.scandir(self.bundle_dir) if entry.name.endswith(".json")}
+        ids |= {m.group(1) for p in self._legacy_trash_files() if (m := TRASH_ID_RE.match(p.stem))}
+        return ids
+
+    def _change_organization(self, change):
+        """Apply `change(org)` to a copy of the organization and save it, dropping
+        places and stars of bundles that are gone and places in categories that
+        are gone. Returns what `change` returns."""
+        current = self._organization()
+        if not current.writable:
+            raise LibraryError(409, "organization_unwritable",
+                               f"organization.json {current.problem}; this version does not change categories or "
+                               "favorites.", state=current.state)
+        org = organization.Organization(schema.OK, None, current.revision, current.categories, current.placement,
+                                        current.favorites)
+        result = change(org)
+        existing = self._existing_ids()
+        known = {c["id"] for c in org.categories}
+        org.placement = {b: c for b, c in sorted(org.placement.items()) if b in existing and c in known}
+        org.favorites = [b for b in dict.fromkeys(org.favorites) if b in existing]
+        org.revision += 1
+        _write_json(self.organization_path, org.as_file(), self.tmp_dir)
+        self._organization_cache = None
+        return result
+
+    def _forget(self, bundle_ids):
+        """Drop the places and stars of bundles deleted for good. An organization
+        this version cannot write keeps them; nothing is lost by that."""
+        org = self._organization()
+        if org.writable and any(b in org.placement or b in org.favorites for b in bundle_ids):
+            self._change_organization(lambda org: None)  # dropping what is gone is part of every save
+
+    def _bundle_file(self, bundle_id):
+        if not self._path(bundle_id).is_file():
+            raise _not_found(bundle_id)
+
+    def categories(self):
+        with self._lock:
+            listing = self.list()
+        return {"categories": listing["categories"], **listing["organization"]}
+
+    def create_category(self, name, parent=None):
+        if parent is not None:
+            raise LibraryError(400, "nesting_not_supported", "Categories cannot be put in other categories yet.")
+
+        def change(org):
+            if len(org.categories) >= organization.MAX_CATEGORIES:
+                raise invalid(f"A library has {organization.MAX_CATEGORIES} categories at most.")
+            category = {"id": str(uuid.uuid4()), "name": organization.category_name(name, org), "parent": None}
+            org.categories.append(category)
+            return category
+
+        with self._lock:
+            return self._change_organization(change)
+
+    def rename_category(self, category_id, name):
+        _check_category_id(category_id)
+
+        def change(org):
+            category = org.category(category_id)
+            if category is None:
+                raise LibraryError(404, "not_found", f"Category not found: {category_id}")
+            category["name"] = organization.category_name(name, org, own_id=category_id)
+            return dict(category)
+
+        with self._lock:
+            return self._change_organization(change)
+
+    def delete_category(self, category_id):
+        """Delete a category; its bundles become uncategorized. How many there were."""
+        _check_category_id(category_id)
+
+        def change(org):
+            if org.category(category_id) is None:
+                raise LibraryError(404, "not_found", f"Category not found: {category_id}")
+            org.categories = [c for c in org.categories if c["id"] != category_id]
+            moved = [b for b, c in org.placement.items() if c == category_id]
+            for bundle_id in moved:
+                del org.placement[bundle_id]
+            return len(moved)
+
+        with self._lock:
+            return self._change_organization(change)
+
+    def set_category(self, bundle_id, category_id):
+        """Put a bundle (in use or in the trash) in a category, or in none with None."""
+        check_bundle_id(bundle_id)
+        if category_id is not None:
+            _check_category_id(category_id)
+
+        def change(org):
+            if category_id is None:
+                org.placement.pop(bundle_id, None)
+            elif org.category(category_id) is None:
+                raise LibraryError(404, "not_found", f"Category not found: {category_id}")
+            else:
+                org.placement[bundle_id] = category_id
+            return category_id
+
+        with self._lock:
+            self._bundle_file(bundle_id)
+            return self._change_organization(change)
+
+    def set_favorite(self, bundle_id, favorite):
+        check_bundle_id(bundle_id)
+        if not isinstance(favorite, bool):
+            raise invalid("favorite must be true or false.")
+
+        def change(org):
+            org.favorites = [b for b in org.favorites if b != bundle_id] + ([bundle_id] if favorite else [])
+            return favorite
+
+        with self._lock:
+            self._bundle_file(bundle_id)
+            return self._change_organization(change)
 
     # -- the trash folder of 0.0.10 and earlier --------------------------------
 
@@ -459,6 +644,12 @@ class BundleStore:
                 "thumbnails": thumbnails}
 
 
+def _check_category_id(value):
+    if not isinstance(value, str) or not UUID_RE.match(value):
+        raise LibraryError(400, "invalid_id", f"Invalid category id: {value!r}")
+    return value
+
+
 def _is_id(text):
     try:
         check_bundle_id(text)
@@ -467,8 +658,8 @@ def _is_id(text):
         return False
 
 
-def _search_text(bundle):
-    parts = [bundle["name"], *bundle["tags"]]
+def _search_text(bundle, category_name=None):
+    parts = [bundle["name"], *bundle["tags"], category_name or ""]
     for field in bundle["fields"]:
         parts.append(field["name"])
         if field["type"] == "text":

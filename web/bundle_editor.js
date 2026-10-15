@@ -1,10 +1,11 @@
 // The editor for one bundle inside the library modal. It works on a draft and
-// talks to the API only on Save, Duplicate and Delete (and file uploads).
+// talks to the API only on Save, Duplicate and Delete (and file uploads). Its
+// category and star are not part of the draft: the modal saves them at once.
 import {
     MEDIA, assetURL, createBundle, deleteBundle, duplicateBundle, fileProblem, getBundle,
     thumbnailURL, updateBundle, uploadAsset,
 } from "./api.js";
-import { button, el, formatBytes, formatDuration, plural } from "./dom.js";
+import { button, el, formatBytes, formatDuration, menu, plural } from "./dom.js";
 import { POOL_SIZE } from "./reconcile.js";
 
 const TYPES = [["text", "Text"], ["image", "Image"], ["video", "Video"], ["audio", "Audio"],
@@ -12,6 +13,7 @@ const TYPES = [["text", "Text"], ["image", "Image"], ["video", "Video"], ["audio
 const BLANK = { text: "", boolean: false, int: 0, float: 0 };
 const NOUN = { image: "an image", video: "a video", audio: "an audio file" };
 const MAX_TEXT_HEIGHT = 320;
+const NEW_CATEGORY = "new"; // the "New category…" choice of the category select (ids are UUIDs)
 
 /** The editable part of a bundle, as the API takes it. */
 function editable(bundle) {
@@ -67,16 +69,11 @@ export class BundleEditor {
         // file chosen last for a field counts; an earlier upload is stopped.
         this.transfers = new Map();
         this.saving = false;
+        this.pendingCategory = null; // where a new bundle goes when first saved (an id, or null)
         this.cards = [];
         this.invalid = new Set(); // fields whose number input does not parse
         this.problems = 0; // fields with a name the server would refuse
         this.root = el("div", "bl-editor");
-        // One listener for every popup menu the editor shows.
-        this.root.addEventListener("pointerdown", (e) => {
-            for (const menu of this.root.querySelectorAll(".bl-menu:not([hidden])")) {
-                if (!menu.parentElement.contains(e.target)) menu.hidden = true;
-            }
-        });
         this.render();
     }
 
@@ -112,37 +109,21 @@ export class BundleEditor {
         if (!this.cards.length) fields.append(el("div", "bl-empty-state", "No fields yet. Add one below."));
         const meta = this.renderMeta();
         const add = this.renderAdd();
-        if (this.readOnly) meta.inert = fields.inert = add.inert = true;
+        if (this.readOnly) fields.inert = add.inert = true; // renderMeta() keeps the category free
         this.root.replaceChildren(...[this.renderHead(), this.renderNotes(), meta, fields, add].filter(Boolean));
         for (const area of this.root.querySelectorAll("textarea.bl-value-text")) requestAnimationFrame(() => autosize(area));
         this.modal.keepFocus(); // the focused element may have been replaced
+        this.organizationChanged();
         this.refreshWarnings();
         this.refreshState();
     }
 
-    menu(label, items, className = "bl-btn") {
-        const root = el("span", "bl-menu-wrap");
-        const opener = button(label, className);
-        const menu = el("div", "bl-menu");
-        menu.hidden = true;
-        for (const [text, action] of items) {
-            const item = button(text, "bl-menu-item");
-            item.addEventListener("click", () => {
-                menu.hidden = true;
-                action();
-            });
-            menu.append(item);
-        }
-        opener.addEventListener("click", () => {
-            menu.hidden = !menu.hidden;
-            if (!menu.hidden) menu.scrollIntoView({ block: "nearest" }); // "+ Add field" sits at the bottom
-        });
-        root.append(opener, menu);
-        return { root, opener };
-    }
-
     renderHead() {
         const head = el("div", "bl-editor-head");
+        this.starButton = button("☆", "bl-btn icon bl-star");
+        this.starButton.addEventListener("click", () => {
+            if (this.saved) void this.modal.toggleFavorite(this.saved.id);
+        });
         this.nameInput = el("input", "bl-input bl-name-input");
         this.nameInput.value = this.draft.name;
         this.nameInput.placeholder = "Bundle name";
@@ -156,15 +137,71 @@ export class BundleEditor {
         this.saveButton.addEventListener("click", () => void this.save());
         this.revertButton = button("Revert", "bl-btn");
         this.revertButton.addEventListener("click", () => this.revert());
-        const duplicate = this.menu("Duplicate ▾", [
+        const duplicate = menu("Duplicate ▾", [
             ["Duplicate with values", () => void this.duplicate("values")],
             ["Duplicate structure only", () => void this.duplicate("structure")],
         ]);
         this.duplicateButton = duplicate.opener;
         this.deleteButton = button("Delete", "bl-btn danger");
         this.deleteButton.addEventListener("click", () => void this.remove());
-        head.append(this.nameInput, this.stateMark, this.saveButton, this.revertButton, duplicate.root, this.deleteButton);
+        head.append(this.starButton, this.nameInput, this.stateMark, this.saveButton, this.revertButton, duplicate.root,
+            this.deleteButton);
         return head;
+    }
+
+    /** The bundle's category, or the one a new bundle goes in: an id, or null. */
+    get category() {
+        return this.saved ? (this.modal.summary(this.saved.id)?.category ?? null) : this.pendingCategory;
+    }
+
+    /**
+     * Show the category and star as the list has them now. The modal calls this
+     * when they change; the draft is left as it is, saved or not.
+     */
+    organizationChanged() {
+        const summary = this.saved && this.modal.summary(this.saved.id);
+        const why = this.modal.organizeBlocker;
+        const favorite = !!summary?.favorite;
+        this.starButton.textContent = favorite ? "★" : "☆";
+        this.starButton.classList.toggle("on", favorite);
+        this.starButton.setAttribute("aria-pressed", String(favorite));
+        this.starButton.disabled = !summary || !!why;
+        this.starButton.title = !this.saved ? "Save the bundle to add it to the favorites"
+            : why ?? (favorite ? "Remove from the favorites" : "Add to the favorites");
+        if (this.pendingCategory && !this.modal.categories.some((c) => c.id === this.pendingCategory)) {
+            this.pendingCategory = null; // deleted meanwhile
+        }
+        const options = [["", "No category"], ...this.modal.categories.map((c) => [c.id, c.name])];
+        if (!why) options.push([NEW_CATEGORY, "New category…"]);
+        const signature = JSON.stringify(options);
+        if (this.categorySelect.dataset.options !== signature) { // rebuilding closes an open dropdown
+            this.categorySelect.dataset.options = signature;
+            this.categorySelect.replaceChildren(...options.map(([value, label]) => {
+                const option = el("option", null, label);
+                option.value = value;
+                return option;
+            }));
+        }
+        this.categorySelect.value = this.category ?? "";
+        // A new bundle's category is part of what its first save does, so it can be chosen even then.
+        this.categorySelect.disabled = !!why && !!this.saved;
+        this.categorySelect.title = this.saved ? (why ?? "") : "The category the bundle goes in when saved";
+    }
+
+    /** A choice in the category select: move the saved bundle at once, or remember it for the first save. */
+    async chooseCategory(value) {
+        let category = value || null;
+        if (value === NEW_CATEGORY) {
+            this.categorySelect.value = this.category ?? ""; // until the new one exists
+            category = (await this.modal.newCategory())?.id;
+            if (!category) return;
+        }
+        if (this.saved) {
+            await this.modal.moveBundle(this.saved.id, category);
+        } else {
+            this.pendingCategory = category;
+            this.organizationChanged();
+        }
     }
 
     /** Why the stored bundle cannot be saved as it is: data this version does not
@@ -187,6 +224,10 @@ export class BundleEditor {
 
     renderMeta() {
         const meta = el("div", "bl-editor-meta");
+        const place = el("label", "bl-category-row");
+        this.categorySelect = el("select", "bl-input bl-category-select");
+        this.categorySelect.addEventListener("change", () => void this.chooseCategory(this.categorySelect.value));
+        place.append(el("span", "bl-label", "Category"), this.categorySelect);
         const tags = el("div", "bl-tags");
         const renderTags = (focus) => {
             const input = el("input", "bl-input bl-tag-input");
@@ -222,7 +263,8 @@ export class BundleEditor {
             this.draft.note = note.value;
             this.refreshState();
         });
-        meta.append(tags, note);
+        if (this.readOnly) tags.inert = note.inert = true; // its place in the list is not part of the bundle
+        meta.append(place, tags, note);
         return meta;
     }
 
@@ -487,7 +529,7 @@ export class BundleEditor {
     }
 
     renderAdd() {
-        const add = this.menu("+ Add field ▾", TYPES.map(([type, label]) => [label, () => this.addField(type)]));
+        const add = menu("+ Add field ▾", TYPES.map(([type, label]) => [label, () => this.addField(type)]));
         add.opener.disabled = this.draft.fields.length >= POOL_SIZE;
         if (add.opener.disabled) add.opener.title = `A bundle has ${POOL_SIZE} fields at most.`;
         const row = el("div", "bl-add-field");
@@ -578,8 +620,13 @@ export class BundleEditor {
         try {
             const saved = this.saved
                 ? await updateBundle(this.saved.id, data, this.saved.revision)
-                : await createBundle(data);
+                : await createBundle(data, this.pendingCategory);
             await this.adopt(saved, "Saved.");
+            if (saved.placement_error) {
+                // The bundle is made; only putting it in its category failed. Choosing it again retries that.
+                this.modal.status(`Saved, but not put in its category: ${saved.placement_error} `
+                    + "Choose the category again.", "error");
+            }
         } catch (error) {
             if (error.code === "revision_conflict") await this.resolveConflict(data, error.details.current_revision);
             else this.modal.status(error.message, "error");

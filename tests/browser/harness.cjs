@@ -8,6 +8,8 @@
 // - only bundles created during the session (seen in the server's 201
 //   answers) are removed at the end, by id, and then their trash entries;
 //   every bundle and trash entry that was there before must still be there;
+// - so are the categories made during the session; the categories, places and
+//   stars of what was there before must be as they were;
 // - the runs a scenario queues are deleted from ComfyUI's job history at the
 //   end (by the page's client id).
 const { chromium } = require("playwright-core");
@@ -17,16 +19,17 @@ const path = require("path");
 
 const BASE = process.env.COMFY_URL || "http://127.0.0.1:8189";
 const BUNDLES = "/api/bundle-library/v1/bundles";
+const CATEGORIES = "/api/bundle-library/v1/categories";
 
 // Console errors that are expected: what a fresh user folder lacks (no saved
 // workflows, templates or user.css), the browser's report of the error answers
 // the scenarios provoke on purpose (conflicts, deleted bundles, refused
-// uploads, invalid prompts), and frontend start-up noise. Any other error fails
+// uploads, refused category names, invalid prompts), and frontend start-up noise. Any other error fails
 // the session, so a missing thumbnail or an exception in this package shows up.
 const FAILED = /^Failed to load resource: the server responded with a status of 4\d\d /;
 const EXPECTED_CONSOLE_ERRORS = [
     { text: FAILED, url: /\/api\/userdata\b|\/user\.css$/ },
-    { text: FAILED, url: /\/api\/prompt$|\/api\/bundle-library\/v1\/(bundles\b|assets$)/ },
+    { text: FAILED, url: /\/api\/prompt$|\/api\/bundle-library\/v1\/(bundles\b|assets$|categories\b)/ },
     { text: /^ComfyApp graph accessed before initialization$/ },
 ];
 const expectedError = (e) => EXPECTED_CONSOLE_ERRORS.some((k) => k.text.test(e.text) && (!k.url || k.url.test(e.url)));
@@ -115,6 +118,23 @@ const PAGE_HELPERS = () => {
             const { trash } = await this.request("GET", "/trash");
             for (const entry of trash.filter((e) => ids.includes(e.id))) {
                 await this.request("DELETE", `/trash/${entry.id}`);
+            }
+            return removed;
+        },
+        /** The categories and each bundle's place and star, to compare before and after. */
+        async organization() {
+            const { bundles, categories = [] } = await this.request("GET", "/bundles");
+            return {
+                categories: Object.fromEntries(categories.map((c) => [c.id, c.name])),
+                bundles: Object.fromEntries(bundles.map((b) => [b.id, [b.category ?? null, !!b.favorite]])),
+            };
+        },
+        async removeCategories(ids) {
+            const { categories = [] } = await this.request("GET", "/categories");
+            const removed = [];
+            for (const category of categories.filter((c) => ids.includes(c.id))) {
+                await this.request("DELETE", `/categories/${category.id}`);
+                removed.push(category.id);
             }
             return removed;
         },
@@ -241,15 +261,16 @@ async function startSession(name) {
     const consoleErrors = [];
     page.on("console", (m) => { if (m.type() === "error") consoleErrors.push({ text: m.text(), url: m.location().url }); });
     page.on("pageerror", (e) => consoleErrors.push({ text: String(e.stack || e), url: "" }));
-    // Bundles made during the session, by the scenario or by the UI under test.
+    // Bundles and categories made during the session, by the scenario or by the UI under test.
     const created = new Set();
+    const createdCategories = new Set();
     const reading = [];
     page.on("response", (res) => {
         const route = new URL(res.url()).pathname;
         const making = route === BUNDLES || /^\/api\/bundle-library\/v1\/bundles\/[^/]+\/duplicate$/.test(route);
-        if (making && res.request().method() === "POST" && res.status() === 201) {
-            reading.push(res.json().then((b) => created.add(b.id), () => {}));
-        }
+        if (res.request().method() !== "POST" || res.status() !== 201) return;
+        if (making) reading.push(res.json().then((b) => created.add(b.id), () => {}));
+        if (route === CATEGORIES) reading.push(res.json().then((c) => createdCategories.add(c.id), () => {}));
     });
     await page.addInitScript(PAGE_HELPERS);
     await page.goto(BASE, { waitUntil: "domcontentloaded" });
@@ -259,6 +280,7 @@ async function startSession(name) {
     const ev = (fn, arg) => page.evaluate(fn, arg);
     const existing = await ev(() => window.__bl.bundleIds());
     const existingTrash = await ev(() => window.__bl.trashIds());
+    const existingOrganization = await ev(() => window.__bl.organization());
     const clientIds = new Set([await ev(() => window.__bl.api.clientId)]);
 
     return {
@@ -278,6 +300,13 @@ async function startSession(name) {
             const removed = await ev((ids) => window.__bl.removeBundles(ids), [...created]);
             check("bundles made in the session removed", expectRemoved === undefined || removed.length === expectRemoved,
                 { removed: removed.length, made: created.size });
+            const removedCategories = await ev((ids) => window.__bl.removeCategories(ids), [...createdCategories]);
+            const organization = await ev(() => window.__bl.organization());
+            const changed = Object.entries(existingOrganization.bundles)
+                .filter(([id, place]) => JSON.stringify(organization.bundles[id] ?? place) !== JSON.stringify(place));
+            check("categories made in the session removed; the rest of the organization is untouched",
+                JSON.stringify(organization.categories) === JSON.stringify(existingOrganization.categories)
+                && changed.length === 0, { removed: removedCategories.length, changed });
             const now = new Set(await ev(() => window.__bl.bundleIds()));
             const lost = existing.filter((id) => !now.has(id));
             check("bundles the session did not make are untouched", lost.length === 0, { before: existing.length, lost });

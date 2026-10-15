@@ -1,6 +1,7 @@
 // Browser scenarios for compatibility (Phase 7.5): a workflow saved by 0.0.10,
 // one with an output type this version does not know, large old ints, files
-// this version cannot fully read, and a page and server of different versions.
+// this version cannot fully read (under Needs attention since Phase 7.6), and
+// a page and server of different versions.
 // Set-up and safety notes are in harness.cjs. The hand-made bundle files are
 // placed in the test server's library through its container (BL_TEST_CONTAINER
 // and BL_TEST_LIBRARY, which scripts/bundle-library-test-server.sh run sets)
@@ -109,7 +110,7 @@ function unplace(paths) {
             check("the list marks a bundle to fix and one this version cannot change",
                 marks[0] === "⚠ Fix before saving" && marks[1] === "🔒 Cannot be changed by this version", marks);
 
-            await page.locator(`.bl-overlay .bl-list-item[data-id="${bigId}"]`).click();
+            await page.locator(`.bl-overlay .bl-group.attention .bl-list-item[data-id="${bigId}"]`).click();
             await until(() => document.querySelector(".bl-overlay .bl-number"));
             await page.locator(".bl-overlay .bl-note-input").fill("only the note changed");
             let editor = await ev(() => ({
@@ -128,36 +129,43 @@ function unplace(paths) {
             const fixed = await api("GET", `/bundles/${bigId}`);
             check("once the value is changed it saves", fixed.fields[0].value === 5 && !fixed.warnings, fixed.fields[0]);
 
-            await page.locator(`.bl-overlay .bl-list-item[data-id="${readOnlyId}"]`).click();
+            await page.locator(`.bl-overlay .bl-group.attention .bl-list-item[data-id="${readOnlyId}"]`).click();
             await until(() => document.querySelector(".bl-overlay .bl-editor-notes"));
             editor = await ev(() => {
-                const head = [...document.querySelectorAll(".bl-overlay .bl-editor-head > button, .bl-overlay .bl-editor-head .bl-menu-wrap > button")];
+                const head = [...document.querySelectorAll(".bl-overlay .bl-editor-head > button:not(.bl-star), .bl-overlay .bl-editor-head .bl-menu-wrap > button")];
                 return {
                     notes: document.querySelector(".bl-overlay .bl-editor-notes").textContent,
                     enabled: head.filter((b) => !b.disabled).map((b) => b.textContent),
                     inert: document.querySelector(".bl-overlay .bl-fields").inert,
+                    tags: document.querySelector(".bl-overlay .bl-tags").inert,
+                    place: !document.querySelector(".bl-overlay .bl-category-select").disabled
+                        && !document.querySelector(".bl-overlay .bl-editor-head .bl-star").disabled,
                 };
             });
-            check("a bundle with data this version does not know can be seen but not saved, duplicated or deleted",
-                editor.notes.includes("does not change it") && editor.inert && editor.enabled.length === 0, editor);
+            check("a bundle with data this version does not know can be seen but not saved, duplicated or deleted; "
+                + "it can still be starred and placed, which does not change it",
+                editor.notes.includes("does not change it") && editor.inert && editor.tags && editor.enabled.length === 0
+                && editor.place, editor);
 
-            const trashButton = await ev(() => document.querySelector(".bl-overlay .bl-trash-button").textContent);
-            await button(trashButton).click();
             const newer = `bundles/${EXPECTED["v3-other-references"].id}.json`;
-            await until((file) => document.querySelector(`.bl-overlay .bl-unreadable [data-file="${file}"]`), newer);
-            const row = await ev((file) => document.querySelector(`.bl-overlay .bl-unreadable [data-file="${file}"]`).textContent,
-                newer);
-            check("the trash lists a file saved by a newer version apart, with the reason",
-                trashButton.endsWith(" ⚠") && row.includes("saved by a newer Bundle Library"), { trashButton, row });
-            await button("Delete forever", page.locator(`.bl-overlay .bl-unreadable [data-file="${newer}"]`)).click();
+            const attention = (file) => `.bl-overlay .bl-group.attention .bl-error-item[data-file="${file}"]`;
+            await until((selector) => document.querySelector(selector), attention(newer));
+            const row = await ev((selector) => document.querySelector(selector).textContent, attention(newer));
+            const marked = await ev((ids) => ids.map((id) => [...document.querySelectorAll(
+                ".bl-overlay .bl-group.attention .bl-list-item")].some((r) => r.dataset.id === id)), [bigId, readOnlyId]);
+            const trashButton = await ev(() => document.querySelector(".bl-overlay .bl-trash-button").textContent);
+            check("Needs attention lists a file saved by a newer version with the reason, and the bundles to look at",
+                row.includes("saved by a newer Bundle Library") && marked[1] && !trashButton.includes("⚠"),
+                { row, marked, trashButton });
+            await button("Delete forever", page.locator(attention(newer))).click();
             const layer = await ev(() => [...document.querySelectorAll(".bl-overlay .bl-layer .bl-confirm-text")]
                 .map((t) => t.textContent));
             check("deleting it asks with a warning that a newer version loses it too",
                 layer.length === 2 && layer[1].startsWith("If a newer Bundle Library saved it"), layer);
             await button("Delete forever", layerBox).click();
-            const gone = await until((file) => !document.querySelector(`.bl-overlay .bl-unreadable [data-file="${file}"]`), newer);
+            const gone = await until((selector) => !document.querySelector(selector), attention(newer));
             check("it is deleted only when asked", gone);
-            await shot("compat-trash.png");
+            await shot("compat-attention.png");
             await page.keyboard.press("Escape");
             await overlay.waitFor({ state: "detached" });
         } finally {

@@ -15,6 +15,31 @@ export function button(label, className = "bl-btn", title) {
     return element;
 }
 
+/**
+ * A button that opens a popup menu of `items` ([label, action]). The library
+ * modal closes open menus on a click elsewhere.
+ */
+export function menu(label, items, className = "bl-btn", title) {
+    const root = el("span", "bl-menu-wrap");
+    const opener = button(label, className, title);
+    const list = el("div", "bl-menu");
+    list.hidden = true;
+    for (const [text, action] of items) {
+        const item = button(text, "bl-menu-item");
+        item.addEventListener("click", () => {
+            list.hidden = true;
+            action();
+        });
+        list.append(item);
+    }
+    opener.addEventListener("click", () => {
+        list.hidden = !list.hidden;
+        if (!list.hidden) list.scrollIntoView({ block: "nearest" }); // "+ Add field" sits at the bottom
+    });
+    root.append(opener, list);
+    return { root, opener };
+}
+
 export const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
 
 /** "2026-10-15 07:45", in the browser's time zone. */

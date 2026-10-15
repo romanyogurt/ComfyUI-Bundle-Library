@@ -367,8 +367,15 @@
     gap: 4px;
 }
 
-.bl-trash-button {
+.bl-side-footer {
+    display: flex;
+    gap: 8px;
     margin: 0 8px 8px;
+}
+
+.bl-side-footer > .bl-btn {
+    flex: 1;
+    min-width: 0;
 }
 
 .bl-trash-button.selected {
@@ -377,7 +384,7 @@
 
 .bl-list-item {
     display: grid;
-    grid-template-columns: 44px 1fr;
+    grid-template-columns: 44px 1fr auto;
     gap: 8px;
     align-items: center;
     padding: 6px;
@@ -391,6 +398,147 @@
 
 .bl-list-item.selected {
     background: var(--content-bg, #4e4e4e);
+}
+
+.bl-list-item.dragging {
+    opacity: 0.5;
+}
+
+/* ---- groups of the list (categories and the computed views) ---------------- */
+
+.bl-group {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    border-radius: 6px;
+}
+
+.bl-group + .bl-group {
+    margin-top: 6px;
+}
+
+.bl-group.drop-target {
+    outline: 2px dashed #2563eb;
+    outline-offset: -2px;
+    background: rgb(37 99 235 / 0.08);
+}
+
+.bl-group-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.bl-group-toggle {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    color: var(--descrip-text, #999);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-align: left;
+    padding: 4px 6px;
+    cursor: pointer;
+}
+
+.bl-group-toggle:hover:not(:disabled) {
+    background: var(--comfy-menu-secondary-bg, #303030);
+    color: var(--input-text, #ddd);
+}
+
+.bl-group-toggle:disabled {
+    cursor: default;
+}
+
+.bl-group-sign {
+    width: 10px;
+    text-align: center;
+}
+
+.bl-group-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bl-group-count {
+    font-weight: 400;
+}
+
+.bl-group.attention .bl-group-toggle {
+    color: #f59e0b;
+}
+
+.bl-group-head .bl-menu {
+    left: auto;
+    right: 0; /* the list scrolls: open toward the inside */
+    min-width: 140px;
+}
+
+.bl-group-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bl-group-empty {
+    padding: 4px 8px 6px 22px;
+    font-size: 11px;
+    color: var(--descrip-text, #999);
+}
+
+/* A favorite star, in a list row and in the editor's head. */
+.bl-star {
+    background: none;
+    border: none;
+    padding: 2px 4px;
+    font-size: 16px;
+    line-height: 1;
+    color: var(--descrip-text, #999);
+    cursor: pointer;
+}
+
+.bl-btn.bl-star {
+    border: 1px solid var(--border-color, #4e4e4e);
+    padding: 2px 8px;
+}
+
+.bl-star.on {
+    color: #f5c518;
+}
+
+.bl-star:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.bl-list-item .bl-star:not(.on):not(:hover) {
+    opacity: 0.45;
+}
+
+/* A file this version cannot use, under Needs attention. */
+.bl-error-item {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 6px;
+    border-radius: 6px;
+    background: var(--comfy-input-bg, #222);
+}
+
+.bl-error-item .bl-list-name,
+.bl-error-item .bl-list-sub {
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .bl-list-thumb {
@@ -539,6 +687,17 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+}
+
+.bl-category-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bl-category-select {
+    min-width: 200px;
+    max-width: 100%;
 }
 
 .bl-tags {
@@ -798,6 +957,14 @@
     max-width: 640px;
 }
 
+.bl-ask {
+    width: 380px;
+}
+
+.bl-ask-input {
+    width: 100%;
+}
+
 .bl-confirm-title {
     font-size: 14px;
     font-weight: 600;
@@ -875,6 +1042,20 @@
     background: var(--comfy-menu-secondary-bg, #303030);
 }
 
+.bl-sidebar-group {
+    margin-top: 8px;
+    padding: 2px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--descrip-text, #999);
+}
+
+.bl-sidebar-group:first-child {
+    margin-top: 0;
+}
+
 /* The trash, in the pane of the library modal. */
 .bl-trash {
     display: flex;
@@ -947,12 +1128,3 @@
     margin-bottom: 10px;
 }
 
-/* The files of the trash view this version cannot read. */
-.bl-trash-subtitle {
-    margin-top: 12px;
-    font-weight: 600;
-}
-
-.bl-unreadable .bl-trash-item {
-    background: var(--comfy-input-bg, #222);
-}

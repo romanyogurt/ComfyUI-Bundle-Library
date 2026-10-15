@@ -1,5 +1,6 @@
 // The trash and the cleanup of unused files, shown in the library modal's
-// right pane in place of the editor.
+// right pane in place of the editor. Files this version cannot read are not
+// here: the list shows them under Needs attention.
 import {
     deleteUnusedFiles, emptyTrash, listTrash, listUnusedFiles, purgeBundle, restoreBundle, thumbnailURL,
 } from "./api.js";
@@ -27,10 +28,10 @@ export class TrashPanel {
         }
         if (generation !== this.generation) return;
         this.render(listing);
-        this.modal.trashCounted(listing.trash.length, listing.errors.length);
+        this.modal.trashCounted(listing.trash.length);
     }
 
-    render({ trash, errors }) {
+    render({ trash }) {
         const head = el("div", "bl-trash-head");
         const cleanup = button("Clean up unused files…");
         cleanup.addEventListener("click", () => void this.cleanup());
@@ -44,16 +45,7 @@ export class TrashPanel {
         if (!trash.length) list.append(el("div", "bl-empty-state", "The trash is empty."));
         const labels = displayNames(trash);
         list.append(...trash.map((entry) => this.renderEntry(entry, labels.get(entry.id))));
-        const parts = [head, hint, list];
-        if (errors.length) {
-            const unreadable = el("div", "bl-trash-list bl-unreadable");
-            unreadable.append(el("div", "bl-trash-subtitle", "Files this version cannot read"),
-                el("div", "bl-hint", "They may be bundles saved by a newer Bundle Library, or damaged. They are "
-                    + "kept as they are and not counted as in the trash."),
-                ...errors.map((entry) => this.renderUnreadable(entry)));
-            parts.push(unreadable);
-        }
-        this.root.replaceChildren(...parts);
+        this.root.replaceChildren(head, hint, list);
         this.modal.keepFocus(); // the focused button may have been replaced
     }
 
@@ -66,31 +58,17 @@ export class TrashPanel {
             thumb.src = thumbnailURL(media.preview.sha256);
             thumb.alt = "";
         }
+        // Restoring puts it back in its category, with its star.
+        const category = this.modal.categories.find((c) => c.id === entry.category)?.name;
         const text = el("div", "bl-list-text");
         text.append(el("div", "bl-list-name", label ?? entry.name),
-            el("div", "bl-list-sub", `Deleted ${formatTime(entry.deleted_at)} · ${plural(entry.fields.length, "field")}`));
+            el("div", "bl-list-sub", [`Deleted ${formatTime(entry.deleted_at)}`, plural(entry.fields.length, "field"),
+                category ? `back to ${category}` : null, entry.favorite ? "★" : null].filter(Boolean).join(" · ")));
         const restore = button("Restore");
         restore.addEventListener("click", () => void this.restore(entry));
         const purge = button("Delete forever", "bl-btn danger");
         purge.addEventListener("click", () => void this.purge(entry.id, `'${label ?? entry.name}'`));
         row.append(thumb, text, restore, purge);
-        return row;
-    }
-
-    /** A file this version cannot fully read: kept unless the user deletes it on purpose. */
-    renderUnreadable(entry) {
-        const row = el("div", "bl-trash-item");
-        row.dataset.file = entry.file;
-        const text = el("div", "bl-list-text");
-        text.append(el("div", "bl-list-name bl-bad", `⚠ ${entry.file}`), el("div", "bl-list-sub", entry.error));
-        row.append(el("div", "bl-list-thumb"), text, el("span"));
-        if (entry.id) {
-            const purge = button("Delete forever", "bl-btn danger");
-            purge.addEventListener("click", () => void this.purgeUnreadable(entry));
-            row.append(purge);
-        } else {
-            row.append(el("span"));
-        }
         return row;
     }
 
@@ -113,21 +91,6 @@ export class TrashPanel {
         try {
             await purgeBundle(id);
             this.modal.status(`Deleted ${what} for good.`);
-        } catch (error) {
-            this.modal.status(error.message, "error");
-        }
-        await this.refresh();
-    }
-
-    async purgeUnreadable(entry) {
-        const confirmed = await this.modal.confirm(`Delete ${entry.file} for good?`, [
-            `This version of Bundle Library cannot fully read it: ${entry.error}.`,
-            "If a newer Bundle Library saved it, that version loses it too. Deleting cannot be undone.",
-        ], "Delete forever", { danger: true });
-        if (!confirmed) return;
-        try {
-            await purgeBundle(entry.id, { unreadable: true });
-            this.modal.status(`Deleted ${entry.file} for good.`);
         } catch (error) {
             this.modal.status(error.message, "error");
         }

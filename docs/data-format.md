@@ -2,7 +2,7 @@
 
 Bundle Library가 디스크에 저장하는 형식과 HTTP API를 정리한다. 구현은
 `bundle_library/model.py`(검증), `schema.py`(번들 파일의 버전과 상태), `store.py`(번들),
-`assets.py`(미디어), `routes.py`(API)에 있다. 버전이 다른 파일을 어떻게 다루는지는 끝의
+`organization.py`(카테고리와 즐겨찾기), `assets.py`(미디어), `routes.py`(API)에 있다. 버전이 다른 파일을 어떻게 다루는지는 끝의
 [호환성 정책](#호환성-정책)에 있다.
 
 ## 저장 위치
@@ -13,12 +13,13 @@ ComfyUI 사용자 디렉토리 아래 `bundle_library/`를 쓴다. comfy-docker 
 ```text
 bundle_library/
 ├── bundles/<uuid>.json                        # 번들 하나에 파일 하나. 휴지통의 번들도 여기 있다
+├── organization.json                          # 카테고리, 번들의 배치, 즐겨찾기 (0.0.12부터, 없을 수 있다)
 ├── assets/sha256/<해시 앞 2자리>/<sha256>.<ext>    # 올린 원본, 바이트 그대로
 ├── thumbs/<해시 앞 2자리>/<sha256>_<크기>.webp     # 다시 만들 수 있는 미리보기
 └── tmp/                                       # 쓰는 중인 파일. 열 때 비운다
 ```
 
-- 백업 대상은 `bundles/`, `assets/`와 라이브러리 폴더 바로 아래의 파일이다. `thumbs/`와 `tmp/`는
+- 백업 대상은 `bundles/`, `assets/`와 라이브러리 폴더 바로 아래의 파일(`organization.json`)이다. `thumbs/`와 `tmp/`는
   백업하지 않아도 된다.
 - 0.0.10 이하는 지운 번들을 `trash/<uuid>.<UTC 시각>[-n].json`에 옮겼다. 지금은 시작할 때(또는 목록을
   읽을 때) 그 파일을 `deleted_at`이 있는 버전 2 번들로 `bundles/`에 옮긴다. 옮길 수 있는 것은 읽을 수
@@ -94,8 +95,9 @@ bundle_library/
 
 | 항목 | 규칙 |
 | --- | --- |
-| 이름 공통 (번들, 필드, 태그) | 앞뒤 공백을 지우고 NFC로 정규화한다. 줄바꿈, 제어 문자, 방향 제어 문자는 쓸 수 없다 |
+| 이름 공통 (번들, 필드, 태그, 카테고리) | 앞뒤 공백을 지우고 NFC로 정규화한다. 줄바꿈, 제어 문자, 방향 제어 문자는 쓸 수 없다 |
 | 번들 이름 | 120자. 다른 번들과 같아도 된다 |
+| 카테고리 이름 | 60자. 대소문자와 관계없이 겹치지 않는다. Favorites, Uncategorized, Needs attention은 쓸 수 없다. 카테고리는 200개까지 |
 | 필드 이름 | 64자 |
 | 태그 | 20개, 각 40자. 대소문자만 다른 태그는 하나로 합친다 |
 | 메모 | 10,000자 |
@@ -105,6 +107,52 @@ bundle_library/
 | 비디오 | MP4, WebM(VP8·VP9·AV1과 Opus·Vorbis), MOV. 파일 1GB, 프레임당 7680×4320 픽셀 |
 | 오디오 | WAV, FLAC, MP3, OGG(Opus·Vorbis), M4A. 파일 200MB, 길이 10분, 채널 8개, 샘플레이트 192kHz, 샘플 5,760만 개(모든 채널 합계, 48kHz 스테레오 10분). 샘플 형식은 16·24·32비트 정수와 32·64비트 float |
 | 썸네일 크기 | 128, 256, 512 |
+
+## 정리 파일 (organization.json)
+
+카테고리와 즐겨찾기는 번들의 내용이 아니라 목록의 정리라서 번들 파일 밖에 둔다 (0.0.12, Phase 7.6).
+번들을 옮기거나 즐겨찾기해도 번들 파일, revision, 그 번들을 쓰는 노드의 캐시가 바뀌지 않는다.
+
+```json
+{
+  "format": "comfyui-bundle-library/organization",
+  "schema_version": 1,
+  "revision": 12,
+  "categories": [{"id": "6f1c0e5a-…", "name": "Characters", "parent": null}],
+  "placement": {"0b0fd10b-2e9d-43fa-898a-91f0cda76f5e": "6f1c0e5a-…"},
+  "favorites": ["0b0fd10b-2e9d-43fa-898a-91f0cda76f5e"]
+}
+```
+
+| 키 | 설명 |
+| --- | --- |
+| `revision` | 0부터, 쓸 때마다 1씩 오른다 |
+| `categories` | 카테고리의 `id`(UUID), `name`, `parent`. 화면은 이름순으로 보인다 |
+| `parent` | 중첩을 위해 열어 둔 자리다. 버전 1은 `null`만 받고, 다른 값이면 파일을 손상으로 본다 |
+| `placement` | 번들 id → 카테고리 id. 번들마다 카테고리는 하나이고, 없으면 Uncategorized다 |
+| `favorites` | 즐겨찾기한 번들 id. 즐겨찾기한 번들은 Favorites와 제 카테고리에 함께 보인다 |
+
+- 파일이 없으면 빈 정리로 본다. 옛 라이브러리는 모든 번들이 Uncategorized로 열린다. 처음 정리를
+  바꿀 때 만든다.
+- 카테고리 이름은 이름 공통 규칙(앞뒤 공백 제거, NFC, 줄바꿈·제어·방향 제어 문자 금지)을 따르고
+  60자까지다. 대소문자와 관계없이 다른 카테고리와 겹치지 않아야 한다(409 `category_conflict`).
+  계산하는 보기의 이름(Favorites, Uncategorized, Needs attention)은 쓸 수 없다. 카테고리는 200개까지다.
+- 없는 번들이나 없는 카테고리를 가리키는 항목은 읽을 때 무시하고, 다음에 쓸 때 정리한다. "있는
+  번들"은 `bundles/`의 모든 UUID(쓰는 것, 휴지통의 것, 읽을 수 없는 것)와 옛 `trash/`의 것이다.
+  그래서 휴지통의 번들과 읽지 못하는 파일의 배치와 즐겨찾기는 남는다.
+- 번들의 수명과 맞춘다.
+  - 휴지통으로 지우기와 되살리기는 배치와 즐겨찾기를 그대로 둔다. 되살린 번들은 제 카테고리에
+    즐겨찾기 그대로 돌아온다. 영구 삭제와 휴지통 비우기 때 지운다.
+  - 복제한 번들은 원본과 같은 카테고리에 둔다. 즐겨찾기는 복사하지 않는다.
+  - 카테고리를 지우면 그 번들(휴지통의 것 포함)은 Uncategorized가 된다. 번들은 바뀌지 않는다.
+- 번들 파일과 정리 파일은 따로 원자적으로 쓰이므로, 만들기·복제에서 번들은 만들어졌는데 배치만
+  실패할 수 있다. 그때는 201과 함께 `placement_error`(이유)를 돌려준다. 배치만 다시 하면 되고, 번들을
+  다시 만들지 않으므로 중복이 생기지 않는다.
+- 상태는 번들 파일과 같은 규칙을 따른다 (호환성 정책). 모르는 키가 있으면 읽기 전용, 더 새
+  `schema_version`이면 새 버전, 다른 `format`이면 미지원, JSON이 아니거나 구조가 틀리면 손상이다.
+  읽기 전용이면 카테고리를 보이고, 나머지는 카테고리 없이 보인다. 어느 경우든 파일을 바꾸지 않고
+  정리를 바꾸는 요청을 409 `organization_unwritable`로 거부하며, 목록의 `errors`와 `/health`의
+  `organization`에 보고한다. 번들 작업은 계속되고, 만들기의 배치는 `placement_error`가 된다.
 
 ## 에셋
 
@@ -163,18 +211,24 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 
 | 메서드 | 경로 | 요청 | 응답 |
 | --- | --- | --- | --- |
-| GET | `/health` | — | `{"version", "bundles", "trash", "corrupt", "newer", "unsupported", "legacy_trash": [파일 이름], "writable"}` |
-| GET | `/bundles` | `q`(이름·태그·필드 이름·텍스트 값 검색), `tag`, `sort`(`name`/`updated`, 이름이 같으면 id 순) | `{"bundles": [요약], "errors": [{"file", "id", "code", "error"}]}`. 휴지통의 번들은 빠진다 |
-| POST | `/bundles` | `{"name", "tags", "note", "fields"}` | 201, 번들 |
+| GET | `/health` | — | `{"version", "organization", "bundles", "trash", "corrupt", "newer", "unsupported", "legacy_trash": [파일 이름], "writable"}`. `organization`은 정리 파일의 상태(`missing`, `ok`, `read_only`, `newer_version`, `unsupported`, `corrupt`) |
+| GET | `/bundles` | `q`(이름·태그·카테고리 이름·필드 이름·텍스트 값 검색), `tag`, `sort`(`name`/`updated`, 이름이 같으면 id 순) | `{"bundles": [요약], "errors": [{"file", "id", "code", "error"}], "categories": [{"id", "name", "parent", "count"}], "organization": {"revision", "state"}}`. 휴지통의 번들은 빠진다. `categories`는 이름순이고 `count`는 걸러진 목록에서 센다 |
+| POST | `/bundles` | `{"name", "tags", "note", "fields", "category"?}` | 201, 번들. `category`(id)를 주면 그 카테고리에도 둔다. 배치만 실패하면 `placement_error` |
 | GET | `/bundles/{id}` | — | 번들. 경고가 있으면 `warnings`, 읽기 전용이면 `read_only`(이유)를 더한다. 휴지통에 있으면 404 `in_trash` |
 | PUT | `/bundles/{id}` | `{"expected_revision", "name", "tags", "note", "fields"}` | 번들 (revision +1) |
 | DELETE | `/bundles/{id}?expected_revision=N` | — | `{"deleted": id}`. 휴지통으로 보낸다 (`deleted_at`, revision +1) |
-| POST | `/bundles/{id}/duplicate` | `{"mode": "values" 또는 "structure", "name"?}` | 201, 새 번들. 이름을 비우면 `<이름> copy` |
+| POST | `/bundles/{id}/duplicate` | `{"mode": "values" 또는 "structure", "name"?}` | 201, 새 번들. 이름을 비우면 `<이름> copy`. 원본의 카테고리에 두고, 배치만 실패하면 `placement_error` |
+| PUT | `/bundles/{id}/category` | `{"category": id 또는 null}` | `{"id", "category"}`. 쓰는 번들과 휴지통의 번들 모두. revision은 그대로다 |
+| PUT | `/bundles/{id}/favorite` | `{"favorite": true 또는 false}` | `{"id", "favorite"}`. revision은 그대로다 |
+| GET | `/categories` | — | `{"categories": [{"id", "name", "parent", "count"}], "revision", "state"}` |
+| POST | `/categories` | `{"name", "parent"?}` | 201, `{"id", "name", "parent"}`. `parent`는 아직 받지 않는다(400 `nesting_not_supported`) |
+| PATCH | `/categories/{id}` | `{"name"}` | `{"id", "name", "parent"}` |
+| DELETE | `/categories/{id}` | — | `{"deleted": id, "uncategorized": 개수}`. 그 번들(휴지통의 것 포함)은 Uncategorized가 된다 |
 | POST | `/bundles/{id}/restore` | — | 되살린 번들 (같은 id와 이름, revision +1) |
 | POST | `/assets` | multipart의 `kind` 필드(`image`·`video`·`audio`, 없으면 `image`)와 그 뒤의 `file` 필드 | `{"asset": {"sha256", "ext", "mime", "bytes", 파일 정보…, "original_name"}}`. 새 파일이면 201, 이미 있으면 200. 크기 제한은 `kind`의 것을 쓴다 |
 | GET | `/assets/{sha256}` | — | 원본. Range 요청을 받는다. `Cache-Control: immutable`, `X-Content-Type-Options: nosniff` |
 | GET | `/assets/{sha256}/thumb?size=256` | — | WebP 썸네일 (이미지, 비디오 포스터) |
-| GET | `/trash` | — | `{"trash": [요약과 "deleted_at"], "errors": [{"file", "id", "code", "error"}]}`. 마지막에 지운 것부터. `errors`는 이 버전이 쓸 수 없는 파일과 옮기지 못한 옛 휴지통 파일이다 |
+| GET | `/trash` | — | `{"trash": [요약과 "deleted_at"], "errors": [{"file", "id", "code", "error"}]}`. 요약의 `category`는 되살아날 카테고리다. 마지막에 지운 것부터. `errors`는 이 버전이 쓸 수 없는 파일과 옮기지 못한 옛 휴지통 파일이다 |
 | DELETE | `/trash/{id}` | `unreadable=1`(선택) | `{"deleted": id}`. 휴지통의 번들을 영구 삭제한다. 이 버전이 완전히 읽지 못하는 파일은 `unreadable=1`이 있을 때만 지운다 |
 | DELETE | `/trash` | — | `{"deleted": 개수}`. 휴지통의 번들을 모두 영구 삭제한다. 완전히 읽지 못하는 파일은 남긴다 |
 | GET | `/cleanup` | — | `{"assets": [{"sha256", "kind", "ext", "bytes", "stored_at"}], "bytes", "recent", "grace_hours"}`. 아무 번들도, 휴지통의 번들도 쓰지 않는 파일. 오래된 것부터 |
@@ -183,7 +237,8 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 목록의 요약은 필드마다 `preview`를 준다. 텍스트는 앞 200자, 이미지는
 `{"sha256", "width", "height"}`, 비디오는 `{"sha256", "width", "height", "duration"}`, 오디오는
 `{"sha256", "duration"}`이고 파일이 없으면 `null`이다. 나머지는 값이다. 요약에도 `warnings`와
-`read_only`가 붙는다.
+`read_only`가 붙는다. 목록과 휴지통의 요약에는 `category`(id 또는 `null`)와 `favorite`가 있다.
+정리 파일을 읽지 못하면 모두 `null`과 `false`다.
 
 안전 정수 범위(±(2^53−1)) 밖의 정수는 브라우저가 JSON 숫자로 받으면 값이 바뀐다. 그래서 번들
 응답의 정수 필드는 정확한 십진수 문자열 `value_text`를 함께 주고, 요약의 `preview`는 그 문자열이다.
@@ -197,18 +252,21 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | 상태 | `code` | 경우 |
 | --- | --- | --- |
 | 400 | `invalid` | 값이나 형식이 규칙에 맞지 않음 |
-| 400 | `invalid_id` | 번들 UUID나 에셋 SHA-256 형식이 아님 |
+| 400 | `invalid_id` | 번들·카테고리 UUID나 에셋 SHA-256 형식이 아님 |
+| 400 | `nesting_not_supported` | 카테고리 안에 카테고리를 만들려 함 |
 | 400 | `invalid_json` | JSON을 읽을 수 없음 |
 | 400 | `unsupported_type` | 지원하지 않는 필드 타입 |
 | 400 | `unknown_asset` | 올린 적 없는 파일을 가리킴 |
 | 400 | `wrong_kind` | 파일의 종류가 필드 타입과 다름 (예: `video` 필드의 이미지) |
 | 400 | `corrupt_image`, `corrupt_media` | 이미지나 오디오를 끝까지, 또는 비디오의 첫 프레임을 디코딩할 수 없음 |
 | 403 | `missing_header`, `cross_site`, `origin_mismatch` | 쓰기 요청의 조건 위반 |
-| 404 | `not_found` | 번들이나 파일이 없음, 오디오의 썸네일 |
+| 404 | `not_found` | 번들, 카테고리나 파일이 없음, 오디오의 썸네일 |
 | 404 | `in_trash` | 번들이 휴지통에 있음 (되살리면 쓸 수 있다) |
 | 409 | `revision_conflict` | `expected_revision`이 현재와 다름. `current_revision`을 함께 준다 |
 | 409 | `in_trash`, `not_in_trash` | 휴지통의 번들을 고치거나 지우거나 복제하려 함 / 쓰는 번들을 되살리거나 영구 삭제하려 함 |
 | 409 | `read_only` | 이 버전이 모르는 데이터가 있어 고칠 수 없는 번들 |
+| 409 | `category_conflict` | 같은 이름(대소문자 무시)의 카테고리가 있음 |
+| 409 | `organization_unwritable` | 이 버전이 바꿀 수 없는 정리 파일. `state`를 함께 준다 |
 | 409 | `newer_version`, `unsupported` | 더 새 버전이 저장한 파일 / 다른 형식이나 모르는 필드 타입의 파일 |
 | 409 | `unreadable_file` | 완전히 읽지 못하는 파일을 `unreadable=1` 없이 영구 삭제하려 함 |
 | 409 | `unreadable_bundles` | 완전히 읽지 못하는 번들 파일이 있어 쓰이지 않는 파일을 가릴 수 없음. `files`에 파일 이름을 준다 |
@@ -228,6 +286,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | 표지 | 뜻 | 올리는 때 |
 | --- | --- | --- |
 | 번들 파일의 `schema_version` (지금 2) | 번들 파일의 형식 | 옛 노드가 완전히 이해하지 못하는 변경: 키, 필드 타입, 에셋 종류, 파일 참조 구조를 더하거나 바꿀 때. 마이그레이션 단계를 함께 더한다 |
+| 정리 파일의 `schema_version` (지금 1) | `organization.json`의 형식 | 옛 노드가 완전히 이해하지 못하는 변경: 중첩 카테고리를 열거나 키를 더할 때 |
 | 워크플로 `slot_spec`의 `v` (지금 1) | 노드 출력의 기록 형식 | 출력 기록의 모양을 바꿀 때 |
 | API 접두어 `/v1` | HTTP API | 화면 밖의 클라이언트가 생겨 호환되지 않게 바꿀 때 |
 | 패키지 버전 (`pyproject.toml`) | 출시 | 출시할 때마다. `bundle_library/constants.py`와 `web/version.js`의 사본은 `tests/test_versions.py`가 같게 지킨다 |
@@ -278,6 +337,9 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 ### 워크플로와 노드
 
 - 노드의 입력은 끝에만 더한다. 워크플로는 위젯 값을 위치 순서로 저장한다.
+- 노드의 캐시 키는 출력이 내보내는 것(슬롯의 이름과 타입, 필드의 값이나 파일 SHA-256)만으로 만든다.
+  번들 이름·메모·태그·revision·카테고리·즐겨찾기만 바꾸면 Load Bundle과 그 뒤의 노드가 다시 실행되지
+  않는다 (0.0.12부터).
 - 출력 풀(32개)은 늘리기만 한다. 줄이면 옛 워크플로의 링크가 끊긴다.
 - 지운 필드 타입 이름이나 키 이름을 다른 뜻으로 다시 쓰지 않는다.
 - 이 버전이 읽지 못하는 `slot_spec`(더 새 버전의 출력 타입 등)을 가진 노드는 저장된 출력, 링크,
