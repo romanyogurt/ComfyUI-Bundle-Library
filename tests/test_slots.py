@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from bundle_library.constants import POOL_SIZE
-from bundle_library.slots import field_problem, linked_outputs, parse_slot_spec
+from bundle_library.slots import field_problem, linked_outputs, output_fingerprint, parse_slot_spec
 from bundle_library.store import BundleStore
 
 from . import helpers
@@ -81,6 +81,37 @@ class FieldProblemTest(unittest.TestCase):
         for field, slot_type, expected in cases:
             with self.subTest(expected):
                 self.assertEqual(self.problem(field, slot_type), expected)
+
+
+class OutputFingerprintTest(unittest.TestCase):
+    SLOTS = [("prompt", "text"), ("ref", "image"), ("seed", "int")]
+
+    def fields(self, **changes):
+        fields = {"prompt": {"name": "prompt", "type": "text", "value": "a red dress"},
+                  "ref": {"name": "ref", "type": "image", "asset": {"sha256": "a" * 64, "original_name": "a.png",
+                                                                    "width": 64}},
+                  "seed": {"name": "seed", "type": "int", "value": 7},
+                  "note_like": {"name": "unused", "type": "text", "value": "not an output"}}
+        for name, change in changes.items():
+            fields[name] = {**fields[name], **change}
+        return fields
+
+    def test_only_what_the_outputs_carry_counts(self):
+        base = output_fingerprint(self.SLOTS, self.fields())
+        same = [
+            self.fields(ref={"asset": {"sha256": "a" * 64, "original_name": "renamed.png", "width": 64}}),
+            self.fields(note_like={"value": "changed, but no output reads it"}),
+        ]
+        for fields in same:
+            self.assertEqual(output_fingerprint(self.SLOTS, fields), base)
+        different = [
+            self.fields(prompt={"value": "a blue dress"}),
+            self.fields(ref={"asset": {"sha256": "b" * 64}}),
+            self.fields(seed={"value": 8}),
+        ]
+        for fields in different:
+            self.assertNotEqual(output_fingerprint(self.SLOTS, fields), base)
+        self.assertNotEqual(output_fingerprint(self.SLOTS[:2], self.fields()), base)  # another set of outputs
 
 
 class LinkedOutputsTest(unittest.TestCase):

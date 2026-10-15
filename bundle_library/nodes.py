@@ -1,13 +1,10 @@
-import hashlib
-import json
-
 from comfy_api.latest import io
 
 from .constants import MEDIA_TYPES, POOL_SIZE
 from .convert import load_audio, load_image, load_video
 from .library import get_store
 from .model import LibraryError
-from .slots import field_problem, linked_outputs, parse_slot_spec
+from .slots import field_problem, linked_outputs, output_fingerprint, parse_slot_spec
 
 
 class LoadBundle(io.ComfyNode):
@@ -60,8 +57,10 @@ class LoadBundle(io.ComfyNode):
             # that passed while it was unlinked would hand its cached None to a
             # link made later. NaN never matches, so such a node always reruns.
             return float("nan")
-        # Files are stored under their hash, so the bundle JSON pins every output.
-        return hashlib.sha256(json.dumps(bundle, sort_keys=True).encode()).hexdigest()
+        # Only what the outputs carry: a renamed bundle or a new note keeps the
+        # cache of every node downstream. A bundle in the trash fails before
+        # this, in get() (here and in validate_inputs).
+        return output_fingerprint(slots, fields)
 
     @classmethod
     def execute(cls, bundle_id, slot_spec) -> io.NodeOutput:

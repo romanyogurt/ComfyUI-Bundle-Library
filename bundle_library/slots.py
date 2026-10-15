@@ -1,6 +1,7 @@
 """What a Load Bundle node's outputs carry, and whether a bundle can fill them.
 Imports nothing from ComfyUI, so the tests can use it on their own."""
 
+import hashlib
 import json
 
 from .constants import COMFY_TYPES, MEDIA_TYPES, POOL_SIZE
@@ -46,6 +47,17 @@ def field_problem(store, field, field_type):
         if store.assets.path(field["asset"]["sha256"]) is None:
             return f"has {'an' if field_type in ('image', 'audio') else 'a'} {field_type} file that is missing from the library"
     return None
+
+
+def output_fingerprint(slots, fields):
+    """A hash of what the outputs carry: for each slot (name, type) its field's
+    value, or the SHA-256 of its file (files never change under a hash).
+    Everything else about the bundle (its name, note, tags, revision, times,
+    category) leaves it unchanged, so editing those does not re-run the nodes
+    that read the outputs. Every slot's field must exist with its type."""
+    content = [[name, field_type, fields[name]["asset"]["sha256"] if field_type in MEDIA_TYPES else fields[name]["value"]]
+               for name, field_type in slots]
+    return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
 
 def linked_outputs(prompt, unique_id):

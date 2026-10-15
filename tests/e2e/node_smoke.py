@@ -106,6 +106,18 @@ def checks(api, ids):
     cached = [n for m in messages(entry, "execution_cached") for n in m["nodes"]]
     expect("1" in cached, "unchanged bundle: the loader is served from the cache")
 
+    # A new name, note and tags change no output, so nothing runs again.
+    bundle = api.call("GET", f"/bundles/{sample_a}")[1]
+    renamed = {**bundle, "name": bundle["name"] + " (renamed)", "note": "a note that no output reads",
+               "tags": ["test", "renamed"], "expected_revision": bundle["revision"]}
+    status, renamed, _ = api.call("PUT", f"/bundles/{sample_a}", renamed)
+    expect(status == 200, "Sample A renamed, with a new note and tags")
+    status, entry = run(api, graph(sample_a))
+    cached = {n for m in messages(entry, "execution_cached") for n in m["nodes"]}
+    expect({"1", "2", "3", "4", "5"} <= cached, f"name, note and tags only: every node is served from the cache {sorted(cached)}")
+    status, _, _ = api.call("PUT", f"/bundles/{sample_a}", {**bundle, "expected_revision": renamed["revision"]})
+    expect(status == 200, "Sample A's name, note and tags put back")
+
     red, green = (179, 38, 30), (21, 128, 61)  # Sample A's ref_1 and its stand-in
     bundle = api.call("GET", f"/bundles/{sample_a}")[1]
     original = bundle["fields"][0]["value"]
