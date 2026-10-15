@@ -1,0 +1,20 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 2,
+  "id": "49a9c4ef-f882-488c-8f57-d663a458079f",
+  "revision": 3,
+  "name": "Version 2 without deleted_at",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "hand-made"
+    }
+  ],
+  "created_at": "2026-10-16T00:00:00.000Z",
+  "updated_at": "2026-10-16T00:00:00.000Z"
+}

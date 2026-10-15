@@ -1,0 +1,21 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "8183a6bf-9756-4adc-992a-b4e22443f3ea",
+  "revision": 3,
+  "name": "Unknown top key",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "hand-made"
+    }
+  ],
+  "created_at": "2026-10-16T00:00:00.000Z",
+  "updated_at": "2026-10-16T00:00:00.000Z",
+  "color": "red"
+}

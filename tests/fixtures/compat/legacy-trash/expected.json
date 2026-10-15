@@ -1,0 +1,15 @@
+{
+  "moved": [
+    "650e72b8-0c55-4642-bdc2-c29e49acb272"
+  ],
+  "moved_twice_trashed": {
+    "id": "0e39ef22-3b3e-4e01-80cd-3637fc3df0af",
+    "kept_stamp": "20261014T090200Z",
+    "moved_stamp": "20261014T090300Z"
+  },
+  "left": [
+    "5bc85567-f852-4453-8d46-253d48211a72.20261014T090100Z.json",
+    "0e39ef22-3b3e-4e01-80cd-3637fc3df0af.20261014T090200Z.json",
+    "f840194a-9362-4ee7-8a1d-cc45f2de00b7.20261014T090400Z.json"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "a845c8c3-1131-494c-93c7-4c1cc1d93058",
+  "revision": 3,
+  "name": "Big int 2^53+1",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "hand-made"
+    },
+    {
+      "name": "seed",
+      "type": "int",
+      "value": 9007199254740993
+    }
+  ],
+  "created_at": "2026-10-16T00:00:00.000Z",
+  "updated_at": "2026-10-16T00:00:00.000Z"
+}

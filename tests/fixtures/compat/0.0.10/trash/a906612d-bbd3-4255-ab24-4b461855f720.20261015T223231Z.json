@@ -1,0 +1,32 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "a906612d-bbd3-4255-ab24-4b461855f720",
+  "revision": 1,
+  "name": "Trashed in 0.0.10",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "In the trash."
+    },
+    {
+      "name": "ref",
+      "type": "image",
+      "asset": {
+        "sha256": "315c75d752d8ac55d0ba9255340f7569ee15fadf77829d2cfc0b95ac5148e386",
+        "ext": "png",
+        "width": 64,
+        "height": 48,
+        "bytes": 137,
+        "original_name": "white.png"
+      }
+    }
+  ],
+  "created_at": "2026-10-15T22:32:31.628Z",
+  "updated_at": "2026-10-15T22:32:31.628Z"
+}

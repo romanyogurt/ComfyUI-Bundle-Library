@@ -1,0 +1,42 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "d90c387a-ed61-461a-9e58-200522466d94",
+  "revision": 1,
+  "name": "[test] Compat workflow",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "Saved by an older release."
+    },
+    {
+      "name": "ref",
+      "type": "image",
+      "asset": {
+        "sha256": "8804dd93154c7ae9b0bd19fc16e1d49f6e64d21a161989cb56e94e5d37b7f5da",
+        "ext": "png",
+        "width": 512,
+        "height": 768,
+        "bytes": 17335,
+        "original_name": "compat.png"
+      }
+    },
+    {
+      "name": "seed",
+      "type": "int",
+      "value": 42
+    },
+    {
+      "name": "flag",
+      "type": "boolean",
+      "value": true
+    }
+  ],
+  "created_at": "2026-10-15T22:33:08.938Z",
+  "updated_at": "2026-10-15T22:33:08.938Z"
+}

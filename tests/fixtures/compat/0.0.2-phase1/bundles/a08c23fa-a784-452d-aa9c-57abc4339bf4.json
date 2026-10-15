@@ -1,0 +1,52 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "a08c23fa-a784-452d-aa9c-57abc4339bf4",
+  "revision": 1,
+  "name": "Phase 1 sample",
+  "tags": [
+    "compat"
+  ],
+  "note": "Made by node 0.0.2.",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "A red dress.\n\n  Two blank lines and spaces kept.  "
+    },
+    {
+      "name": "ref",
+      "type": "image",
+      "asset": {
+        "sha256": "699db0be77297268926258bd3ee95a83fec80e7742a0947c6fba462c1ec7fefe",
+        "ext": "png",
+        "width": 64,
+        "height": 48,
+        "bytes": 136,
+        "original_name": "ref.png"
+      }
+    },
+    {
+      "name": "ref_2",
+      "type": "image",
+      "asset": null
+    },
+    {
+      "name": "use_bgm",
+      "type": "boolean",
+      "value": true
+    },
+    {
+      "name": "steps",
+      "type": "int",
+      "value": 42
+    },
+    {
+      "name": "cfg",
+      "type": "float",
+      "value": 4.5
+    }
+  ],
+  "created_at": "2026-10-15T22:32:29.989Z",
+  "updated_at": "2026-10-15T22:32:29.989Z"
+}

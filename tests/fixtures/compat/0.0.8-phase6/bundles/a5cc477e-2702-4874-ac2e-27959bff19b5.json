@@ -1,0 +1,73 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "a5cc477e-2702-4874-ac2e-27959bff19b5",
+  "revision": 1,
+  "name": "Phase 6 sample",
+  "tags": [
+    "compat"
+  ],
+  "note": "Made by node 0.0.8.",
+  "fields": [
+    {
+      "name": "clip",
+      "type": "video",
+      "asset": {
+        "sha256": "4d83d741d44f5be563c47da9bd0431e6e724295a773b09f5f70a2e248c9d66f0",
+        "ext": "mp4",
+        "width": 64,
+        "height": 48,
+        "codec": "h264",
+        "has_audio": true,
+        "fps": 12.0,
+        "audio_codec": "aac",
+        "duration": 1.0,
+        "bytes": 19225,
+        "original_name": "clip.mp4"
+      }
+    },
+    {
+      "name": "bgm",
+      "type": "audio",
+      "asset": {
+        "sha256": "c79ff22bff332a59b1a5a760451b878fd1b18a11b202d2a5d2203c290a5359a9",
+        "ext": "wav",
+        "sample_rate": 8000,
+        "channels": 2,
+        "codec": "pcm_s16le",
+        "duration": 1.0,
+        "bytes": 32078,
+        "original_name": "tone.wav"
+      }
+    },
+    {
+      "name": "empty_clip",
+      "type": "video",
+      "asset": null
+    },
+    {
+      "name": "empty_bgm",
+      "type": "audio",
+      "asset": null
+    },
+    {
+      "name": "ref",
+      "type": "image",
+      "asset": {
+        "sha256": "9b9d6f434da710583cd6848282db724a6bf69b0b1202cfb71b6101e97379d2f0",
+        "ext": "png",
+        "width": 64,
+        "height": 48,
+        "bytes": 137,
+        "original_name": "ref.png"
+      }
+    },
+    {
+      "name": "seed",
+      "type": "int",
+      "value": 9007199254740991
+    }
+  ],
+  "created_at": "2026-10-15T22:32:30.808Z",
+  "updated_at": "2026-10-15T22:32:30.808Z"
+}

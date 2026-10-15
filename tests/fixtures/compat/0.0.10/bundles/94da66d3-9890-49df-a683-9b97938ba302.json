@@ -1,0 +1,32 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "94da66d3-9890-49df-a683-9b97938ba302",
+  "revision": 1,
+  "name": "Active in 0.0.10",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "Still here."
+    },
+    {
+      "name": "ref",
+      "type": "image",
+      "asset": {
+        "sha256": "9e28c107e06c594ba5b2135050073009ac94ba11efd68f94de0baeb5dfc37076",
+        "ext": "png",
+        "width": 64,
+        "height": 48,
+        "bytes": 136,
+        "original_name": "green.png"
+      }
+    }
+  ],
+  "created_at": "2026-10-15T22:32:31.611Z",
+  "updated_at": "2026-10-15T22:32:31.611Z"
+}

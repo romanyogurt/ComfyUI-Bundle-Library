@@ -1,0 +1,25 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "93959b2c-3755-4d49-85c7-9c71f0b23da4",
+  "revision": 3,
+  "name": "Duplicate fields",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "hand-made"
+    },
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "hand-made"
+    }
+  ],
+  "created_at": "2026-10-16T00:00:00.000Z",
+  "updated_at": "2026-10-16T00:00:00.000Z"
+}

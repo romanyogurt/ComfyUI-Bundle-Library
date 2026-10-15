@@ -1,0 +1,231 @@
+{
+  "id": "a04126cd-86b2-4cd2-81f6-a2591078df60",
+  "revision": 0,
+  "last_node_id": 4,
+  "last_link_id": 3,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "BundleLibraryLoad",
+      "pos": [
+        80,
+        80
+      ],
+      "size": [
+        320,
+        451
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "bundle_id",
+          "name": "bundle_id",
+          "type": "STRING",
+          "widget": {
+            "name": "bundle_id"
+          },
+          "link": null
+        },
+        {
+          "localized_name": "slot_spec",
+          "name": "slot_spec",
+          "type": "STRING",
+          "widget": {
+            "name": "slot_spec"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "label": "prompt",
+          "name": "field_01",
+          "type": "STRING",
+          "links": [
+            1
+          ]
+        },
+        {
+          "label": "ref",
+          "name": "field_02",
+          "type": "IMAGE",
+          "links": [
+            2
+          ]
+        },
+        {
+          "label": "seed",
+          "name": "field_03",
+          "type": "INT",
+          "links": [
+            3
+          ]
+        },
+        {
+          "label": "flag",
+          "name": "field_04",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "BundleLibraryLoad",
+        "bundle_name": "[test] Compat workflow"
+      },
+      "widgets_values": [
+        "d90c387a-ed61-461a-9e58-200522466d94",
+        "{\"v\":1,\"slots\":[{\"name\":\"prompt\",\"type\":\"text\"},{\"name\":\"ref\",\"type\":\"image\"},{\"name\":\"seed\",\"type\":\"int\"},{\"name\":\"flag\",\"type\":\"mesh\"}]}"
+      ],
+      "widgets_values_named": {
+        "bundle_id": "d90c387a-ed61-461a-9e58-200522466d94",
+        "slot_spec": "{\"v\":1,\"slots\":[{\"name\":\"prompt\",\"type\":\"text\"},{\"name\":\"ref\",\"type\":\"image\"},{\"name\":\"seed\",\"type\":\"int\"},{\"name\":\"flag\",\"type\":\"boolean\"}]}"
+      }
+    },
+    {
+      "id": 2,
+      "type": "PreviewAny",
+      "pos": [
+        520,
+        60
+      ],
+      "size": [
+        210,
+        122
+      ],
+      "flags": {},
+      "order": 1,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "source",
+          "name": "source",
+          "type": "*",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "STRING",
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {}
+    },
+    {
+      "id": 3,
+      "type": "PreviewImage",
+      "pos": [
+        520,
+        260
+      ],
+      "size": [
+        140,
+        26
+      ],
+      "flags": {},
+      "order": 2,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "images",
+          "name": "images",
+          "type": "IMAGE",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewImage"
+      }
+    },
+    {
+      "id": 4,
+      "type": "PreviewAny",
+      "pos": [
+        520,
+        520
+      ],
+      "size": [
+        210,
+        122
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "source",
+          "name": "source",
+          "type": "*",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "STRING",
+          "name": "STRING",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "Node name for S&R": "PreviewAny"
+      },
+      "widgets_values": [],
+      "widgets_values_named": {}
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "STRING"
+    ],
+    [
+      2,
+      1,
+      1,
+      3,
+      0,
+      "IMAGE"
+    ],
+    [
+      3,
+      1,
+      2,
+      4,
+      0,
+      "INT"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "ds": {
+      "scale": 0.9,
+      "offset": [
+        416,
+        110
+      ]
+    }
+  },
+  "version": 0.4
+}

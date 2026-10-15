@@ -1,0 +1,20 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "e46e4a40-3ed5-41af-b3ab-31d5dec0ec9c",
+  "revision": 3,
+  "name": "Big int 2^60",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "seed",
+      "type": "int",
+      "value": 1152921504606846976
+    }
+  ],
+  "created_at": "2026-10-16T00:00:00.000Z",
+  "updated_at": "2026-10-16T00:00:00.000Z"
+}

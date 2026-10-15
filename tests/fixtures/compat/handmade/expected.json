@@ -1,0 +1,102 @@
+{
+  "int-2p53-plus-1": {
+    "state": "warning",
+    "error_code": null,
+    "id": "a845c8c3-1131-494c-93c7-4c1cc1d93058"
+  },
+  "int-2p60": {
+    "state": "warning",
+    "error_code": null,
+    "id": "e46e4a40-3ed5-41af-b3ab-31d5dec0ec9c"
+  },
+  "int-int64-max": {
+    "state": "warning",
+    "error_code": null,
+    "id": "58ed093d-27ff-4693-8990-9ca9163cf60d"
+  },
+  "name-121": {
+    "state": "warning",
+    "error_code": null,
+    "id": "d43996ff-dc16-4d23-bbff-399180993135"
+  },
+  "marker-true": {
+    "state": "corrupt",
+    "error_code": "corrupt",
+    "id": "cf588dc6-f04e-4eb4-9d4b-c054809b70a1"
+  },
+  "marker-float": {
+    "state": "corrupt",
+    "error_code": "corrupt",
+    "id": "cf3c04f5-8c2e-421e-8717-51a9e12780f7"
+  },
+  "duplicate-field-names": {
+    "state": "corrupt",
+    "error_code": "corrupt",
+    "id": "93959b2c-3755-4d49-85c7-9c71f0b23da4"
+  },
+  "v2-active": {
+    "state": "ok",
+    "error_code": null,
+    "id": "dd329081-8696-4c9b-b97e-4225b8ed1eb9"
+  },
+  "v2-deleted": {
+    "state": "ok",
+    "error_code": null,
+    "id": "7af2831e-4e88-4d3c-bd47-9fac3244e1fa"
+  },
+  "v2-missing-deleted-at": {
+    "state": "corrupt",
+    "error_code": "corrupt",
+    "id": "49a9c4ef-f882-488c-8f57-d663a458079f"
+  },
+  "v2-bad-deleted-at": {
+    "state": "corrupt",
+    "error_code": "corrupt",
+    "id": "15c9aa68-a430-48ac-8869-04c6fa252eb2"
+  },
+  "v3-other-references": {
+    "state": "newer_version",
+    "error_code": "newer_version",
+    "id": "7d885028-609a-4383-8300-dc75693e3055"
+  },
+  "unknown-format": {
+    "state": "unsupported",
+    "error_code": "unsupported",
+    "id": "d51658ef-b6b8-4f45-967d-4b18a954cdd8"
+  },
+  "unknown-field-type": {
+    "state": "unsupported",
+    "error_code": "unsupported",
+    "id": "58d7aeac-9466-4a4b-a16a-bd654649edfb"
+  },
+  "unknown-top-key": {
+    "state": "read_only",
+    "error_code": null,
+    "id": "8183a6bf-9756-4adc-992a-b4e22443f3ea"
+  },
+  "unknown-field-key": {
+    "state": "read_only",
+    "error_code": null,
+    "id": "4c9b9b88-f795-43c3-b046-b076f689d02a"
+  },
+  "unknown-asset-key": {
+    "state": "read_only",
+    "error_code": null,
+    "id": "99869d70-2dcc-492f-9984-42215a11083b"
+  },
+  "not-json": {
+    "state": "corrupt",
+    "error_code": "corrupt",
+    "id": null
+  },
+  "same-name-1": {
+    "state": "ok",
+    "error_code": null,
+    "id": "5999d9b0-3ccf-4e91-bb34-b49eb1efc05d"
+  },
+  "same-name-2": {
+    "state": "ok",
+    "error_code": null,
+    "id": "d21cb51c-9654-4eb1-a712-af0458894959"
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "58d7aeac-9466-4a4b-a16a-bd654649edfb",
+  "revision": 3,
+  "name": "Unknown type",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "hand-made"
+    },
+    {
+      "name": "m",
+      "type": "mesh",
+      "asset": null
+    }
+  ],
+  "created_at": "2026-10-16T00:00:00.000Z",
+  "updated_at": "2026-10-16T00:00:00.000Z"
+}

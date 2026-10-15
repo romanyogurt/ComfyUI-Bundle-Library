@@ -1,0 +1,31 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 1,
+  "id": "650e72b8-0c55-4642-bdc2-c29e49acb272",
+  "revision": 3,
+  "name": "Movable",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "hand-made"
+    },
+    {
+      "name": "ref",
+      "type": "image",
+      "asset": {
+        "sha256": "699db0be77297268926258bd3ee95a83fec80e7742a0947c6fba462c1ec7fefe",
+        "ext": "png",
+        "width": 64,
+        "height": 48,
+        "bytes": 136
+      }
+    }
+  ],
+  "created_at": "2026-10-16T00:00:00.000Z",
+  "updated_at": "2026-10-16T00:00:00.000Z"
+}

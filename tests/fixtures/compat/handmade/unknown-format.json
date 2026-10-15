@@ -1,0 +1,20 @@
+{
+  "format": "someone-else/bundle",
+  "schema_version": 1,
+  "id": "d51658ef-b6b8-4f45-967d-4b18a954cdd8",
+  "revision": 3,
+  "name": "Unknown format",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "hand-made"
+    }
+  ],
+  "created_at": "2026-10-16T00:00:00.000Z",
+  "updated_at": "2026-10-16T00:00:00.000Z"
+}
