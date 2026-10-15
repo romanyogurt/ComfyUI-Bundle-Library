@@ -1,7 +1,7 @@
 [project]
 name = "comfyui-bundle-library"
 description = "Named bundles of text, images and values, loaded by a node whose outputs follow the selected bundle."
-version = "0.0.11"
+version = "0.0.12"
 requires-python = ">=3.10"
 dependencies = []
 
