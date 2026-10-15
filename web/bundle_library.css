@@ -938,3 +938,21 @@
     justify-content: center;
     font-size: 28px;
 }
+
+/* Why a stored bundle cannot be saved as it is. */
+.bl-editor-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 10px;
+}
+
+/* The files of the trash view this version cannot read. */
+.bl-trash-subtitle {
+    margin-top: 12px;
+    font-weight: 600;
+}
+
+.bl-unreadable .bl-trash-item {
+    background: var(--comfy-input-bg, #222);
+}

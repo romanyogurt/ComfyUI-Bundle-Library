@@ -114,13 +114,13 @@ const PAGE_HELPERS = () => {
             }
             const { trash } = await this.request("GET", "/trash");
             for (const entry of trash.filter((e) => ids.includes(e.id))) {
-                await this.request("DELETE", `/trash/${entry.trash_id}`);
+                await this.request("DELETE", `/trash/${entry.id}`);
             }
             return removed;
         },
         async trashIds() {
             const { trash, errors } = await this.request("GET", "/trash");
-            return [...trash, ...errors].map((e) => e.trash_id);
+            return [...trash.map((e) => e.id), ...errors.map((e) => e.file)];
         },
         async createTestBundles() {
             const text = (name, value) => ({ name, type: "text", value });

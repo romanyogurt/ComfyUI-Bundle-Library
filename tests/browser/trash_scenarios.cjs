@@ -20,7 +20,7 @@ const TRASH_HELPERS = () => {
         button: () => $(".bl-overlay .bl-trash-button")?.textContent ?? null,
         selected: () => !!$(".bl-overlay .bl-trash-button.selected"),
         rows: () => [...document.querySelectorAll(".bl-overlay .bl-trash-item")].map((row) => ({
-            trashId: row.dataset.trashId,
+            id: row.dataset.id,
             name: $(".bl-list-name", row).textContent,
             sub: $(".bl-list-sub", row).textContent,
             thumb: $("img", row)?.getAttribute("src") ?? null,
@@ -56,7 +56,7 @@ function age(sha256) {
     const overlay = page.locator(".bl-overlay");
     const layerBox = page.locator(".bl-overlay .bl-layer");
     const button = (name, scope = overlay) => scope.getByRole("button", { name, exact: true });
-    const row = (trashId) => page.locator(`.bl-overlay .bl-trash-item[data-trash-id="${trashId}"]`);
+    const row = (id) => page.locator(`.bl-overlay .bl-trash-item[data-id="${id}"]`);
     const until = (fn, arg, timeout = 10000) => page.waitForFunction(fn, arg, { timeout }).then(() => true, () => false);
     const api = (method, route, body) => ev(([m, r, b]) => window.__bl.request(m, r, b), [method, route, body]);
     const trashOf = async (id) => (await api("GET", "/trash")).trash.find((entry) => entry.id === id);
@@ -94,17 +94,17 @@ function age(sha256) {
     // ---- the trash view ---------------------------------------------------------------
     await button(`🗑 Trash (${countBefore + 1})`).click();
     let trashed = await trashOf(made.kept.id);
-    await until((id) => window.__trash.rows().some((r) => r.trashId === id), trashed.trash_id);
+    await until((id) => window.__trash.rows().some((r) => r.id === id), trashed.id);
     let rows = await ev(() => window.__trash.rows());
-    const kept = rows.find((r) => r.trashId === trashed.trash_id);
+    const kept = rows.find((r) => r.id === trashed.id);
     check("the trash lists the bundle: name, when it was deleted, its fields and a thumbnail",
         kept?.name === KEPT && /^Deleted \d{4}-\d\d-\d\d \d\d:\d\d · 1 field$/.test(kept.sub)
         && kept.thumb?.includes(made.kept.sha) && await ev(() => window.__trash.selected()), kept);
     await shot("trash.png");
 
-    await button("Restore", row(trashed.trash_id)).click();
+    await button("Restore", row(trashed.id)).click();
     await until((id) => window.__trash.items().includes(id), made.kept.id);
-    await until((id) => !window.__trash.rows().some((r) => r.trashId === id), trashed.trash_id);
+    await until((id) => !window.__trash.rows().some((r) => r.id === id), trashed.id);
     check("Restore puts it back in the list under its id, and out of the trash",
         await status() === `Restored '${KEPT}'.` && (await api("GET", `/bundles/${made.kept.id}`)).name === KEPT,
         await status());
@@ -116,29 +116,33 @@ function age(sha256) {
     ours.add(twin.id);
     trashed = await trashOf(made.kept.id);
     await button(await ev(() => window.__trash.button())).click(); // reads the trash again
-    await until((id) => window.__trash.rows().some((r) => r.trashId === id), trashed.trash_id);
-    await button("Restore", row(trashed.trash_id)).click();
-    await until((id) => !window.__trash.rows().some((r) => r.trashId === id), trashed.trash_id);
+    await until((id) => window.__trash.rows().some((r) => r.id === id), trashed.id);
+    await button("Restore", row(trashed.id)).click();
+    await until((id) => !window.__trash.rows().some((r) => r.id === id), trashed.id);
+    await until((ids) => ids.every((id) => window.__trash.items().includes(id)), [made.kept.id, twin.id]);
     current = await api("GET", `/bundles/${made.kept.id}`);
-    check("a restored bundle whose name was taken gets a number after it",
-        current.name === `${KEPT} (2)` && await status() === `Restored '${KEPT}' as '${KEPT} (2)': another bundle has its name.`,
-        { name: current.name, status: await status() });
+    const labels = await ev((ids) => ids.map((id) => document.querySelector(
+        `.bl-overlay .bl-list-item[data-id="${id}"] .bl-list-name`)?.textContent), [made.kept.id, twin.id]);
+    check("a restored bundle keeps its id and name even when another bundle has the name; the list tells them apart",
+        current.name === KEPT && current.id === made.kept.id && await status() === `Restored '${KEPT}'.`
+        && labels.every((label) => label?.startsWith(`${KEPT} · `)) && labels[0] !== labels[1],
+        { name: current.name, status: await status(), labels });
 
     // ---- deleting for good ---------------------------------------------------------------
     current = await api("GET", `/bundles/${made.gone.id}`);
     await api("DELETE", `/bundles/${made.gone.id}?expected_revision=${current.revision}`);
     trashed = await trashOf(made.gone.id);
     await button(await ev(() => window.__trash.button())).click();
-    await until((id) => window.__trash.rows().some((r) => r.trashId === id), trashed.trash_id);
-    await button("Delete forever", row(trashed.trash_id)).click();
+    await until((id) => window.__trash.rows().some((r) => r.id === id), trashed.id);
+    await button("Delete forever", row(trashed.id)).click();
     let layer = await ev(() => window.__trash.layer());
     check("Delete forever asks first", layer?.title === `Delete '${GONE}' for good?`
         && JSON.stringify(layer.buttons) === JSON.stringify(["Delete forever", "Cancel"]), layer);
     await button("Cancel", layerBox).click();
     check("Cancel keeps it in the trash", !!(await trashOf(made.gone.id)));
-    await button("Delete forever", row(trashed.trash_id)).click();
+    await button("Delete forever", row(trashed.id)).click();
     await button("Delete forever", layerBox).click();
-    await until((id) => !window.__trash.rows().some((r) => r.trashId === id), trashed.trash_id);
+    await until((id) => !window.__trash.rows().some((r) => r.id === id), trashed.id);
     check("Delete forever removes it from the trash",
         !(await trashOf(made.gone.id)) && await status() === `Deleted '${GONE}' for good.`, await status());
 

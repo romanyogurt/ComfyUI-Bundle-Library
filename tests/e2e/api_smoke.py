@@ -107,7 +107,7 @@ def remove_created(api, created):
     status, listing, _ = api.call("GET", "/trash")
     for entry in listing["trash"] if status == 200 else []:
         if entry["id"] in created:
-            api.call("DELETE", f"/trash/{entry['trash_id']}")
+            api.call("DELETE", f"/trash/{entry['id']}")
 
 
 def verify(api, ids):

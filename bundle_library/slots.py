@@ -14,12 +14,18 @@ def parse_slot_spec(text):
         data = json.loads(text)
     except json.JSONDecodeError as e:
         raise ValueError(f"not JSON ({e.msg})") from None
-    if not isinstance(data, dict) or data.get("v") != 1 or not isinstance(data.get("slots"), list):
+    version = data.get("v") if isinstance(data, dict) else None
+    if type(version) is int and version > 1:
+        raise ValueError(f"version {version} of the outputs is from a newer Bundle Library")
+    if version != 1 or type(version) is not int or not isinstance(data.get("slots"), list):
         raise ValueError('expected {"v": 1, "slots": [...]}')
     slots = []
     for slot in data["slots"]:
         name = slot.get("name") if isinstance(slot, dict) else None
         field_type = slot.get("type") if isinstance(slot, dict) else None
+        if isinstance(name, str) and name and isinstance(field_type, str) and field_type and field_type not in COMFY_TYPES:
+            raise ValueError(f"output '{name}' has the type '{field_type}', unknown to this version "
+                             "(saved by a newer Bundle Library?)")
         if not isinstance(name, str) or not name or field_type not in COMFY_TYPES:
             raise ValueError(f"invalid slot {slot!r}")
         slots.append((name, field_type))

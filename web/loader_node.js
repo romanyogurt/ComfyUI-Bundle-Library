@@ -2,6 +2,7 @@ import { app } from "../../scripts/app.js";
 import { CHANGED_EVENT, assetURL, forgetBundles, listBundles, thumbnailURL } from "./api.js";
 import { el, formatDuration } from "./dom.js";
 import { openLibrary } from "./library_modal.js";
+import { displayNames } from "./names.js";
 import { COMFY_TYPES, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
 import { showImage, showVideo } from "./viewer.js";
 
@@ -37,6 +38,25 @@ function widget(node, name) {
 
 function specOf(node) {
     return parseSpec(widget(node, "slot_spec")?.value) ?? [];
+}
+
+/**
+ * Whether the node's `slot_spec` is one this version cannot read (from a
+ * newer Bundle Library). Such a node keeps its outputs, links and spec as
+ * they were saved: nothing here reshapes it.
+ */
+function unreadableSpec(node) {
+    const text = widget(node, "slot_spec")?.value;
+    return !!text && parseSpec(text) === null;
+}
+
+const UNREADABLE = "This node was saved by a newer Bundle Library. Its outputs and links are kept as they are; "
+    + "update the node pack to change its bundle.";
+
+function refuseUnreadable(node) {
+    if (!unreadableSpec(node)) return false;
+    app.extensionManager?.toast?.add({ severity: "warn", summary: "Load Bundle", detail: UNREADABLE, life: 6000 });
+    return true;
 }
 
 const isLinked = (output) => (output?.links?.length ?? 0) > 0;
@@ -95,7 +115,11 @@ function recordUndoStep() {
  * only labels survive. Synchronous, so links recreated after configure are
  * type-checked against the real types.
  */
-function restoreOutputs(node) {
+function restoreOutputs(node, saved) {
+    if (unreadableSpec(node)) {
+        keepSavedOutputs(node, saved);
+        return;
+    }
     const slots = specOf(node);
     for (let i = node.outputs.length - 1; i >= slots.length; i--) {
         if (!isLinked(node.outputs[i])) node.removeOutput(i);
@@ -105,8 +129,26 @@ function restoreOutputs(node) {
     });
 }
 
+/** Put back the outputs as the workflow saved them (`saved`: the node's serialized outputs). */
+function keepSavedOutputs(node, saved) {
+    const outputs = saved ?? [];
+    for (let i = node.outputs.length - 1; i >= outputs.length; i--) {
+        if (!isLinked(node.outputs[i])) node.removeOutput(i);
+    }
+    outputs.forEach((out, i) => {
+        const output = node.outputs[i];
+        if (!output || !out) return;
+        output.name = out.name;
+        output.label = out.label;
+        if (output.type === out.type) return;
+        if (node.graph) node.setOutputDataType(i, out.type);
+        else output.type = out.type;
+    });
+}
+
 /** Point the node at `bundle` (a summary from the list), reshaping its outputs per planSlots(). */
 export function selectBundle(node, bundle) {
+    if (refuseUnreadable(node)) return;
     const current = currentSlots(node);
     const { slots, overflow } = planSlots(current, bundle.fields);
     const kept = new Set(slots.filter((s) => s.from !== null).map((s) => s.from));
@@ -268,9 +310,13 @@ function renderPreview(node, bundle) {
         rows.append(el("div", "bl-note", "Select a bundle."));
         return;
     }
+    if (unreadableSpec(node)) {
+        rows.append(el("div", "bl-note bl-bad", `⚠ ${UNREADABLE}`));
+        return;
+    }
     if (!bundle) {
         const name = node.properties.bundle_name ?? widget(node, "bundle_id").value;
-        rows.append(el("div", "bl-note bl-bad", `⚠ Bundle not found: ${name}`));
+        rows.append(el("div", "bl-note bl-bad", `⚠ Bundle not found or in the trash: ${name}`));
         return;
     }
     const slots = specOf(node);
@@ -296,12 +342,12 @@ function fillSelect(node, bundles) {
     const { select } = node.bundlePanel;
     const selected = widget(node, "bundle_id")?.value ?? "";
     const linked = currentSlots(node).filter((s) => s.linked);
+    const labels = displayNames(bundles);
     const options = [["", "Select a bundle…"]];
     for (const bundle of bundles) {
         const lacking = linked.filter((s) => slotStatuses([s], bundle.fields)[0] !== "ok");
-        options.push([bundle.id, lacking.length
-            ? `${bundle.name}  ⚠ no ${lacking.map((s) => s.name).join(", ")}`
-            : bundle.name]);
+        const label = labels.get(bundle.id);
+        options.push([bundle.id, lacking.length ? `${label}  ⚠ no ${lacking.map((s) => s.name).join(", ")}` : label]);
     }
     if (selected && !bundles.some((b) => b.id === selected)) {
         options.push([selected, `⚠ Not found: ${node.properties.bundle_name ?? selected}`]);
@@ -375,9 +421,12 @@ function addPanel(node) {
         fitHeight(node);
         recordUndoStep();
     });
-    select.addEventListener("change", () => void pick(node, select.value));
+    select.addEventListener("change", () => {
+        if (refuseUnreadable(node)) select.value = widget(node, "bundle_id")?.value ?? "";
+        else void pick(node, select.value);
+    });
     select.addEventListener("focus", () => void refreshPanel(node, { fresh: true }));
-    open.addEventListener("click", () => openLibrary({
+    open.addEventListener("click", () => !refuseUnreadable(node) && openLibrary({
         onPick: (bundle) => selectBundle(node, bundle),
         linked: currentSlots(node).filter((s) => s.linked),
         selected: widget(node, "bundle_id")?.value || null,
@@ -414,9 +463,9 @@ export function setupLoaderNode(nodeType) {
     };
 
     const onConfigure = nodeType.prototype.onConfigure;
-    nodeType.prototype.onConfigure = function () {
+    nodeType.prototype.onConfigure = function (info) {
         const result = onConfigure?.apply(this, arguments);
-        restoreOutputs(this);
+        restoreOutputs(this, info?.outputs);
         setCollapsed(this, !!this.properties.preview_collapsed);
         void refreshPanel(this);
         return result;

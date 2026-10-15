@@ -4,6 +4,7 @@
 import { CHANGED_EVENT, getBundle, listBundles, listTrash, searchBundleIds, thumbnailURL } from "./api.js";
 import { BundleEditor } from "./bundle_editor.js";
 import { button, el } from "./dom.js";
+import { displayNames } from "./names.js";
 import { slotStatuses } from "./reconcile.js";
 import { TrashPanel } from "./trash_panel.js";
 
@@ -212,7 +213,9 @@ class LibraryModal {
         if (this.matches) items = items.filter((b) => this.matches.has(b.id));
         const tag = this.tagFilter.value.toLowerCase();
         if (tag) items = items.filter((b) => b.tags.some((t) => t.toLowerCase() === tag));
-        items = [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+        // Names may repeat: the id keeps the order still.
+        items = [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
+            || a.id.localeCompare(b.id));
         if (this.sort.value === "updated") items.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
         return items;
     }
@@ -222,6 +225,7 @@ class LibraryModal {
     }
 
     renderList() {
+        this.labels = displayNames(this.all);
         const items = this.visible();
         const focused = this.list.contains(document.activeElement) ? document.activeElement.dataset.id : null;
         if (!this.all.length) {
@@ -248,10 +252,12 @@ class LibraryModal {
             thumb.alt = "";
         }
         const text = el("div", "bl-list-text");
-        text.append(el("div", "bl-list-name", bundle.name),
+        text.append(el("div", "bl-list-name", this.labels.get(bundle.id) ?? bundle.name),
             el("div", "bl-list-sub", bundle.tags.length ? bundle.tags.join(" · ") : `${bundle.fields.length} field(s)`));
         const lacking = this.lacking(bundle);
         if (lacking.length) text.append(el("div", "bl-list-warn", `⚠ no ${lacking.join(", ")}`));
+        if (bundle.read_only) text.append(el("div", "bl-list-warn", "🔒 Cannot be changed by this version"));
+        else if (bundle.warnings) text.append(el("div", "bl-list-warn", "⚠ Fix before saving"));
         item.append(thumb, text);
         item.addEventListener("click", () => void this.open(bundle.id));
         item.addEventListener("keydown", (e) => {
@@ -333,22 +339,22 @@ class LibraryModal {
         this.renderList();
     }
 
-    /** The trash button says how many bundles are in the trash. */
-    trashCounted(count) {
+    /** The trash button says how many bundles are in the trash, and ⚠ when some files cannot be read. */
+    trashCounted(count, unreadable = 0) {
         this.trashGeneration++; // a count still on its way is older
-        this.trashButton.textContent = count ? `🗑 Trash (${count})` : "🗑 Trash";
+        this.trashButton.textContent = (count ? `🗑 Trash (${count})` : "🗑 Trash") + (unreadable ? " ⚠" : "");
+        this.trashButton.title = unreadable ? `${unreadable} file(s) this version cannot read; see the trash` : "";
     }
 
     async refreshTrashCount() {
         const generation = ++this.trashGeneration;
-        let count;
+        let listing;
         try {
-            const { trash, errors } = await listTrash();
-            count = trash.length + errors.length;
+            listing = await listTrash();
         } catch {
             return; // the count is only a hint
         }
-        if (generation === this.trashGeneration) this.trashCounted(count);
+        if (generation === this.trashGeneration) this.trashCounted(listing.trash.length, listing.errors.length);
     }
 
     showPlaceholder() {
@@ -499,8 +505,9 @@ function fillSidebar(list, fresh = false) {
     const generation = ++sidebarGeneration;
     listBundles({ fresh }).then((bundles) => {
         if (generation !== sidebarGeneration) return; // a newer list is on its way
+        const labels = displayNames(bundles);
         list.replaceChildren(...(bundles.length ? bundles.map((bundle) => {
-            const item = button(bundle.name, "bl-sidebar-item");
+            const item = button(labels.get(bundle.id), "bl-sidebar-item");
             item.addEventListener("click", () => openLibrary({ selected: bundle.id }));
             return item;
         }) : [el("div", "bl-empty-state", "No bundles yet.")]));

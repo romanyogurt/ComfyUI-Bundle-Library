@@ -14,7 +14,7 @@ ASSET_EXTENSIONS = {e for e, _ in IMAGE_FORMATS.values()} | set(VIDEO_EXTENSIONS
 CODEC_RE = re.compile(r"^[a-z0-9_.-]{1,32}$")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-# A trashed bundle is named by its file, trash/<bundle id>.<UTC time>[-n].json.
+# A file of the trash folder of 0.0.10 and earlier: trash/<bundle id>.<UTC time>[-n].json.
 TRASH_ID_RE = re.compile(r"^([0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})"
                          r"\.(\d{8}T\d{6}Z)(?:-[1-9]\d{0,5})?$")
 # JavaScript's safe integers: the browser reads JSON numbers as doubles, so a
@@ -53,14 +53,8 @@ def check_sha256(value):
     return value
 
 
-def check_trash_id(value):
-    if not isinstance(value, str) or not TRASH_ID_RE.match(value):
-        raise LibraryError(400, "invalid_id", f"Invalid trash id: {value!r}")
-    return value
-
-
 def name_key(name):
-    """Bundle names are unique regardless of case."""
+    """Names sort regardless of case."""
     return name.casefold()
 
 
@@ -69,47 +63,63 @@ def clean_original_name(name):
     return "".join(c for c in name if unicodedata.category(c) != "Cc")[:MAX_ORIGINAL_NAME]
 
 
-def _name(value, label, limit):
+class _Rules:
+    """How a check that only limits size or range is applied. When saving
+    (`strict`) every rule is enforced. A stored bundle is read even if it
+    breaks such a writing rule, which may have been tightened since it was
+    saved: the rule becomes a warning. Rules about the shape of the data are
+    enforced either way."""
+
+    def __init__(self, strict):
+        self.strict = strict
+        self.warnings = []
+
+    def limit(self, ok, message):
+        if ok:
+            return
+        if self.strict:
+            raise invalid(message)
+        self.warnings.append(message)
+
+
+def _name(value, label, limit, rules):
     if not isinstance(value, str):
         raise invalid(f"{label}: must be a string.")
     text = unicodedata.normalize("NFC", value.strip())
     if not text:
         raise invalid(f"{label}: must not be empty.")
-    if len(text) > limit:
-        raise invalid(f"{label}: at most {limit} characters.")
     if any(unicodedata.category(c) == "Cc" or c in _FORBIDDEN_IN_NAMES for c in text):
         raise invalid(f"{label}: line breaks and control characters are not allowed.")
+    rules.limit(len(text) <= limit, f"{label}: at most {limit} characters.")
     return text
 
 
-def _tags(value):
+def _tags(value, rules):
     if not isinstance(value, list):
         raise invalid("Tags: must be an array of strings.")
     tags, seen = [], set()
     for item in value:
-        tag = _name(item, "Tag", MAX_TAG_LENGTH)
+        tag = _name(item, "Tag", MAX_TAG_LENGTH, rules)
         if tag.casefold() not in seen:
             seen.add(tag.casefold())
             tags.append(tag)
-    if len(tags) > MAX_TAGS:
-        raise invalid(f"Tags: at most {MAX_TAGS}.")
+    rules.limit(len(tags) <= MAX_TAGS, f"Tags: at most {MAX_TAGS}.")
     return tags
 
 
-def _note(value):
+def _note(value, rules):
     if not isinstance(value, str):
         raise invalid("Note: must be a string.")
-    if len(value) > MAX_NOTE:
-        raise invalid(f"Note: at most {MAX_NOTE} characters.")
+    rules.limit(len(value) <= MAX_NOTE, f"Note: at most {MAX_NOTE} characters.")
     return value
 
 
-def _value(field_type, value, label):
+def _value(field_type, value, label, rules):
     if field_type == "text":
         if not isinstance(value, str):
             raise invalid(f"{label}: a text value must be a string.")
-        if len(value.encode("utf-8")) > MAX_TEXT_BYTES:
-            raise invalid(f"{label}: text is limited to {MAX_TEXT_BYTES // (1024 * 1024)} MB.")
+        rules.limit(len(value.encode("utf-8")) <= MAX_TEXT_BYTES,
+                    f"{label}: text is limited to {MAX_TEXT_BYTES // (1024 * 1024)} MB.")
         return value
     if field_type == "boolean":
         if not isinstance(value, bool):
@@ -118,8 +128,7 @@ def _value(field_type, value, label):
     if field_type == "int":
         if isinstance(value, bool) or not isinstance(value, int):
             raise invalid(f"{label}: must be an integer.")
-        if not INT_MIN <= value <= INT_MAX:
-            raise invalid(f"{label}: must be between {INT_MIN:,} and {INT_MAX:,}.")
+        rules.limit(INT_MIN <= value <= INT_MAX, f"{label}: must be between {INT_MIN:,} and {INT_MAX:,}.")
         return value
     # float
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -165,10 +174,10 @@ def _asset(value, label):
     return asset
 
 
-def _field(value, index):
+def _field(value, index, rules):
     if not isinstance(value, dict):
         raise invalid(f"Field {index + 1}: must be an object.")
-    name = _name(value.get("name"), f"Field {index + 1} name", MAX_FIELD_NAME)
+    name = _name(value.get("name"), f"Field {index + 1} name", MAX_FIELD_NAME, rules)
     if name.startswith("@"):
         raise invalid(f"Field '{name}': names starting with '@' are reserved.")
     field_type = value.get("type")
@@ -181,31 +190,42 @@ def _field(value, index):
         return {"name": name, "type": field_type, "asset": _asset(value.get("asset"), label)}
     if "value" not in value:
         raise invalid(f"{label}: value is missing.")
-    return {"name": name, "type": field_type, "value": _value(field_type, value["value"], label)}
+    return {"name": name, "type": field_type, "value": _value(field_type, value["value"], label, rules)}
 
 
-def normalize_bundle(data):
-    """The editable part of a bundle (name, tags, note, fields), checked and
-    normalized. Raises LibraryError(400) on the first problem."""
+def _bundle(data, rules):
     if not isinstance(data, dict):
         raise invalid("A bundle must be a JSON object.")
     fields_value = data.get("fields", [])
     if not isinstance(fields_value, list):
         raise invalid("Fields: must be an array.")
-    if len(fields_value) > MAX_FIELDS:
-        raise invalid(f"Fields: at most {MAX_FIELDS}.")
-    fields = [_field(f, i) for i, f in enumerate(fields_value)]
+    rules.limit(len(fields_value) <= MAX_FIELDS, f"Fields: at most {MAX_FIELDS}.")
+    fields = [_field(f, i, rules) for i, f in enumerate(fields_value)]
     seen = set()
     for field in fields:
-        if field["name"] in seen:
+        if field["name"] in seen:  # the loader finds fields by name
             raise invalid(f"Duplicate field name: '{field['name']}'")
         seen.add(field["name"])
     return {
-        "name": _name(data.get("name"), "Bundle name", MAX_BUNDLE_NAME),
-        "tags": _tags(data.get("tags", [])),
-        "note": _note(data.get("note", "")),
+        "name": _name(data.get("name"), "Bundle name", MAX_BUNDLE_NAME, rules),
+        "tags": _tags(data.get("tags", []), rules),
+        "note": _note(data.get("note", ""), rules),
         "fields": fields,
     }
+
+
+def normalize_bundle(data):
+    """The editable part of a bundle (name, tags, note, fields), checked against
+    every rule and normalized, for saving. Raises LibraryError(400) on the
+    first problem."""
+    return _bundle(data, _Rules(strict=True))
+
+
+def read_bundle_content(data):
+    """The editable part of a stored bundle and the writing rules it breaks
+    (warnings). Rules about the shape of the data still raise LibraryError."""
+    rules = _Rules(strict=False)
+    return _bundle(data, rules), rules.warnings
 
 
 def empty_value(field):

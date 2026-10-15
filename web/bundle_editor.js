@@ -89,8 +89,14 @@ export class BundleEditor {
         return !this.saved || JSON.stringify(editable(this.draft)) !== JSON.stringify(editable(this.saved));
     }
 
+    /** Why this version must not change the bundle (it holds data this version does not know), or null. */
+    get readOnly() {
+        return this.saved?.read_only ?? null;
+    }
+
     /** Why the draft cannot be saved as it is, or null. */
     get blocker() {
+        if (this.readOnly) return "This version of Bundle Library cannot change this bundle.";
         if (this.uploads > 0) return "Wait for the upload to finish.";
         if (!this.draft.name.trim()) return "The bundle needs a name.";
         if (this.problems > 0) return "Fix the marked field names first.";
@@ -104,7 +110,10 @@ export class BundleEditor {
         this.cards = this.draft.fields.map((field, index) => this.renderField(field, index));
         fields.append(...this.cards.map((card) => card.root));
         if (!this.cards.length) fields.append(el("div", "bl-empty-state", "No fields yet. Add one below."));
-        this.root.replaceChildren(this.renderHead(), this.renderMeta(), fields, this.renderAdd());
+        const meta = this.renderMeta();
+        const add = this.renderAdd();
+        if (this.readOnly) meta.inert = fields.inert = add.inert = true;
+        this.root.replaceChildren(...[this.renderHead(), this.renderNotes(), meta, fields, add].filter(Boolean));
         for (const area of this.root.querySelectorAll("textarea.bl-value-text")) requestAnimationFrame(() => autosize(area));
         this.modal.keepFocus(); // the focused element may have been replaced
         this.refreshWarnings();
@@ -156,6 +165,24 @@ export class BundleEditor {
         this.deleteButton.addEventListener("click", () => void this.remove());
         head.append(this.nameInput, this.stateMark, this.saveButton, this.revertButton, duplicate.root, this.deleteButton);
         return head;
+    }
+
+    /** Why the stored bundle cannot be saved as it is: data this version does not
+     * know, or values outside rules tightened since it was saved. */
+    renderNotes() {
+        if (!this.saved) return null;
+        const notes = [];
+        if (this.readOnly) {
+            notes.push(`This bundle ${this.readOnly}. It can be used in workflows, but this version of Bundle `
+                + "Library does not change it, so that nothing is lost. Update the node pack to edit it.");
+        }
+        for (const warning of this.saved.warnings ?? []) {
+            notes.push(`${warning} (allowed when it was saved). Fix this before saving.`);
+        }
+        if (!notes.length) return null;
+        const box = el("div", "bl-editor-notes");
+        box.append(...notes.map((text) => el("div", "bl-warn", text)));
+        return box;
     }
 
     renderMeta() {
@@ -270,7 +297,16 @@ export class BundleEditor {
             const input = el("input", "bl-input bl-number");
             input.type = "number";
             input.step = field.type === "int" ? "1" : "any";
-            input.value = String(field.value);
+            // A whole number saved under a wider range comes with its exact text,
+            // which a browser number would round: show that, and keep the bundle
+            // from being saved until it is changed.
+            input.value = field.value_text ?? String(field.value);
+            const tooLarge = `Whole numbers must be within ±${Number.MAX_SAFE_INTEGER.toLocaleString("en-US")}.`;
+            if (field.value_text) {
+                error.textContent = `${tooLarge} Change this value before saving.`;
+                error.hidden = false;
+                this.invalid.add(field);
+            }
             input.addEventListener("input", () => {
                 const value = Number(input.value);
                 const valid = input.value.trim() !== "" && Number.isFinite(value)
@@ -278,11 +314,11 @@ export class BundleEditor {
                 error.hidden = valid;
                 if (valid) {
                     field.value = value;
+                    delete field.value_text;
                     this.invalid.delete(field);
                 } else {
                     error.textContent = field.type !== "int" ? "Enter a number."
-                        : Number.isInteger(value) ? `Whole numbers must be within ±${Number.MAX_SAFE_INTEGER.toLocaleString("en-US")}.`
-                        : "Enter a whole number.";
+                        : Number.isInteger(value) ? tooLarge : "Enter a whole number.";
                     this.invalid.add(field);
                 }
                 this.refreshState();
@@ -524,9 +560,10 @@ export class BundleEditor {
         this.saveButton.title = blocker ?? "Save (Ctrl+S)";
         this.revertButton.disabled = !dirty;
         this.revertButton.textContent = this.saved ? "Revert" : "Discard";
-        this.duplicateButton.disabled = !this.saved || dirty;
-        this.duplicateButton.title = dirty ? "Save or revert your changes first" : "";
-        this.deleteButton.disabled = !this.saved;
+        this.duplicateButton.disabled = !this.saved || dirty || !!this.readOnly;
+        this.duplicateButton.title = this.readOnly ? blocker : dirty ? "Save or revert your changes first" : "";
+        this.deleteButton.disabled = !this.saved || !!this.readOnly;
+        this.deleteButton.title = this.readOnly ? blocker : "";
         this.modal.editorChanged();
     }
 

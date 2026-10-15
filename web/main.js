@@ -1,4 +1,5 @@
 import { app } from "../../scripts/app.js";
+import { checkVersion } from "./api.js";
 import { NODE_ID, setupLoaderNode } from "./loader_node.js";
 import { openLibrary, renderSidebar } from "./library_modal.js";
 
@@ -32,5 +33,6 @@ app.registerExtension({
             type: "custom",
             render: renderSidebar,
         });
+        void checkVersion();
     },
 });

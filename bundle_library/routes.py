@@ -15,7 +15,8 @@ from aiohttp import web
 
 from .assets import MIME_TYPES
 from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
-from .model import LibraryError, check_bundle_id, check_sha256, check_trash_id
+from .model import LibraryError, check_bundle_id, check_sha256
+from .store import present
 
 CHUNK = 64 * 1024
 IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"}
@@ -67,6 +68,13 @@ def _writes(handler):
         problem = write_guard_error(request)
         if problem:
             raise LibraryError(403, problem, "Changes to the library must come from the ComfyUI page.")
+        # The page sends the version of its scripts; files updated without a
+        # restart (or a page left open across one) must not write.
+        page = request.headers.get("X-Bundle-Library-Version")
+        if page is not None and page != VERSION:
+            raise LibraryError(409, "version_mismatch",
+                               f"This page runs Bundle Library {page[:20]} but the server runs {VERSION}.",
+                               page_version=page[:20], server_version=VERSION)
         return await handler(request)
     return wrapped
 
@@ -120,13 +128,14 @@ def register(routes, get_store):
     @_writes
     async def create_bundle(request):
         data = await _read_json(request)
-        return web.json_response(await asyncio.to_thread(get_store().create, data), status=201)
+        return web.json_response(present(await asyncio.to_thread(get_store().create, data)), status=201)
 
     @routes.get(prefix + "/bundles/{bundle_id}")
     @_api
     async def get_bundle(request):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
-        return web.json_response(await asyncio.to_thread(get_store().get, bundle_id))
+        bundle, loaded = await asyncio.to_thread(get_store().get, bundle_id, True)
+        return web.json_response(present(bundle, loaded))
 
     @routes.put(prefix + "/bundles/{bundle_id}")
     @_api
@@ -135,7 +144,7 @@ def register(routes, get_store):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
         data = await _read_json(request)
         bundle = await asyncio.to_thread(get_store().update, bundle_id, data, data.get("expected_revision"))
-        return web.json_response(bundle)
+        return web.json_response(present(bundle))
 
     @routes.delete(prefix + "/bundles/{bundle_id}")
     @_api
@@ -146,8 +155,8 @@ def register(routes, get_store):
             expected = int(request.query["expected_revision"])
         except (KeyError, ValueError):
             raise LibraryError(400, "invalid", "expected_revision (an integer) is required.") from None
-        trash_id = await asyncio.to_thread(get_store().delete, bundle_id, expected)
-        return web.json_response({"deleted": bundle_id, "trash_id": trash_id})
+        await asyncio.to_thread(get_store().delete, bundle_id, expected)
+        return web.json_response({"deleted": bundle_id})
 
     @routes.post(prefix + "/bundles/{bundle_id}/duplicate")
     @_api
@@ -157,27 +166,30 @@ def register(routes, get_store):
         data = await _read_json(request)
         bundle = await asyncio.to_thread(
             get_store().duplicate, bundle_id, data.get("mode", "values"), data.get("name"))
-        return web.json_response(bundle, status=201)
+        return web.json_response(present(bundle), status=201)
 
     @routes.get(prefix + "/trash")
     @_api
     async def list_trash(request):
         return web.json_response(await asyncio.to_thread(get_store().trash))
 
-    @routes.post(prefix + "/trash/{trash_id}/restore")
+    @routes.post(prefix + "/bundles/{bundle_id}/restore")
     @_api
     @_writes
     async def restore_bundle(request):
-        trash_id = check_trash_id(request.match_info["trash_id"])
-        return web.json_response(await asyncio.to_thread(get_store().restore, trash_id))
+        bundle_id = check_bundle_id(request.match_info["bundle_id"])
+        return web.json_response(present(await asyncio.to_thread(get_store().restore, bundle_id)))
 
-    @routes.delete(prefix + "/trash/{trash_id}")
+    @routes.delete(prefix + "/trash/{bundle_id}")
     @_api
     @_writes
     async def purge_bundle(request):
-        trash_id = check_trash_id(request.match_info["trash_id"])
-        await asyncio.to_thread(get_store().purge, trash_id)
-        return web.json_response({"deleted": trash_id})
+        """Deletes a bundle in the trash for good; with ?unreadable=1, also a file
+        this version cannot fully read (the user asked for that file)."""
+        bundle_id = check_bundle_id(request.match_info["bundle_id"])
+        unreadable = request.query.get("unreadable") == "1"
+        await asyncio.to_thread(get_store().purge, bundle_id, unreadable)
+        return web.json_response({"deleted": bundle_id})
 
     @routes.delete(prefix + "/trash")
     @_api

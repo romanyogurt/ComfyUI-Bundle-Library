@@ -53,63 +53,65 @@ class TrashTest(unittest.TestCase):
     def test_deleted_bundles_are_listed_in_the_trash(self):
         sha = self.upload(helpers.png("red"))
         bundle = self.make("Red", sha)
-        trash_id = self.store.delete(bundle["id"], 1)
-        self.assertRegex(trash_id, rf"^{bundle['id']}\.\d{{8}}T\d{{6}}Z$")
+        self.store.delete(bundle["id"], 1)
         [entry] = self.store.trash()["trash"]
-        self.assertEqual((entry["trash_id"], entry["id"], entry["name"], len(entry["fields"])),
-                         (trash_id, bundle["id"], "Red", 2))
+        self.assertEqual((entry["id"], entry["name"], len(entry["fields"])), (bundle["id"], "Red", 2))
         self.assertEqual(entry["fields"][1]["preview"]["sha256"], sha)
-        self.assertRegex(entry["deleted_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
+        self.assertRegex(entry["deleted_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$")
+        self.assertEqual(self.store.health()["trash"], 1)
 
-    def test_restore_brings_the_bundle_back_under_its_id(self):
+    def test_restore_keeps_the_id_and_the_name(self):
         bundle = self.make("Blue")
-        trash_id = self.store.delete(bundle["id"], 1)
-        restored = self.store.restore(trash_id)
-        self.assertEqual((restored["id"], restored["name"], restored["revision"]), (bundle["id"], "Blue", 2))
+        self.store.delete(bundle["id"], 1)
+        self.make("Blue")  # another bundle may have the name meanwhile
+        restored = self.store.restore(bundle["id"])
+        self.assertEqual((restored["id"], restored["name"], restored["revision"], restored["deleted_at"]),
+                         (bundle["id"], "Blue", 3, None))
         self.assertEqual(self.store.get(bundle["id"])["fields"], bundle["fields"])
         self.assertEqual(self.store.trash(), {"trash": [], "errors": []})
-        self.refused(lambda: self.store.restore(trash_id), 404, "not_found")
+        self.refused(lambda: self.store.restore(bundle["id"]), 409, "not_in_trash")
+        self.refused(lambda: self.store.restore(str(uuid.uuid4())), 404, "not_found")
 
-    def test_restore_numbers_a_taken_name(self):
-        trash_id = self.store.delete(self.make("Green")["id"], 1)
-        self.make("GREEN")  # names are unique regardless of case
-        self.assertEqual(self.store.restore(trash_id)["name"], "Green (2)")
-
-    def test_a_second_copy_of_a_restored_bundle_gets_a_new_id(self):
-        bundle = self.make("Twin")
-        trash_id = self.store.delete(bundle["id"], 1)
-        (self.root / "trash" / f"{trash_id}-2.json").write_bytes((self.root / "trash" / f"{trash_id}.json").read_bytes())
-        self.assertEqual(self.store.restore(trash_id)["id"], bundle["id"])
-        second = self.store.restore(f"{trash_id}-2")
-        self.assertNotEqual(second["id"], bundle["id"])
-        self.assertEqual(second["name"], "Twin (2)")
-        self.assertEqual(len(self.store.list()["bundles"]), 2)
+    def test_restore_keeps_a_name_longer_than_the_rule(self):
+        bundle = self.make("Long")
+        path = self.root / "bundles" / f"{bundle['id']}.json"
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        path.write_text(json.dumps({**stored, "name": "n" * 121}), encoding="utf-8")  # saved under a wider rule
+        self.store.delete(bundle["id"], 1)
+        self.assertEqual(self.store.restore(bundle["id"])["name"], "n" * 121)
+        self.assertEqual(self.store.get(bundle["id"])["name"], "n" * 121)
 
     def test_delete_for_good_and_empty_the_trash(self):
-        trash_ids = [self.store.delete(self.make(f"B{i}")["id"], 1) for i in range(3)]
-        self.store.purge(trash_ids[0])
-        self.refused(lambda: self.store.purge(trash_ids[0]), 404, "not_found")
+        ids = [self.make(f"B{i}")["id"] for i in range(4)]
+        for bundle_id in ids[:3]:
+            self.store.delete(bundle_id, 1)
+        self.refused(lambda: self.store.purge(ids[3]), 409, "not_in_trash")  # in use
+        self.store.purge(ids[0])
+        self.refused(lambda: self.store.purge(ids[0]), 404, "not_found")
         self.assertEqual(len(self.store.trash()["trash"]), 2)
         self.assertEqual(self.store.empty_trash(), 2)
         self.assertEqual(self.store.trash(), {"trash": [], "errors": []})
+        self.assertEqual([b["id"] for b in self.store.list()["bundles"]], [ids[3]])
 
-    def test_trash_ids_are_checked_before_any_file_is_touched(self):
-        some = str(uuid.uuid4())
-        for bad in ("../bundles/x", "x", some, f"{some}.20261015T000000Z.json", f"{some.upper()}.20261015T000000Z",
-                    f"{some}.20261015T000000Z-0", f"{some}.2026-10-15", None):
+    def test_ids_are_checked_before_any_file_is_touched(self):
+        for bad in ("../bundles/x", "x", "A" * 36, None):
             with self.subTest(bad=bad):
                 self.refused(lambda: self.store.restore(bad), 400, "invalid_id")
                 self.refused(lambda: self.store.purge(bad), 400, "invalid_id")
 
-    def test_unreadable_trash_files_are_reported_and_can_go(self):
-        trash_id = f"{uuid.uuid4()}.20261015T000000Z"
-        (self.root / "trash" / f"{trash_id}.json").write_text("{ broken", encoding="utf-8")
-        (self.root / "trash" / "notes.txt").write_text("not the library's", encoding="utf-8")
+    def test_files_this_version_cannot_read_are_kept_unless_asked(self):
+        broken = str(uuid.uuid4())
+        (self.root / "bundles" / f"{broken}.json").write_text("{ broken", encoding="utf-8")
+        (self.root / "bundles" / "notes.txt").write_text("not the library's", encoding="utf-8")
         listing = self.store.trash()
-        self.assertEqual((listing["trash"], [e["trash_id"] for e in listing["errors"]]), ([], [trash_id]))
-        self.refused(lambda: self.store.restore(trash_id), 500, "corrupt_bundle")
-        self.assertEqual(self.store.empty_trash(), 1)
-        self.assertTrue((self.root / "trash" / "notes.txt").exists())
+        self.assertEqual((listing["trash"], [(e["id"], e["code"]) for e in listing["errors"]]),
+                         ([], [(broken, "corrupt")]))
+        self.refused(lambda: self.store.restore(broken), 500, "corrupt_bundle")
+        self.assertEqual(self.store.empty_trash(), 0)  # whether it is in the trash cannot be told
+        self.refused(lambda: self.store.purge(broken), 409, "unreadable_file")
+        self.store.purge(broken, unreadable=True)
+        self.assertFalse((self.root / "bundles" / f"{broken}.json").exists())
+        self.assertTrue((self.root / "bundles" / "notes.txt").exists())
 
     # ---- unused files ----------------------------------------------------------
 
@@ -156,26 +158,40 @@ class TrashTest(unittest.TestCase):
         self.assertEqual({a["kind"] for a in self.store.unused_assets()["assets"]}, {"video", "audio"})
         self.assertEqual(self.store.delete_unused_assets([video, audio])["deleted"], 2)
 
-    def test_cleanup_stops_while_a_bundle_file_cannot_be_read(self):
+    def test_cleanup_stops_while_a_bundle_file_cannot_be_fully_read(self):
         sha = self.upload(helpers.png("red"))
         self.age(sha)
-        for folder in ("bundles", "trash"):
-            with self.subTest(folder=folder):
-                broken = self.root / folder / f"{uuid.uuid4()}.json"
-                broken.write_text("{ broken", encoding="utf-8")
+        cases = {
+            "not JSON": lambda base: "{ broken",
+            "a newer version": lambda base: {**base, "schema_version": 3, "resources": [{"sha256": sha}]},
+            "another format": lambda base: {**base, "format": "someone-else/bundle"},
+            "unknown keys": lambda base: {**base, "extra": {"sha256": sha}},
+        }
+        for label, make in cases.items():
+            with self.subTest(label):
+                bundle_id = str(uuid.uuid4())
+                base = {"format": "comfyui-bundle-library/bundle", "schema_version": 2, "id": bundle_id,
+                        "revision": 1, "name": "x", "fields": [], "created_at": "t", "updated_at": "t",
+                        "deleted_at": None}
+                content = make(base)
+                broken = self.root / "bundles" / f"{bundle_id}.json"
+                broken.write_text(content if isinstance(content, str) else json.dumps(content), encoding="utf-8")
                 error = self.refused(self.store.unused_assets, 409, "unreadable_bundles")
-                self.assertEqual(error.details["files"], [f"{folder}/{broken.name}"])
+                self.assertEqual(error.details["files"], [f"bundles/{broken.name}"])
                 self.refused(lambda: self.store.delete_unused_assets([sha]), 409, "unreadable_bundles")
                 broken.unlink()
         self.assertEqual(self.store.delete_unused_assets([sha])["deleted"], 1)
 
-    def test_a_bundle_failing_other_checks_still_keeps_its_files(self):
+    def test_a_broken_bundle_of_a_known_version_still_keeps_its_files(self):
         sha = self.upload(helpers.png("red"))
         self.age(sha)
-        odd = {"name": "Odd", "fields": [{"name": "seed", "type": "int", "value": 2 ** 60},
-                                         {"name": "ref", "type": "image", "asset": {"sha256": sha}}]}
-        (self.root / "bundles" / f"{uuid.uuid4()}.json").write_text(json.dumps(odd), encoding="utf-8")
-        self.assertEqual(self.store.unused_assets()["assets"], [])
+        bundle_id = str(uuid.uuid4())
+        field = {"name": "ref", "type": "image", "asset": {"sha256": sha}}
+        broken = {"format": "comfyui-bundle-library/bundle", "schema_version": 1, "id": bundle_id, "revision": 1,
+                  "name": "Odd", "fields": [field, field], "created_at": "t", "updated_at": "t"}  # a repeated field name
+        (self.root / "bundles" / f"{bundle_id}.json").write_text(json.dumps(broken), encoding="utf-8")
+        self.assertEqual(self.store.list()["errors"][0]["code"], "corrupt")
+        self.assertEqual(self.store.unused_assets()["assets"], [])  # its fields still show the file
 
     def test_stray_thumbnails_go_and_foreign_files_stay(self):
         stray = self.root / "thumbs" / "ab" / f"ab{'0' * 62}_128.webp"

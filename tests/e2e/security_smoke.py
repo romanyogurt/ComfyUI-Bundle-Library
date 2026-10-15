@@ -96,9 +96,8 @@ def main():
             {**WRITE, "Origin": "https://evil.example", "Content-Type": "multipart/form-data; boundary=x"},
             core_may_refuse=core_origin)
 
-    trashed = f"{some_id}.20261015T000000Z"
-    refused(api, "restore without the header", "POST", f"{P}/trash/{trashed}/restore", 403, "missing_header")
-    refused(api, "delete from the trash without the header", "DELETE", f"{P}/trash/{trashed}", 403, "missing_header")
+    refused(api, "restore without the header", "POST", f"{P}/bundles/{some_id}/restore", 403, "missing_header")
+    refused(api, "delete from the trash without the header", "DELETE", f"{P}/trash/{some_id}", 403, "missing_header")
     refused(api, "empty the trash without the header", "DELETE", P + "/trash", 403, "missing_header")
     refused(api, "clean up files without the header", "POST", P + "/cleanup", 403, "missing_header", {"sha256": []})
     refused(api, "clean up files from another origin", "POST", P + "/cleanup", 403, "origin_mismatch", {"sha256": []},
@@ -116,8 +115,10 @@ def main():
     refused(api, "bundle id with ../", "GET", P + "/bundles/..%2F..%2Fetc%2Fpasswd", 400, "invalid_id")
     refused(api, "bundle id that is not a UUID", "GET", P + "/bundles/not-a-uuid", 400, "invalid_id")
     refused(api, "unknown bundle", "GET", f"{P}/bundles/{some_id}", 404, "not_found")
-    refused(api, "trash id with ../", "POST", P + "/trash/..%2F..%2Fbundles%2Fx/restore", 400, "invalid_id", headers=WRITE)
-    refused(api, "trash id that is not one", "DELETE", P + "/trash/not-a-trash-id", 400, "invalid_id", headers=WRITE)
+    refused(api, "restore with ../ in the id", "POST", P + "/bundles/..%2F..%2Fbundles%2Fx/restore", 400, "invalid_id",
+            headers=WRITE)
+    refused(api, "delete for good an id that is not one", "DELETE", P + "/trash/not-a-uuid", 400, "invalid_id",
+            headers=WRITE)
     refused(api, "asset id in upper case", "GET", f"{P}/assets/{'A' * 64}", 400, "invalid_id")
     refused(api, "unknown asset", "GET", f"{P}/assets/{'0' * 64}", 404, "not_found")
     for path in ("/assets/..%2F..%2Fbundles", "/assets/%2e%2e", "/assets/" + "a" * 63 + "%2F"):

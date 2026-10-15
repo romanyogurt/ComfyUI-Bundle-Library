@@ -1,4 +1,6 @@
+import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
+import { VERSION } from "./version.js";
 
 const PREFIX = "/bundle-library/v1";
 
@@ -30,6 +32,46 @@ export function fileProblem(file, kind) {
     return null;
 }
 
+/** Numeric parts of "0.0.11", to tell which of two versions is newer. */
+function versionParts(version) {
+    return String(version).split(".").map((part) => Number.parseInt(part, 10) || 0);
+}
+
+function newer(a, b) {
+    const [x, y] = [versionParts(a), versionParts(b)];
+    for (let i = 0; i < Math.max(x.length, y.length); i++) {
+        if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
+    }
+    return false;
+}
+
+let versionWarned = false;
+
+/**
+ * Say, once per page, that this page and the server run different versions,
+ * and what fixes it: files updated without a restart, or a page left open
+ * across one. The server refuses this page's changes until then.
+ */
+export function warnVersionMismatch(server, page = VERSION) {
+    if (versionWarned || server === page) return;
+    versionWarned = true;
+    const detail = newer(page, server)
+        ? `Bundle Library was updated to ${page}, but ComfyUI still runs ${server}. Restart ComfyUI to finish the update.`
+        : `ComfyUI runs Bundle Library ${server}, but this page has ${page}. Reload the page.`;
+    app.extensionManager?.toast?.add({ severity: "warn", summary: "Bundle Library",
+        detail: `${detail} Until then the library cannot be changed from this page.` });
+}
+
+/** Compare this page's version with the server's (on start). */
+export async function checkVersion() {
+    try {
+        const response = await api.fetchApi(`${PREFIX}/health`);
+        if (response.ok) warnVersionMismatch((await response.json()).version);
+    } catch {
+        // the library's own requests report an unreachable server
+    }
+}
+
 /** A refused request: `status` is the HTTP status, `code` and `details` come from the error body. */
 export class ApiError extends Error {
     constructor(message, status, code, details) {
@@ -44,7 +86,10 @@ export class ApiError extends Error {
 async function request(path, options = {}, { changes = true } = {}) {
     const method = options.method ?? "GET";
     const headers = { ...(options.headers ?? {}) };
-    if (method !== "GET") headers["X-Bundle-Library"] = "1";
+    if (method !== "GET") {
+        headers["X-Bundle-Library"] = "1";
+        headers["X-Bundle-Library-Version"] = VERSION; // the server refuses writes from another version
+    }
     let response;
     try {
         response = await api.fetchApi(PREFIX + path, { ...options, method, headers });
@@ -54,6 +99,7 @@ async function request(path, options = {}, { changes = true } = {}) {
     const body = await response.json().catch(() => null);
     if (!response.ok) {
         const detail = body?.error;
+        if (detail?.code === "version_mismatch") warnVersionMismatch(detail.server_version);
         throw new ApiError(detail?.message ?? `${method} ${path}: HTTP ${response.status}`,
             response.status, detail?.code, detail);
     }
@@ -97,10 +143,12 @@ export const deleteBundle = (id, revision) =>
     request(`/bundles/${id}?expected_revision=${revision}`, { method: "DELETE" });
 export const duplicateBundle = (id, mode) => request(`/bundles/${id}/duplicate`, json("POST", { mode }));
 
-/** The trashed bundles ({trash, errors}), last deleted first. */
+/** The bundles in the trash, last deleted first, and the files this version cannot use: {trash, errors}. */
 export const listTrash = () => request("/trash");
-export const restoreBundle = (trashId) => request(`/trash/${trashId}/restore`, { method: "POST" });
-export const purgeBundle = (trashId) => request(`/trash/${trashId}`, { method: "DELETE" }, { changes: false });
+export const restoreBundle = (id) => request(`/bundles/${id}/restore`, { method: "POST" });
+/** Delete a bundle in the trash for good; `unreadable` also a file this version cannot fully read. */
+export const purgeBundle = (id, { unreadable = false } = {}) =>
+    request(`/trash/${id}${unreadable ? "?unreadable=1" : ""}`, { method: "DELETE" }, { changes: false });
 export const emptyTrash = () => request("/trash", { method: "DELETE" }, { changes: false });
 /** Stored files that no bundle uses, in the library or in the trash. */
 export const listUnusedFiles = () => request("/cleanup");
@@ -123,6 +171,7 @@ export function uploadAsset(file, kind = "image", { onProgress = null, name = nu
         const xhr = new XMLHttpRequest();
         xhr.open("POST", api.apiURL(`${PREFIX}/assets`));
         xhr.setRequestHeader("X-Bundle-Library", "1");
+        xhr.setRequestHeader("X-Bundle-Library-Version", VERSION);
         if (api.user) xhr.setRequestHeader("Comfy-User", api.user);
         xhr.responseType = "json";
         if (onProgress) {
@@ -132,6 +181,7 @@ export function uploadAsset(file, kind = "image", { onProgress = null, name = nu
         }
         xhr.addEventListener("load", () => {
             const detail = xhr.response?.error;
+            if (detail?.code === "version_mismatch") warnVersionMismatch(detail.server_version);
             if (xhr.status >= 200 && xhr.status < 300 && xhr.response?.asset) resolve(xhr.response.asset);
             else reject(new ApiError(detail?.message ?? `Upload failed: HTTP ${xhr.status}`, xhr.status, detail?.code, detail));
         });

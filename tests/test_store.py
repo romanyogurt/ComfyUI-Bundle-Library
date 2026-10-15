@@ -59,7 +59,8 @@ class StoreTest(unittest.TestCase):
         uuid.UUID(bundle["id"])
         self.assertEqual(bundle["revision"], 1)
         self.assertEqual(bundle["created_at"], bundle["updated_at"])
-        self.assertEqual((bundle["format"], bundle["schema_version"]), ("comfyui-bundle-library/bundle", 1))
+        self.assertEqual((bundle["format"], bundle["schema_version"], bundle["deleted_at"]),
+                         ("comfyui-bundle-library/bundle", 2, None))
         asset = bundle["fields"][1]["asset"]
         self.assertEqual({k: asset[k] for k in ("ext", "width", "height", "original_name")},
                          {"ext": "png", "width": 64, "height": 48, "original_name": "front.png"})
@@ -88,12 +89,18 @@ class StoreTest(unittest.TestCase):
         self.refused(lambda: self.store.update(bundle["id"], self.data(), "2"), 400, "invalid")
         self.refused(lambda: self.store.update(str(uuid.uuid4()), self.data(), 1), 404, "not_found")
 
-    def test_names_are_unique_regardless_of_case(self):
+    def test_names_may_repeat(self):
+        # Bundles are told apart by id; a name is only what the list shows.
         red = self.store.create(self.data("Red"))
-        blue = self.store.create(self.data("Blue", "blue"))
-        self.refused(lambda: self.store.create(self.data("RED")), 409, "name_conflict")
-        self.refused(lambda: self.store.update(blue["id"], self.data("red"), 1), 409, "name_conflict")
-        self.assertEqual(self.store.update(red["id"], self.data("red"), 1)["name"], "red")
+        again = self.store.create(self.data("Red", "blue"))
+        upper = self.store.create(self.data("RED", "green"))
+        blue = self.store.create(self.data("Blue", "white"))
+        self.assertEqual(self.store.update(blue["id"], self.data("Red"), 1)["name"], "Red")
+        listed = [(b["name"], b["id"]) for b in self.store.list()["bundles"]]
+        # by name regardless of case, then by id, so the order holds still
+        self.assertEqual([name.casefold() for name, _ in listed], ["red"] * 4)
+        self.assertEqual(listed, sorted(listed, key=lambda item: (item[0].casefold(), item[1])))
+        self.assertEqual(len({red["id"], again["id"], upper["id"], blue["id"]}), 4)
 
     def test_images_must_have_been_uploaded(self):
         data = self.data()
@@ -107,16 +114,21 @@ class StoreTest(unittest.TestCase):
         self.assertEqual((asset["width"], asset["height"], asset["ext"]), (64, 48, "png"))
         self.assertGreater(asset["bytes"], 1)
 
-    def test_delete_moves_the_file_to_trash(self):
+    def test_delete_puts_the_bundle_in_the_trash(self):
         bundle = self.store.create(self.data())
         self.refused(lambda: self.store.delete(bundle["id"], 2), 409, "revision_conflict")
         self.store.delete(bundle["id"], 1)
-        self.refused(lambda: self.store.get(bundle["id"]), 404, "not_found")
+        error = self.refused(lambda: self.store.get(bundle["id"]), 404, "in_trash")
+        self.assertIn("restore it to use it", error.message)
         self.assertEqual(self.store.list()["bundles"], [])
-        trashed = list((self.root / "trash").iterdir())
-        self.assertEqual(len(trashed), 1)
-        self.assertTrue(trashed[0].name.startswith(bundle["id"] + "."))
-        self.assertEqual(json.loads(trashed[0].read_text(encoding="utf-8"))["name"], bundle["name"])
+        on_disk = json.loads((self.root / "bundles" / f"{bundle['id']}.json").read_text(encoding="utf-8"))
+        self.assertEqual((on_disk["revision"], on_disk["updated_at"]), (2, bundle["updated_at"]))
+        self.assertRegex(on_disk["deleted_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$")
+        self.assertFalse((self.root / "trash").exists())  # no trash folder any more
+        self.assertEqual([b["id"] for b in self.store.trash()["trash"]], [bundle["id"]])
+        self.refused(lambda: self.store.update(bundle["id"], self.data(), 2), 409, "in_trash")
+        self.refused(lambda: self.store.delete(bundle["id"], 2), 409, "in_trash")
+        self.refused(lambda: self.store.duplicate(bundle["id"]), 409, "in_trash")
         # its image stays
         self.assertIsNotNone(self.store.assets.path(bundle["fields"][1]["asset"]["sha256"]))
 
@@ -148,13 +160,13 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(copy["fields"], source["fields"])
         self.assertNotEqual(copy["id"], source["id"])
         empty = self.store.duplicate(source["id"], "structure")
-        self.assertEqual(empty["name"], "Red copy 2")
+        self.assertEqual(empty["name"], "Red copy")  # names may repeat
         self.assertEqual([(f["name"], f["type"]) for f in empty["fields"]],
                          [(f["name"], f["type"]) for f in source["fields"]])
         self.assertEqual(empty["fields"][0]["value"], "")
         self.assertIsNone(empty["fields"][1]["asset"])
         self.assertEqual(self.store.duplicate(source["id"], name="Blue")["name"], "Blue")
-        self.refused(lambda: self.store.duplicate(source["id"], name="blue"), 409, "name_conflict")
+        self.assertEqual(self.store.duplicate(source["id"], name="blue")["name"], "blue")
         self.refused(lambda: self.store.duplicate(source["id"], "everything"), 400, "invalid")
 
     def test_unreadable_files_are_reported_not_fatal(self):
@@ -169,8 +181,9 @@ class StoreTest(unittest.TestCase):
         os.symlink(self.root / "bundles" / f"{good['id']}.json", self.root / "bundles" / f"{link_id}.json")
         listing = self.store.list()
         self.assertEqual([b["id"] for b in listing["bundles"]], [good["id"]])
-        self.assertEqual(sorted(e["file"] for e in listing["errors"]),
-                         sorted([f"{broken_id}.json", f"{mismatched_id}.json"]))
+        self.assertEqual(sorted((e["file"], e["id"], e["code"]) for e in listing["errors"]),
+                         sorted([(f"bundles/{broken_id}.json", broken_id, "corrupt"),
+                                 (f"bundles/{mismatched_id}.json", mismatched_id, "corrupt")]))
         self.refused(lambda: self.store.get(link_id), 404, "not_found")  # links are not followed
         error = self.refused(lambda: self.store.get(broken_id), 500, "corrupt_bundle")
         self.assertNotIn(str(self.root), error.message)
@@ -226,7 +239,7 @@ class StoreTest(unittest.TestCase):
             self.refused(call, 400, "invalid_id")
 
     def test_concurrent_creates_with_one_name(self):
-        data = [self.data("Same") for _ in range(8)]
+        data = [self.data("Same") for _ in range(8)]  # names may repeat: all eight are made
         results = []
 
         def create(d):
@@ -240,8 +253,8 @@ class StoreTest(unittest.TestCase):
             t.start()
         for t in threads:
             t.join()
-        self.assertEqual(results.count("name_conflict"), 7)
-        self.assertEqual(len(self.store.list()["bundles"]), 1)
+        self.assertEqual(len(set(results)), 8)
+        self.assertEqual(sorted(b["id"] for b in self.store.list()["bundles"]), sorted(results))
 
 
 if __name__ == "__main__":

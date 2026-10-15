@@ -404,13 +404,6 @@ const LIB_HELPERS = () => {
         reordered.fields.map((f) => f.name).join() === "ref_file,prompt,ref_paste,ref_drop,flag,steps,cfg" && reordered.revision === 2
         && (await lib(() => window.__lib.layer())) === null,
         { order: reordered.fields.map((f) => f.name), revision: reordered.revision });
-    await page.locator(".bl-overlay .bl-name-input").fill("[TEST] a (RED)");
-    await page.keyboard.press("Control+s");
-    await until(() => window.__lib.status().error);
-    const nameTaken = await lib(() => window.__lib.status());
-    check("a name another bundle has (in any case) is refused with the server's message",
-        nameTaken.text === "A bundle named '[test] A (red)' already exists.", nameTaken);
-    await button("Revert", editor).click();
     await button("✕", fields.nth(4)).click();
     let layer = await lib(() => window.__lib.layer());
     check("removing a saved field asks first",
@@ -507,9 +500,15 @@ const LIB_HELPERS = () => {
     await editing(UI_NAME);
     await button("Duplicate ▾", editor).click();
     await button("Duplicate structure only").click();
-    await editing(`${UI_NAME} copy 2`);
+    await editing(`${UI_NAME} copy`);
+    await until((id) => window.__lib.selected() !== id, copyId);
     const structureId = await lib(() => window.__lib.selected());
     const structure = await api("GET", `/bundles/${structureId}`);
+    const twins = await lib(([a, b]) => window.__lib.items().filter((i) => i.id === a || i.id === b).map((i) => i.name),
+        [copyId, structureId]);
+    check("both copies may have the same name; the list tells them apart by the start of the id",
+        structure.name === `${UI_NAME} copy` && twins.length === 2 && new Set(twins).size === 2
+        && twins.every((label) => /^\[test\] UI made copy · [0-9a-f]{4,}$/.test(label)), twins);
     const blank = { text: "", boolean: false, int: 0, float: 0 };
     check("Duplicate structure only: the same fields with empty values",
         values(structure) === JSON.stringify(overwritten.fields.map((f) => [f.name, f.type, f.type === "image" ? null : blank[f.type]])),
@@ -537,7 +536,7 @@ const LIB_HELPERS = () => {
     await button("Delete", editor).click();
     layer = await lib(() => window.__lib.layer());
     check("Delete asks first",
-        layer?.title === `Delete '${UI_NAME} copy 2'?` && JSON.stringify(layer.buttons) === JSON.stringify(["Delete", "Cancel"]), layer);
+        layer?.title === `Delete '${UI_NAME} copy'?` && JSON.stringify(layer.buttons) === JSON.stringify(["Delete", "Cancel"]), layer);
     await button("Cancel", layerBox).click();
     check("Cancel keeps it", (await api("GET", `/bundles/${structureId}`)).id === structureId);
     await button("Delete", editor).click();
@@ -549,7 +548,7 @@ const LIB_HELPERS = () => {
     }), structureId);
     const stillThere = await ev((id) => window.__bl.request("GET", `/bundles/${id}`).then(() => true, () => false), structureId);
     check("Delete removes it from the list and the library",
-        !deleted.listed && !stillThere && deleted.status === `Deleted '${UI_NAME} copy 2'. It is in the trash.`, deleted);
+        !deleted.listed && !stillThere && deleted.status === `Deleted '${UI_NAME} copy'. It is in the trash.`, deleted);
     const ctrlO = await lib(() => {
         const event = new KeyboardEvent("keydown", { key: "o", ctrlKey: true, bubbles: true, cancelable: true });
         document.querySelector(".bl-overlay .bl-search").dispatchEvent(event);
