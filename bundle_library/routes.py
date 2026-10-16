@@ -15,7 +15,7 @@ from aiohttp import web
 
 from .assets import MIME_TYPES
 from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
-from .model import LibraryError, check_bundle_id, check_sha256
+from .model import LibraryError, check_bundle_id, check_sha256, lone_surrogates
 from .store import present
 
 CHUNK = 64 * 1024
@@ -55,6 +55,10 @@ def _api(handler):
             return await handler(request)
         except LibraryError as e:
             return _error_response(e)
+        except OSError as e:  # the library folder could not be read or written; trying again may work
+            logging.exception("[Bundle Library] %s %s failed", request.method, request.path)
+            return _error_response(LibraryError(500, "io_error", "The library folder could not be read or written "
+                                                f"({e.strerror or type(e).__name__}).", retry=True))
         except Exception:
             logging.exception("[Bundle Library] %s %s failed", request.method, request.path)
             return _error_response(
@@ -96,11 +100,29 @@ async def _read_json(request):
         chunks.append(chunk)
     try:
         data = json.loads(b"".join(chunks))
-    except (UnicodeDecodeError, json.JSONDecodeError):
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
         raise LibraryError(400, "invalid_json", "The body is not valid JSON.") from None
     if not isinstance(data, dict):
         raise LibraryError(400, "invalid", "The body must be a JSON object.")
+    if lone_surrogates(data):
+        raise LibraryError(400, "invalid_json", "The body has text that is not valid Unicode.")
     return data
+
+
+def _require(data, *keys):
+    """`data` with every key in `keys` present (null counts: it is a value). A
+    missing key is not taken for an empty or default value."""
+    missing = [key for key in keys if key not in data]
+    if missing:
+        raise LibraryError(400, "invalid", f"Missing in the request: {', '.join(missing)}.")
+    return data
+
+
+def _revision(query):
+    try:
+        return int(query["expected_revision"])
+    except (KeyError, ValueError):
+        raise LibraryError(400, "invalid", "expected_revision (an integer) is required.") from None
 
 
 def register(routes, get_store):
@@ -144,8 +166,9 @@ def register(routes, get_store):
     @_writes
     async def update_bundle(request):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
-        data = await _read_json(request)
-        bundle = await asyncio.to_thread(get_store().update, bundle_id, data, data.get("expected_revision"))
+        # The whole bundle is replaced: nothing left out may be taken for empty.
+        data = _require(await _read_json(request), "name", "tags", "note", "fields", "expected_revision")
+        bundle = await asyncio.to_thread(get_store().update, bundle_id, data, data["expected_revision"])
         return web.json_response(present(bundle))
 
     @routes.delete(prefix + "/bundles/{bundle_id}")
@@ -153,12 +176,9 @@ def register(routes, get_store):
     @_writes
     async def delete_bundle(request):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
-        try:
-            expected = int(request.query["expected_revision"])
-        except (KeyError, ValueError):
-            raise LibraryError(400, "invalid", "expected_revision (an integer) is required.") from None
-        await asyncio.to_thread(get_store().delete, bundle_id, expected)
-        return web.json_response({"deleted": bundle_id})
+        result = await asyncio.to_thread(get_store().delete, bundle_id, _revision(request.query))
+        return web.json_response({"deleted": bundle_id, "changed": result["changed"],
+                                  **({"warning": result["warning"]} if "warning" in result else {})})
 
     @routes.post(prefix + "/bundles/{bundle_id}/duplicate")
     @_api
@@ -166,8 +186,9 @@ def register(routes, get_store):
     async def duplicate_bundle(request):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
         data = await _read_json(request)
+        # Left out or null: the defaults (values; "<name> copy", also for an empty name).
         bundle = await asyncio.to_thread(
-            get_store().duplicate, bundle_id, data.get("mode", "values"), data.get("name"))
+            get_store().duplicate, bundle_id, data.get("mode") or "values", data.get("name"))
         return web.json_response(present(bundle), status=201)
 
     @routes.post(prefix + "/bundles/batch")
@@ -182,8 +203,8 @@ def register(routes, get_store):
     @_writes
     async def set_category(request):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
-        data = await _read_json(request)
-        category = await asyncio.to_thread(get_store().set_category, bundle_id, data.get("category"))
+        data = _require(await _read_json(request), "category")  # null: no category
+        category = await asyncio.to_thread(get_store().set_category, bundle_id, data["category"])
         return web.json_response({"id": bundle_id, "category": category})
 
     @routes.put(prefix + "/bundles/{bundle_id}/favorite")
@@ -245,14 +266,18 @@ def register(routes, get_store):
         this version cannot fully read (the user asked for that file)."""
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
         unreadable = request.query.get("unreadable") == "1"
-        await asyncio.to_thread(get_store().purge, bundle_id, unreadable)
+        # The revision the user saw; not known for a file this version cannot fully read.
+        expected = _revision(request.query) if not unreadable or "expected_revision" in request.query else None
+        await asyncio.to_thread(get_store().purge, bundle_id, unreadable, expected)
         return web.json_response({"deleted": bundle_id})
 
     @routes.delete(prefix + "/trash")
     @_api
     @_writes
     async def empty_trash(request):
-        return web.json_response({"deleted": await asyncio.to_thread(get_store().empty_trash)})
+        """Deletes for good the bundles the page showed in the trash ({"expected_revisions": {id: revision}})."""
+        data = _require(await _read_json(request), "expected_revisions")
+        return web.json_response(await asyncio.to_thread(get_store().empty_trash, data["expected_revisions"]))
 
     @routes.get(prefix + "/cleanup")
     @_api

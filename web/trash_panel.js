@@ -37,7 +37,7 @@ export class TrashPanel {
         cleanup.addEventListener("click", () => void this.cleanup());
         const empty = button("Empty trash", "bl-btn danger");
         empty.disabled = trash.length === 0;
-        empty.addEventListener("click", () => void this.empty(trash.length));
+        empty.addEventListener("click", () => void this.empty(trash));
         head.append(el("div", "bl-trash-title", "Trash"), cleanup, empty);
         const hint = el("div", "bl-hint", "Deleted bundles stay here until you delete them for good. "
             + "The files they use are kept, so a restored bundle is whole.");
@@ -67,7 +67,7 @@ export class TrashPanel {
         const restore = button("Restore");
         restore.addEventListener("click", () => void this.restore(entry));
         const purge = button("Delete forever", "bl-btn danger");
-        purge.addEventListener("click", () => void this.purge(entry.id, `'${label ?? entry.name}'`));
+        purge.addEventListener("click", () => void this.purge(entry, `'${label ?? entry.name}'`));
         row.append(thumb, text, restore, purge);
         return row;
     }
@@ -83,13 +83,14 @@ export class TrashPanel {
         await this.refresh();
     }
 
-    async purge(id, what) {
+    /** Delete one bundle for good, as it was shown (the server keeps it if it changed since). */
+    async purge(entry, what) {
         const confirmed = await this.modal.confirm(`Delete ${what} for good?`,
             "It cannot be restored afterwards. The files it used stay in the library until you clean up unused files.",
             "Delete forever", { danger: true });
         if (!confirmed) return;
         try {
-            await purgeBundle(id);
+            await purgeBundle(entry.id, { revision: entry.revision });
             this.modal.status(`Deleted ${what} for good.`);
         } catch (error) {
             this.modal.status(error.message, "error");
@@ -97,7 +98,9 @@ export class TrashPanel {
         await this.refresh();
     }
 
-    async empty(count) {
+    /** Delete for good the bundles shown; any put in the trash or changed since stay. */
+    async empty(trash) {
+        const count = trash.length;
         const confirmed = await this.modal.confirm("Empty the trash?",
             `${plural(count, "deleted bundle")} will be gone for good. `
             + "The files they used stay in the library until you clean up unused files. "
@@ -105,8 +108,10 @@ export class TrashPanel {
             "Empty trash", { danger: true });
         if (!confirmed) return;
         try {
-            const { deleted } = await emptyTrash();
-            this.modal.status(`Emptied the trash: ${plural(deleted, "bundle")} deleted for good.`);
+            const { deleted, results } = await emptyTrash(Object.fromEntries(trash.map((e) => [e.id, e.revision])));
+            const left = results.length - deleted;
+            this.modal.status(`Emptied the trash: ${plural(deleted, "bundle")} deleted for good.`
+                + (left ? ` ${plural(left, "bundle")} changed or restored meanwhile ${left === 1 ? "was" : "were"} kept.` : ""));
         } catch (error) {
             this.modal.status(error.message, "error");
         }

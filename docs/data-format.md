@@ -28,8 +28,11 @@ bundle_library/
   보고한다. 폴더가 비면 지운다.
 - 이 폴더에는 ComfyUI 프로세스 하나만 쓴다. 다른 프로세스가 같은 폴더를 열면 쓰는 중인
   임시 파일을 지울 수 있다.
-- 번들 파일을 손으로 고치면 다음 목록 조회 때 반영된다. 쓸 수 없는 파일은 건너뛰고 목록의
-  `errors`와 `/health`에 상태별로 보고한다 (호환성 정책의 상태).
+- 번들 파일을 손으로 고치면 다음 목록 조회 때 반영된다(내용, 권한, 파일 교체를 알아챈다). 쓸 수 없는 파일은
+  건너뛰고 목록의 `errors`와 `/health`에 상태별로 보고한다 (호환성 정책의 상태). 파일 하나가 무엇을 담든 다른
+  파일의 목록을 막지 않는다. 뜻밖의 예외도 그 파일의 손상으로 보고하고 서버 로그에 남긴다.
+- 권한이나 I/O 오류로 파일을 읽지 못하면 손상이 아니라 `read_error`로 보고하고(영구 삭제를 권하지 않는다),
+  기억하지 않고 다음 요청 때 다시 읽는다. `organization.json`도 같다.
 
 ## 번들 파일
 
@@ -207,19 +210,32 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 `version_mismatch`로 거부하고 `page_version`, `server_version`을 준다. 이 헤더가 없는 요청(스크립트
 등)은 그대로 받는다.
 
+### 요청의 모양과 쓰기의 결과
+
+- 요청 본문은 경로마다 필수 키, 생략할 수 있는 키(`?`, 기본값이 있다), `null`을 받는 키가 정해져 있다. 필수
+  키가 빠지면 400 `invalid`("Missing in the request: …")다. 빠진 키를 빈 값이나 `null`로 여기지 않는다
+  (0.0.16부터). 인수는 파일을 쓰기 전에 모두 검사한다.
+- 유니코드 스칼라가 아닌 문자열(외톨이 서로게이트)이나 지나치게 깊은 중첩이 든 본문은 400 `invalid_json`이다.
+- 파일은 임시 파일에 쓰고 동기화한 뒤 한 번에 바꾼다. 바꾸기 전에 실패하면 아무것도 쓰지 않았고, 단건
+  요청은 500 `io_error`(`"retry": true`), 일괄 작업은 그 번들의 `io_error`다. 바꾼 뒤 폴더 동기화만 실패하면
+  변경은 반영된 것으로 보고하고(일괄 결과와 `DELETE /bundles/{id}`에는 `warning`), 서버 로그에 남긴다. 전원이
+  나가면 그 변경이 사라질 수 있다는 뜻이다.
+- 본 작업이 성공한 뒤 정리 파일(`organization.json`) 쓰기가 실패하면 본 작업은 성공이다. 만들기·복제는
+  `placement_error`로 알리고, 영구 삭제·휴지통 비우기는 남은 정리 항목을 다음 쓰기 때 지운다.
+
 ### 엔드포인트
 
 | 메서드 | 경로 | 요청 | 응답 |
 | --- | --- | --- | --- |
 | GET | `/health` | — | `{"version", "organization", "bundles", "trash", "corrupt", "newer", "unsupported", "legacy_trash": [파일 이름], "writable"}`. `organization`은 정리 파일의 상태(`missing`, `ok`, `read_only`, `newer_version`, `unsupported`, `corrupt`) |
 | GET | `/bundles` | `q`(이름·태그·카테고리 이름·필드 이름·텍스트 값 검색), `tag`, `sort`(`name`/`updated`, 이름이 같으면 id 순) | `{"bundles": [요약], "errors": [{"file", "id", "code", "error"}], "categories": [{"id", "name", "parent", "count"}], "organization": {"revision", "state"}}`. 휴지통의 번들은 빠진다. `categories`는 이름순이고 `count`는 걸러진 목록에서 센다 |
-| POST | `/bundles` | `{"name", "tags", "note", "fields", "category"?}` | 201, 번들. `category`(id)를 주면 그 카테고리에도 둔다. 배치만 실패하면 `placement_error` |
+| POST | `/bundles` | `{"name", "tags"?, "note"?, "fields"?, "category"?}` | 201, 번들. `category`(id)를 주면 그 카테고리에도 둔다. 형식은 쓰기 전에 검사하고(400), 없는 카테고리 등 배치만 실패하면 `placement_error` |
 | GET | `/bundles/{id}` | — | 번들. 경고가 있으면 `warnings`, 읽기 전용이면 `read_only`(이유)를 더한다. 휴지통에 있으면 404 `in_trash` |
-| PUT | `/bundles/{id}` | `{"expected_revision", "name", "tags", "note", "fields"}` | 번들 (revision +1) |
-| DELETE | `/bundles/{id}?expected_revision=N` | — | `{"deleted": id}`. 휴지통으로 보낸다 (`deleted_at`, revision +1) |
-| POST | `/bundles/{id}/duplicate` | `{"mode": "values" 또는 "structure", "name"?}` | 201, 새 번들. 이름을 비우면 `<이름> copy`. 원본의 카테고리에 두고, 배치만 실패하면 `placement_error` |
+| PUT | `/bundles/{id}` | `{"expected_revision", "name", "tags", "note", "fields"}` (모두 필수, 전체 교체) | 번들 (revision +1) |
+| DELETE | `/bundles/{id}?expected_revision=N` | — | `{"deleted": id, "changed", "warning"?}`. 휴지통으로 보낸다 (`deleted_at`, revision +1). 이미 휴지통에 있으면 `changed: false`. 일괄 `trash`와 같은 코드다 |
+| POST | `/bundles/{id}/duplicate` | `{"mode"?: "values" 또는 "structure", "name"?}` | 201, 새 번들. `mode`를 생략하거나 `null`이면 `values`, 이름을 생략하거나 비우면 `<이름> copy`. 원본의 카테고리에 두고, 배치만 실패하면 `placement_error` |
 | POST | `/bundles/batch` | `{"ids", "action", 작업별 인수}` | 여러 번들에 한 작업 (아래 "여러 번들에 한 번에", 0.0.14부터) |
-| PUT | `/bundles/{id}/category` | `{"category": id 또는 null}` | `{"id", "category"}`. 쓰는 번들과 휴지통의 번들 모두. revision은 그대로다 |
+| PUT | `/bundles/{id}/category` | `{"category": id 또는 null}` (키 필수, `null`은 카테고리 빼기) | `{"id", "category"}`. 쓰는 번들과 휴지통의 번들 모두. revision은 그대로다. 이미 그 상태면 아무것도 쓰지 않는다. 일괄 작업과 같은 코드다 |
 | PUT | `/bundles/{id}/favorite` | `{"favorite": true 또는 false}` | `{"id", "favorite"}`. revision은 그대로다 |
 | GET | `/categories` | — | `{"categories": [{"id", "name", "parent", "count"}], "revision", "state"}` |
 | POST | `/categories` | `{"name", "parent"?}` | 201, `{"id", "name", "parent"}`. `parent`는 아직 받지 않는다(400 `nesting_not_supported`) |
@@ -230,8 +246,8 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | GET | `/assets/{sha256}` | — | 원본. Range 요청을 받는다. `Cache-Control: immutable`, `X-Content-Type-Options: nosniff` |
 | GET | `/assets/{sha256}/thumb?size=256` | — | WebP 썸네일 (이미지, 비디오 포스터) |
 | GET | `/trash` | — | `{"trash": [요약과 "deleted_at"], "errors": [{"file", "id", "code", "error"}]}`. 요약의 `category`는 되살아날 카테고리다. 마지막에 지운 것부터. `errors`는 이 버전이 쓸 수 없는 파일과 옮기지 못한 옛 휴지통 파일이다 |
-| DELETE | `/trash/{id}` | `unreadable=1`(선택) | `{"deleted": id}`. 휴지통의 번들을 영구 삭제한다. 이 버전이 완전히 읽지 못하는 파일은 `unreadable=1`이 있을 때만 지운다 |
-| DELETE | `/trash` | — | `{"deleted": 개수}`. 휴지통의 번들을 모두 영구 삭제한다. 완전히 읽지 못하는 파일은 남긴다 |
+| DELETE | `/trash/{id}` | `expected_revision=N`(필수. `unreadable=1`이면 선택) | `{"deleted": id}`. 휴지통의 번들을 영구 삭제한다. 화면이 보여 준 revision과 다르면 409 `revision_conflict`로 남긴다. 이 버전이 완전히 읽지 못하는 파일은 `unreadable=1`이 있을 때만 지우고, 읽기 전용 번들은 휴지통에 있을 때만 지운다 |
+| DELETE | `/trash` | `{"expected_revisions": {id: revision}}` | `{"deleted": 개수, "results": [번들별 결과]}`. 화면이 보여 준 번들 중 그 revision 그대로 휴지통에 있는 것만 영구 삭제한다. 그 뒤에 휴지통에 들어온 번들과 완전히 읽지 못하는 파일은 남긴다 |
 | GET | `/cleanup` | — | `{"assets": [{"sha256", "kind", "ext", "bytes", "stored_at"}], "bytes", "recent", "grace_hours"}`. 아무 번들도, 휴지통의 번들도 쓰지 않는 파일. 오래된 것부터 |
 | POST | `/cleanup` | `{"sha256": [GET이 보여 준 것]}` | `{"deleted", "bytes", "kept", "thumbnails"}`. 아직 쓰이지 않는 파일만 썸네일과 함께 지운다 |
 
@@ -262,8 +278,10 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 
 - 요청 전체를 먼저 검사하고, 문제가 있으면 아무것도 쓰지 않고 거부한다: `ids`가 비었거나 UUID가 아님,
   1000개 초과, 모르는 `action`(400 `invalid`), 아직 받지 않는 `add_tags`·`remove_tags`(400
-  `unsupported_action`, Phase 7.8b), 인수 오류, 없는 카테고리(404), 이 버전이 쓸 수 없는 정리
-  파일(409 `organization_unwritable`), `trash`에 revision이 빠진 id(400).
+  `unsupported_action`, Phase 7.8b), 인수 오류(`set_category`의 `category` 키가 없음 포함. 해제는
+  `"category": null`), 없는 카테고리(404), 이 버전이 쓸 수 없는 정리 파일(409 `organization_unwritable`),
+  `trash`에 revision이 빠진 id(400).
+- 단건 경로(`DELETE /bundles/{id}`, `PUT …/category`, `PUT …/favorite`)는 같은 코드를 번들 하나에 쓴다.
 - `ids`의 중복은 하나로 친다. 결과는 처음 나온 순서다.
 - 카테고리·즐겨찾기는 최신 정리 정보에 적용한다. 바뀌는 번들이 있을 때만 정리 파일을 한 번 쓰고
   `revision`을 1 올린다. 그 쓰기가 실패하면 바뀔 번들은 모두 실패(`io_error`)이고 파일은 그대로다.
@@ -283,10 +301,12 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 ```
 
 - `ok`와 `changed`로 바뀜, 변경 없는 성공(이미 그 상태), 실패를 구분한다. 변경이 없으면 파일, revision,
-  시각을 건드리지 않는다. `revision`은 번들 파일을 쓴 경우의 새 revision이다.
+  시각을 건드리지 않는다. `revision`은 번들 파일을 쓴 경우의 새 revision이다. 바뀌었지만 폴더를 동기화하지
+  못했으면 `warning`이 붙는다.
 - 실패의 `code`는 단건 API와 같다(`not_found`, `revision_conflict`, `read_only`, `newer_version`,
-  `unsupported`, `corrupt_bundle` 등). 쓰기 실패는 `io_error`이고 `"retry": true`가 붙어, 다시 시도하면 될 수
-  있음을 알린다. 이 버전이 바꿀 수 없는 파일은 다시 시도해도 같다.
+  `unsupported`, `corrupt_bundle` 등)이고, 그 오류의 세부 정보(`current_revision` 등)도 담는다. 쓰기 실패는
+  `io_error`이고 `"retry": true`가 붙어, 다시 시도하면 될 수 있음을 알린다. 이 버전이 바꿀 수 없는 파일은
+  다시 시도해도 같다.
 - 화면은 요청을 보내기 전에 대상 id와 revision을 정해 두고, 답이 올 때까지 창을 잠근다. 답이 없으면(통신
   오류나 "Stop waiting") 완료 여부를 알 수 없다고 보이고, 서버 작업을 취소한 것으로 보지 않는다.
 
@@ -320,6 +340,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | 409 | `version_mismatch` | 화면과 서버의 버전이 다름 |
 | 413 | `too_large`, `too_many_pixels`, `too_long`, `too_many_samples` | 본문·파일 크기, 픽셀 수, 오디오 길이, 오디오 샘플 수 초과 |
 | 415 | `unsupported_media_type`, `unsupported_format` | 본문 형식이 맞지 않음, 허용하지 않는 파일 형식이거나 필드와 종류가 다른 파일 |
+| 500 | `io_error` | 라이브러리 폴더를 읽거나 쓰지 못함. `"retry": true` (0.0.16부터) |
 | 500 | `corrupt_bundle`, `internal` | 번들 파일을 읽을 수 없음, 그 밖의 서버 오류 (자세한 내용은 ComfyUI 로그) |
 
 ## 호환성 정책
@@ -377,8 +398,8 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | 편집 저장 | 허용 | 값을 고친 뒤 허용 | 거부 | 거부 |
 | 복제 | 허용 | 거부 (작성 규칙) | 거부 | 거부 |
 | 휴지통으로 지우기, 되살리기 | 허용 | 허용 | 거부 | 거부 |
-| 하나 영구 삭제 | 휴지통에 있을 때 | 휴지통에 있을 때 | `unreadable=1`로만 | `unreadable=1`로만 |
-| 휴지통 비우기 | 휴지통의 것을 지운다 | 같음 | 건드리지 않는다 | 건드리지 않는다 |
+| 하나 영구 삭제 | 휴지통에 있고 본 revision 그대로일 때 | 같음 | 읽기 전용은 휴지통에 있을 때 `unreadable=1`로만, 새 버전·미지원은 `unreadable=1`로만 | `unreadable=1`로만 |
+| 휴지통 비우기 | 화면이 보여 준 것 중 그대로인 것을 지운다 | 같음 | 건드리지 않는다 | 건드리지 않는다 |
 | 쓰이지 않는 파일 정리 | 참조를 지킨다 | 같음 | 하나라도 있으면 거부 | JSON이 아니면 거부, 알려진 버전의 필드가 읽히면 참조를 지킨다 |
 
 ### 워크플로와 노드

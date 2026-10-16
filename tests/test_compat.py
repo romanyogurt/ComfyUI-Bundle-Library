@@ -175,7 +175,7 @@ class CompatTest(unittest.TestCase):
                              lambda: store.purge(bundle_id)):
                     with self.assertRaises(LibraryError):
                         call()
-        self.assertEqual(store.empty_trash(), 0)
+        self.assertEqual(store.empty_trash({names[key][:-5]: 3 for key in keys})["deleted"], 0)
         self.assertEqual(snapshot(root), before)
 
     def test_cleanup_stops_for_a_newer_file_that_points_elsewhere(self):

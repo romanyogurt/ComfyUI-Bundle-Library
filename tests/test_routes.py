@@ -3,6 +3,7 @@ import io
 import json
 import tempfile
 import unittest
+import unittest.mock
 import uuid
 from pathlib import Path
 
@@ -56,7 +57,7 @@ class RoutesTest(AioHTTPTestCase):
 
     async def bundle_data(self, name="Red Dress Girl", color="red"):
         sha = (await self.body(await self.upload(helpers.png(color)), 201))["asset"]["sha256"]
-        return {"name": name, "tags": ["character"], "fields": [
+        return {"name": name, "tags": ["character"], "note": "", "fields": [
             {"name": "prompt", "type": "text", "value": "두 줄\n\n 공백 "},
             {"name": "ref_1", "type": "image", "asset": {"sha256": sha}},
             {"name": "use_bgm", "type": "boolean", "value": True},
@@ -224,7 +225,7 @@ class RoutesTest(AioHTTPTestCase):
         bundle = await self.body(await self.client.post(P + "/bundles", json=data, headers=WRITE), 201)
         path = f"{P}/bundles/{bundle['id']}"
         self.assertEqual(await self.body(await self.client.delete(path + "?expected_revision=1", headers=WRITE), 200),
-                         {"deleted": bundle["id"]})
+                         {"deleted": bundle["id"], "changed": True})
         listing = await self.body(await self.client.get(P + "/trash"), 200)
         self.assertEqual([(e["id"], e["name"]) for e in listing["trash"]], [(bundle["id"], "Red Dress Girl")])
         self.assertTrue(listing["trash"][0]["deleted_at"].endswith("Z"))
@@ -232,12 +233,17 @@ class RoutesTest(AioHTTPTestCase):
         self.assertEqual((restored["id"], restored["name"], restored["revision"], restored["deleted_at"]),
                          (bundle["id"], "Red Dress Girl", 3, None))
         await self.error(await self.client.post(path + "/restore", headers=WRITE), 409, "not_in_trash")
-        await self.error(await self.client.delete(f"{P}/trash/{bundle['id']}", headers=WRITE), 409, "not_in_trash")
+        trash = f"{P}/trash/{bundle['id']}"
+        await self.error(await self.client.delete(trash + "?expected_revision=3", headers=WRITE), 409, "not_in_trash")
         await self.body(await self.client.delete(path + "?expected_revision=3", headers=WRITE), 200)
-        await self.body(await self.client.delete(f"{P}/trash/{bundle['id']}", headers=WRITE), 200)
-        await self.error(await self.client.delete(f"{P}/trash/{bundle['id']}", headers=WRITE), 404, "not_found")
+        await self.error(await self.client.delete(trash, headers=WRITE), 400, "invalid")  # the revision seen is required
+        await self.error(await self.client.delete(trash + "?expected_revision=3", headers=WRITE), 409, "revision_conflict")
+        await self.body(await self.client.delete(trash + "?expected_revision=4", headers=WRITE), 200)
+        await self.error(await self.client.delete(trash + "?expected_revision=4", headers=WRITE), 404, "not_found")
         await self.error(await self.client.post(f"{P}/bundles/..%2Fx/restore", headers=WRITE), 400, "invalid_id")
-        self.assertEqual((await self.body(await self.client.delete(P + "/trash", headers=WRITE), 200))["deleted"], 0)
+        await self.error(await self.client.delete(P + "/trash", json={}, headers=WRITE), 400, "invalid")
+        self.assertEqual((await self.body(await self.client.delete(P + "/trash", json={"expected_revisions": {}},
+                                                                   headers=WRITE), 200))["deleted"], 0)
         unused = await self.body(await self.client.get(P + "/cleanup"), 200)
         self.assertEqual((unused["assets"], unused["recent"], unused["grace_hours"]), ([], 1, 24))  # uploaded just now
         sha = data["fields"][1]["asset"]["sha256"]
@@ -253,8 +259,11 @@ class RoutesTest(AioHTTPTestCase):
         errors = (await self.body(await self.client.get(P + "/trash"), 200))["errors"]
         self.assertEqual([(e["id"], e["code"]) for e in errors], [(newer, "newer_version")])
         await self.error(await self.client.get(f"{P}/bundles/{newer}"), 409, "newer_version")
-        await self.error(await self.client.delete(f"{P}/trash/{newer}", headers=WRITE), 409, "unreadable_file")
-        self.assertEqual((await self.body(await self.client.delete(P + "/trash", headers=WRITE), 200))["deleted"], 0)
+        await self.error(await self.client.delete(f"{P}/trash/{newer}?expected_revision=1", headers=WRITE),
+                         409, "unreadable_file")
+        emptied = await self.body(await self.client.delete(P + "/trash", json={"expected_revisions": {newer: 1}},
+                                                          headers=WRITE), 200)
+        self.assertEqual((emptied["deleted"], emptied["results"][0]["code"]), (0, "unreadable_file"))
         self.assertTrue((self.root / "bundles" / f"{newer}.json").exists())  # emptying the trash leaves it
         await self.error(await self.client.get(P + "/cleanup"), 409, "unreadable_bundles")
         await self.body(await self.client.delete(f"{P}/trash/{newer}?unreadable=1", headers=WRITE), 200)
@@ -299,6 +308,52 @@ class RoutesTest(AioHTTPTestCase):
                                                 headers=WRITE), 400, "unsupported_action")
         await self.error(await self.client.post(P + "/bundles/batch", json={"ids": ["../x"], "action": "trash"},
                                                 headers=WRITE), 400, "invalid_id")
+
+    async def test_every_registered_write_route_is_guarded(self):
+        """Found from the router, so a route added later cannot miss the guard."""
+        fill = {"{bundle_id}": SOME_ID, "{category_id}": SOME_ID, "{sha256}": "a" * 64}
+        writes = [(route.method, route.resource.canonical) for route in self.app.router.routes()
+                  if route.method not in ("GET", "HEAD", "OPTIONS")]
+        self.assertGreaterEqual(len(writes), 15)
+        for method, path in writes:
+            for name, value in fill.items():
+                path = path.replace(name, value)
+            with self.subTest(route=f"{method} {path}"):
+                await self.error(await self.client.request(method, path), 403, "missing_header")
+                await self.error(await self.client.request(method, path, headers={
+                    **WRITE, "X-Bundle-Library-Version": "0.0.1"}), 409, "version_mismatch")
+
+    async def test_requests_must_say_what_they_mean(self):
+        data = await self.bundle_data()
+        bundle = await self.body(await self.client.post(P + "/bundles", json=data, headers=WRITE), 201)
+        path = f"{P}/bundles/{bundle['id']}"
+        partial = {key: value for key, value in data.items() if key != "tags"}
+        error = await self.error(await self.client.put(path, json={**partial, "expected_revision": 1}, headers=WRITE),
+                                 400, "invalid")
+        self.assertIn("tags", error["message"])  # a whole replacement: nothing is taken for empty
+        await self.error(await self.client.put(path + "/category", json={}, headers=WRITE), 400, "invalid")
+        await self.error(await self.client.post(P + "/bundles/batch", json={"action": "set_category", "ids": [bundle["id"]]},
+                                                headers=WRITE), 400, "invalid")
+        await self.error(await self.client.post(P + "/bundles", json={**data, "category": "oops"}, headers=WRITE),
+                         400, "invalid_id")
+        self.assertEqual(len((await self.body(await self.client.get(P + "/bundles"), 200))["bundles"]), 1)
+        copy = await self.body(await self.client.post(path + "/duplicate", json={"name": "", "mode": None},
+                                                      headers=WRITE), 201)
+        self.assertEqual((copy["name"], copy["fields"][0]["value"]), ("Red Dress Girl copy", data["fields"][0]["value"]))
+        for label, body in {"a lone surrogate": b'{"name": "\\ud800", "fields": []}'.replace(b"\\\\", b"\\"),
+                            "deep nesting": b'{"a": ' + b"[" * 100000 + b"]" * 100000 + b"}"}.items():
+            with self.subTest(label):
+                await self.error(await self.client.post(P + "/bundles", data=body, headers={
+                    **WRITE, "Content-Type": "application/json"}), 400, "invalid_json")
+
+    async def test_io_errors_are_reported_as_such(self):
+        data = await self.bundle_data()
+        bundle = await self.body(await self.client.post(P + "/bundles", json=data, headers=WRITE), 201)
+        with unittest.mock.patch.object(BundleStore, "update", side_effect=OSError(28, "No space left on device")), \
+                self.assertLogs(level="ERROR"):
+            error = await self.error(await self.client.put(f"{P}/bundles/{bundle['id']}", json={
+                **data, "expected_revision": 1}, headers=WRITE), 500, "io_error")
+        self.assertEqual((error["retry"], "No space left on device" in error["message"]), (True, True))
 
     async def test_writes_from_a_page_of_another_version_are_refused(self):
         data = await self.bundle_data()

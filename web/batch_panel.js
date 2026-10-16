@@ -176,6 +176,7 @@ export class BatchResult {
                     row.dataset.id = r.id;
                     row.append(el("span", "bl-list-name", names.get(r.id) ?? r.id));
                     if (r.message && kind !== "changed" && kind !== "unchanged") row.append(el("span", "bl-dim", r.message));
+                    if (r.warning) row.append(el("span", "bl-warn", r.warning)); // done, but not synced to the disk
                     group.append(row);
                 }
                 parts.push(group);

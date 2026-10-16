@@ -127,7 +127,7 @@ class StoreTest(unittest.TestCase):
         self.assertFalse((self.root / "trash").exists())  # no trash folder any more
         self.assertEqual([b["id"] for b in self.store.trash()["trash"]], [bundle["id"]])
         self.refused(lambda: self.store.update(bundle["id"], self.data(), 2), 409, "in_trash")
-        self.refused(lambda: self.store.delete(bundle["id"], 2), 409, "in_trash")
+        self.assertEqual(self.store.delete(bundle["id"], 2), {"id": bundle["id"], "ok": True, "changed": False})  # done
         self.refused(lambda: self.store.duplicate(bundle["id"]), 409, "in_trash")
         # its image stays
         self.assertIsNotNone(self.store.assets.path(bundle["fields"][1]["asset"]["sha256"]))

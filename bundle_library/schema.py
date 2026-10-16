@@ -8,10 +8,11 @@ nothing from ComfyUI.
 """
 
 import json
+import logging
 import re
 
 from .constants import MEDIA_TYPES
-from .model import UUID_RE, LibraryError, read_bundle_content
+from .model import UUID_RE, LibraryError, lone_surrogates, read_bundle_content
 
 FORMAT = "comfyui-bundle-library/bundle"
 SCHEMA_VERSION = 2
@@ -59,8 +60,11 @@ class Loaded:
     writing rules it breaks (`warnings`), and the files it points at
     (`refs`; None when that cannot be told)."""
 
-    def __init__(self, state, bundle=None, problem=None, warnings=(), refs=None):
+    def __init__(self, state, bundle=None, problem=None, warnings=(), refs=None, io_error=False):
         self.state = state
+        # The file could not be read at all (permissions, I/O): not a fact about
+        # its content, so it is reported apart and read again next time.
+        self.io_error = io_error
         self.bundle = bundle
         self.problem = problem
         self.warnings = list(warnings)
@@ -110,8 +114,12 @@ def read(text, file_id=None):
         data = json.loads(text)
     except ValueError:  # includes text that is not UTF-8
         return Loaded(CORRUPT, problem="not valid JSON")
+    except RecursionError:
+        return Loaded(CORRUPT, problem="nested too deeply")
     if not isinstance(data, dict):
         return Loaded(CORRUPT, problem="not a JSON object")
+    if lone_surrogates(data):
+        return Loaded(CORRUPT, problem="has text that is not valid Unicode")
     form = data.get("format")
     if form != FORMAT:
         if isinstance(form, str) and form:
@@ -164,5 +172,11 @@ def read_file(path, file_id=None):
         with open(path, "rb") as f:
             text = f.read()
     except OSError as e:
-        return Loaded(CORRUPT, problem=e.strerror or type(e).__name__)
-    return read(text, file_id)
+        return Loaded(CORRUPT, problem=f"could not be read ({e.strerror or type(e).__name__})", io_error=True)
+    try:
+        return read(text, file_id)
+    except Exception as e:  # noqa: BLE001 — the last defence of the file boundary
+        # A file must never take down the list of all the others; the cause is
+        # logged, since it may be a fault in this code rather than in the file.
+        logging.exception("[Bundle Library] could not check %s", getattr(path, "name", path))
+        return Loaded(CORRUPT, problem=f"could not be checked ({type(e).__name__})")

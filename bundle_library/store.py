@@ -16,6 +16,7 @@ cleanup of unused files.
 """
 
 import json
+import logging
 import os
 import threading
 import time
@@ -36,6 +37,8 @@ MAX_BATCH = 1000  # bundles in one batch request
 BATCH_ACTIONS = ("set_category", "set_favorite", "trash")
 LATER_BATCH_ACTIONS = ("add_tags", "remove_tags")  # Phase 7.8b
 SYNC_FOLDERS = os.name != "nt"  # Windows cannot open a folder to sync it
+# Told with a change that is made but may not survive a power loss (_write_json).
+UNSYNCED = "Saved, but the library folder could not be synced to the disk; a power loss could undo it."
 
 
 def _now():
@@ -43,6 +46,10 @@ def _now():
 
 
 def _write_json(path, data, tmp_dir):
+    """Replace `path` with `data` in one step. A failure before the replace
+    raises and leaves the old file (nothing is written). After it, the file is
+    the new one: a failure to sync the folder is logged, not raised, and the
+    result is False (written, but a power loss could undo it)."""
     temp = Path(tmp_dir) / f"{uuid.uuid4().hex}.json.part"
     try:
         with open(temp, "w", encoding="utf-8") as f:
@@ -55,11 +62,23 @@ def _write_json(path, data, tmp_dir):
     finally:
         temp.unlink(missing_ok=True)
     if SYNC_FOLDERS:
-        folder = os.open(path.parent, os.O_RDONLY)
         try:
-            os.fsync(folder)
-        finally:
-            os.close(folder)
+            folder = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(folder)
+            finally:
+                os.close(folder)
+        except OSError as e:
+            logging.warning("[Bundle Library] %s was written, but its folder could not be synced: %s",
+                            path.name, e.strerror or type(e).__name__)
+            return False
+    return True
+
+
+def _stat_key(stat):
+    """What tells that a file may read differently now: its content (mtime,
+    size), its permissions or owner (ctime), or a replacement (inode)."""
+    return (stat.st_mtime_ns, stat.st_size, stat.st_ctime_ns, stat.st_ino)
 
 
 def _reason(error):
@@ -108,7 +127,8 @@ class BundleStore:
                 leftover.unlink()
         self.assets = AssetStore(root, self.tmp_dir, max_image_bytes, max_image_pixels)
         self._lock = threading.RLock()
-        self._cache = {}  # file name -> (mtime_ns, size, schema.Loaded)
+        self._cache = {}  # file name -> (_stat_key or None, schema.Loaded)
+        self._synced = True  # whether the last write was synced (see _write_json); read under the lock
         with self._lock:
             self._move_legacy_trash()
 
@@ -117,12 +137,16 @@ class BundleStore:
     def _path(self, bundle_id):
         return self.bundle_dir / f"{check_bundle_id(bundle_id)}.json"
 
+    def _exists(self, bundle_id):
+        """Whether `bundle_id` has a bundle file (a symlink is not one)."""
+        path = self._path(bundle_id)
+        return path.is_file() and not path.is_symlink()
+
     def _load(self, bundle_id):
         """The bundle file of `bundle_id`, read now: a schema.Loaded, or None if there is none."""
-        path = self._path(bundle_id)
-        if not path.is_file() or path.is_symlink():
+        if not self._exists(bundle_id):
             return None
-        return schema.read_file(path, bundle_id)
+        return schema.read_file(self._path(bundle_id), bundle_id)
 
     def get(self, bundle_id, details=False):
         """The bundle in use with this id, as stored now (read from disk, in the
@@ -148,16 +172,17 @@ class BundleStore:
             seen.add(entry.name)
             stat = entry.stat(follow_symlinks=False)
             cached = self._cache.get(entry.name)
-            if cached and cached[0] == stat.st_mtime_ns and cached[1] == stat.st_size:
+            if cached and cached[0] == _stat_key(stat):
                 continue
-            stem = entry.name[:-5]
-            self._cache[entry.name] = (stat.st_mtime_ns, stat.st_size, schema.read_file(Path(entry.path), stem))
+            loaded = schema.read_file(Path(entry.path), entry.name[:-5])
+            # A read error is not remembered: it may pass (permissions fixed) without the file changing.
+            self._cache[entry.name] = (None if loaded.io_error else _stat_key(stat), loaded)
         for name in set(self._cache) - seen:
             del self._cache[name]
 
     def _files(self):
         """(file name, schema.Loaded) of every bundle file, as last scanned."""
-        return [(name, entry[2]) for name, entry in sorted(self._cache.items())]
+        return [(name, entry[1]) for name, entry in sorted(self._cache.items())]
 
     def _bundles(self, deleted=False):
         """The readable bundles in use, or with `deleted` those in the trash."""
@@ -165,7 +190,10 @@ class BundleStore:
 
     def _errors(self):
         """The bundle files this version cannot use, and old trash files it did not move."""
-        errors = [{"file": f"bundles/{name}", "id": name[:-5] if _is_id(name[:-5]) else None,
+        # A file that could not be read at all gets no id: deleting it for good is not offered.
+        errors = [{"file": f"bundles/{name}", "id": None, "code": "read_error", "error": loaded.problem}
+                  if loaded.io_error else
+                  {"file": f"bundles/{name}", "id": name[:-5] if _is_id(name[:-5]) else None,
                    "code": loaded.state, "error": loaded.problem}
                   for name, loaded in self._files() if not loaded.readable]
         for path in self._legacy_trash_files():
@@ -173,7 +201,7 @@ class BundleStore:
                            "error": "left in the old trash folder: " + self._legacy_reason(path)})
         org = self._organization()
         if not org.writable:
-            errors.append({"file": "organization.json", "id": None, "code": org.state,
+            errors.append({"file": "organization.json", "id": None, "code": "read_error" if org.io_error else org.state,
                            "error": f"{org.problem}; categories and favorites cannot be changed"})
         return errors
 
@@ -249,9 +277,9 @@ class BundleStore:
 
     def _save(self, bundle):
         path = self._path(bundle["id"])
-        _write_json(path, bundle, self.tmp_dir)
+        self._synced = _write_json(path, bundle, self.tmp_dir)
         stat = path.stat()
-        self._cache[path.name] = (stat.st_mtime_ns, stat.st_size, schema.read_file(path, bundle["id"]))
+        self._cache[path.name] = (_stat_key(stat), schema.read_file(path, bundle["id"]))
         return bundle
 
     def create(self, data, category=None):
@@ -259,6 +287,8 @@ class BundleStore:
         a second file, so if only that fails the bundle stays made and the
         problem comes back as `placement_error` (place it again, do not create
         it again)."""
+        if category is not None:
+            _check_category_id(category)  # a malformed one is refused before anything is written
         editable = normalize_bundle(data)
         with self._lock:
             self._resolve_assets(editable["fields"])
@@ -272,6 +302,8 @@ class BundleStore:
                 self.set_category(bundle["id"], category)
             except LibraryError as e:
                 return {**bundle, "placement_error": e.message}
+            except OSError as e:
+                return {**bundle, "placement_error": f"organization.json could not be written: {_reason(e)}"}
             return bundle
 
     def _writable(self, bundle_id, expected_revision=None):
@@ -310,12 +342,30 @@ class BundleStore:
             return self._save({**current, **editable, "revision": current["revision"] + 1, "updated_at": _now()})
 
     def delete(self, bundle_id, expected_revision):
-        """Move the bundle to the trash: the same file, with the time it was deleted."""
+        """Move the bundle to the trash: the same file, with the time it was
+        deleted. The result is the batch's for one bundle (_trash_one)."""
         if expected_revision is None:
             raise LibraryError(400, "invalid", "expected_revision (an integer) is required.")
         with self._lock:
-            current = self._in_use(self._writable(bundle_id, expected_revision))
-            self._save({**current, "deleted_at": _now(), "revision": current["revision"] + 1})
+            return self._trash_one(bundle_id, expected_revision)
+
+    def _trash_one(self, bundle_id, expected_revision):
+        """Move one bundle to the trash (under the lock), for DELETE and the batch
+        alike: {"id", "ok", "changed", "revision"?, "warning"?}. A bundle in the
+        trash already is a change done already. Refusals raise LibraryError and
+        write failures OSError."""
+        loaded = self._load(bundle_id)
+        if loaded is not None and loaded.readable and loaded.deleted:
+            return {"id": bundle_id, "ok": True, "changed": False}
+        current = self._in_use(self._writable(bundle_id, expected_revision))
+        saved = self._save({**current, "deleted_at": _now(), "revision": current["revision"] + 1})
+        return self._written({"id": bundle_id, "ok": True, "changed": True, "revision": saved["revision"]})
+
+    def _written(self, result):
+        """A result of a write, with the warning when the folder could not be synced."""
+        if not self._synced:
+            result["warning"] = UNSYNCED
+        return result
 
     def duplicate(self, bundle_id, mode="values", name=None):
         """A new bundle with the same fields; mode "structure" leaves the values empty."""
@@ -324,7 +374,7 @@ class BundleStore:
         with self._lock:
             source = self._in_use(self._writable(bundle_id))
             fields = source["fields"] if mode == "values" else [empty_value(f) for f in source["fields"]]
-            if name is None:
+            if name is None or name == "":
                 name = source["name"][:MAX_BUNDLE_NAME - len(" copy")] + " copy"
             category = self._category_of(self._organization(), bundle_id)  # the copy goes beside its source
             return self.create({"name": name, "tags": source["tags"], "note": source["note"], "fields": fields},
@@ -353,18 +403,22 @@ class BundleStore:
                 raise LibraryError(409, "not_in_trash", f"Bundle '{bundle['name']}' is not in the trash.")
             return self._save({**bundle, "deleted_at": None, "revision": bundle["revision"] + 1})
 
-    def purge(self, bundle_id, unreadable=False):
-        """Delete a bundle in the trash for good. A file this version cannot
-        fully read is deleted only when asked for explicitly (`unreadable`).
-        The files it used stay until a cleanup."""
+    def purge(self, bundle_id, unreadable=False, expected_revision=None):
+        """Delete a bundle in the trash for good; the files it used stay until a
+        cleanup. `expected_revision` is the one the user saw: a bundle restored or
+        changed since then is kept. A file this version cannot fully read is
+        deleted only when asked for explicitly (`unreadable`); one it can still
+        read (read-only) must be in the trash as well."""
         with self._lock:
             loaded = self._load(bundle_id)
             if loaded is None:
                 raise _not_found(bundle_id)
-            if loaded.writable:
-                if not loaded.deleted:
-                    raise LibraryError(409, "not_in_trash",
-                                       f"Bundle '{loaded.bundle['name']}' is not in the trash; delete it first.")
+            if loaded.readable:
+                self._check_trashed(loaded, expected_revision)
+                if not loaded.writable and not unreadable:
+                    raise LibraryError(409, "unreadable_file",
+                                       f"Bundle '{loaded.bundle['name']}' {loaded.problem}; delete it for good only "
+                                       "if you are sure.")
             elif not unreadable:
                 raise LibraryError(409, "unreadable_file",
                                    f"This version cannot fully read {bundle_id}.json ({loaded.problem}); "
@@ -373,17 +427,47 @@ class BundleStore:
             self._cache.pop(f"{bundle_id}.json", None)
             self._forget([bundle_id])
 
-    def empty_trash(self):
-        """Delete every bundle in the trash for good; how many. Files this version
-        cannot fully read are left alone: whether they are in the trash is unknown."""
+    @staticmethod
+    def _check_trashed(loaded, expected_revision):
+        bundle = loaded.bundle
+        if not loaded.deleted:
+            raise LibraryError(409, "not_in_trash", f"Bundle '{bundle['name']}' is not in the trash.")
+        if expected_revision is not None and bundle["revision"] != expected_revision:
+            raise LibraryError(409, "revision_conflict",
+                               f"Bundle '{bundle['name']}' changed since the trash was shown "
+                               f"(now revision {bundle['revision']}).", current_revision=bundle["revision"])
+
+    def empty_trash(self, expected_revisions):
+        """Delete for good the bundles the user saw in the trash (id -> the
+        revision shown), those still there at that revision: {"deleted",
+        "results"}, a result per bundle as in a batch. Bundles put in the trash
+        since are not touched, nor are files this version cannot fully read."""
+        if not isinstance(expected_revisions, dict):
+            raise invalid("expected_revisions must map each bundle id shown in the trash to its revision.")
+        for bundle_id, revision in expected_revisions.items():
+            check_bundle_id(bundle_id)
+            if isinstance(revision, bool) or not isinstance(revision, int):
+                raise invalid(f"expected_revisions: the revision of {bundle_id} must be an integer.")
+        results = []
         with self._lock:
-            self._scan()
-            names = [name for name, loaded in self._files() if loaded.writable and loaded.deleted]
-            for name in names:
-                (self.bundle_dir / name).unlink(missing_ok=True)
-                self._cache.pop(name, None)
-            self._forget([name[:-5] for name in names])
-            return len(names)
+            for bundle_id, revision in expected_revisions.items():
+                try:
+                    loaded = self._load(bundle_id)
+                    if loaded is None:
+                        raise _not_found(bundle_id)
+                    if not loaded.writable:  # whether it is in the trash, or what it holds, is not fully known
+                        raise LibraryError(409, "unreadable_file",
+                                           f"This version cannot fully read {bundle_id}.json; it is left alone.")
+                    self._check_trashed(loaded, revision)
+                    self._path(bundle_id).unlink()
+                    self._cache.pop(f"{bundle_id}.json", None)
+                    results.append({"id": bundle_id, "ok": True, "changed": True})
+                except LibraryError as e:
+                    results.append(_failure(bundle_id, e))
+                except OSError as e:
+                    results.append(_io_failure(bundle_id, e))
+            self._forget([r["id"] for r in results if r["ok"]])
+        return {"deleted": sum(1 for r in results if r["ok"]), "results": results}
 
     # -- categories and favorites (organization.json) ----------------------------
 
@@ -394,9 +478,12 @@ class BundleStore:
         except FileNotFoundError:
             self._organization_cache = None
             return organization.empty()
-        key = (stat.st_mtime_ns, stat.st_size)
+        key = _stat_key(stat)
         if self._organization_cache is None or self._organization_cache[0] != key:
-            self._organization_cache = (key, organization.read_file(self.organization_path))
+            org = organization.read_file(self.organization_path)
+            if org.io_error:
+                return org  # not remembered: the next request reads it again
+            self._organization_cache = (key, org)
         return self._organization_cache[1]
 
     @staticmethod
@@ -441,20 +528,21 @@ class BundleStore:
         org.placement = {b: c for b, c in sorted(org.placement.items()) if b in existing and c in known}
         org.favorites = [b for b in dict.fromkeys(org.favorites) if b in existing]
         org.revision += 1
-        _write_json(self.organization_path, org.as_file(), self.tmp_dir)
+        self._synced = _write_json(self.organization_path, org.as_file(), self.tmp_dir)
         self._organization_cache = None
         return result
 
     def _forget(self, bundle_ids):
-        """Drop the places and stars of bundles deleted for good. An organization
-        this version cannot write keeps them; nothing is lost by that."""
+        """Drop the places and stars of bundles deleted for good. Entries that stay
+        (an organization this version cannot write, or a write that failed) do no
+        harm: they are ignored when read and dropped by the next write. So this
+        never fails the delete itself."""
         org = self._organization()
         if org.writable and any(b in org.placement or b in org.favorites for b in bundle_ids):
-            self._change_organization(lambda org: None)  # dropping what is gone is part of every save
-
-    def _bundle_file(self, bundle_id):
-        if not self._path(bundle_id).is_file():
-            raise _not_found(bundle_id)
+            try:
+                self._change_organization(lambda org: None)  # dropping what is gone is part of every save
+            except OSError as e:
+                logging.warning("[Bundle Library] organization.json not updated after a delete: %s", _reason(e))
 
     def categories(self):
         with self._lock:
@@ -505,36 +593,29 @@ class BundleStore:
             return self._change_organization(change)
 
     def set_category(self, bundle_id, category_id):
-        """Put a bundle (in use or in the trash) in a category, or in none with None."""
+        """Put a bundle (in use or in the trash) in a category, or in none with
+        None. The batch's code for one bundle: nothing is written when the bundle
+        is there already."""
         check_bundle_id(bundle_id)
         if category_id is not None:
             _check_category_id(category_id)
-
-        def change(org):
-            if category_id is None:
-                org.placement.pop(bundle_id, None)
-            elif org.category(category_id) is None:
-                raise LibraryError(404, "not_found", f"Category not found: {category_id}")
-            else:
-                org.placement[bundle_id] = category_id
-            return category_id
-
-        with self._lock:
-            self._bundle_file(bundle_id)
-            return self._change_organization(change)
+        _single(self._place_bundles(category_id, [bundle_id]))
+        return category_id
 
     def set_favorite(self, bundle_id, favorite):
         check_bundle_id(bundle_id)
         if not isinstance(favorite, bool):
             raise invalid("favorite must be true or false.")
+        _single(self._star_bundles(favorite, [bundle_id]))
+        return favorite
 
-        def change(org):
-            org.favorites = [b for b in org.favorites if b != bundle_id] + ([bundle_id] if favorite else [])
-            return favorite
+    def _place_bundles(self, category, ids):
+        return self._batch_organize(ids, lambda org, bundle_id: org.category_of(bundle_id) == category,
+                                    lambda org, bundle_id: _place(org, bundle_id, category), category=category)
 
-        with self._lock:
-            self._bundle_file(bundle_id)
-            return self._change_organization(change)
+    def _star_bundles(self, favorite, ids):
+        return self._batch_organize(ids, lambda org, bundle_id: (bundle_id in org.favorites) == favorite,
+                                    lambda org, bundle_id: _star(org, bundle_id, favorite))
 
     # -- one action on many bundles --------------------------------------------
 
@@ -566,17 +647,17 @@ class BundleStore:
         if action == "trash":
             results = self._batch_trash(ids, data.get("expected_revisions"))
         elif action == "set_category":
-            category = data.get("category")
+            if "category" not in data:  # null takes the bundles out of their categories; absent is a mistake
+                raise invalid("category is required: a category id, or null for no category.")
+            category = data["category"]
             if category is not None:
                 _check_category_id(category)
-            results = self._batch_organize(ids, lambda org, bundle_id: org.category_of(bundle_id) == category,
-                                           lambda org, bundle_id: _place(org, bundle_id, category), category=category)
+            results = self._place_bundles(category, ids)
         else:
             favorite = data.get("favorite")
             if not isinstance(favorite, bool):
                 raise invalid("favorite must be true or false.")
-            results = self._batch_organize(ids, lambda org, bundle_id: (bundle_id in org.favorites) == favorite,
-                                           lambda org, bundle_id: _star(org, bundle_id, favorite))
+            results = self._star_bundles(favorite, ids)
         return {"action": action, "results": results,
                 "changed": sum(1 for r in results if r["ok"] and r["changed"]),
                 "unchanged": sum(1 for r in results if r["ok"] and not r["changed"]),
@@ -594,7 +675,7 @@ class BundleStore:
             results = {}
             to_change = []
             for bundle_id in ids:
-                if not self._path(bundle_id).is_file():
+                if not self._exists(bundle_id):
                     results[bundle_id] = _failure(bundle_id, _not_found(bundle_id))
                 elif done(org, bundle_id):
                     results[bundle_id] = {"id": bundle_id, "ok": True, "changed": False}
@@ -603,14 +684,12 @@ class BundleStore:
             if to_change:
                 try:
                     self._change_organization(lambda changing: [apply(changing, b) for b in to_change])
-                except OSError as e:
+                except OSError as e:  # nothing was written: the old file is in place
                     for bundle_id in to_change:
-                        results[bundle_id] = {"id": bundle_id, "ok": False, "changed": False, "code": "io_error",
-                                              "message": f"organization.json could not be written: {_reason(e)}",
-                                              "retry": True}
+                        results[bundle_id] = _io_failure(bundle_id, e, "organization.json could not be written")
                 else:
                     for bundle_id in to_change:
-                        results[bundle_id] = {"id": bundle_id, "ok": True, "changed": True}
+                        results[bundle_id] = self._written({"id": bundle_id, "ok": True, "changed": True})
         return [results[bundle_id] for bundle_id in ids]
 
     def _batch_trash(self, ids, expected_revisions):
@@ -624,18 +703,11 @@ class BundleStore:
         with self._lock:
             for bundle_id in ids:
                 try:
-                    loaded = self._load(bundle_id)
-                    if loaded is not None and loaded.readable and loaded.deleted:
-                        results.append({"id": bundle_id, "ok": True, "changed": False})  # in the trash already
-                        continue
-                    current = self._in_use(self._writable(bundle_id, expected_revisions[bundle_id]))
-                    saved = self._save({**current, "deleted_at": _now(), "revision": current["revision"] + 1})
-                    results.append({"id": bundle_id, "ok": True, "changed": True, "revision": saved["revision"]})
+                    results.append(self._trash_one(bundle_id, expected_revisions[bundle_id]))
                 except LibraryError as e:
                     results.append(_failure(bundle_id, e))
                 except OSError as e:
-                    results.append({"id": bundle_id, "ok": False, "changed": False, "code": "io_error",
-                                    "message": f"The bundle file could not be written: {_reason(e)}", "retry": True})
+                    results.append(_io_failure(bundle_id, e))
         return results
 
     # -- the trash folder of 0.0.10 and earlier --------------------------------
@@ -753,8 +825,28 @@ class BundleStore:
 
 
 def _failure(bundle_id, error):
-    """A bundle's result in a batch for a refusal (LibraryError)."""
-    return {"id": bundle_id, "ok": False, "changed": False, "code": error.code, "message": error.message}
+    """A bundle's result in a batch for a refusal (LibraryError), with its details (current_revision...)."""
+    return {"id": bundle_id, "ok": False, "changed": False, "code": error.code, "message": error.message,
+            **error.details}
+
+
+def _io_failure(bundle_id, error, what="The bundle file could not be written"):
+    """A bundle's result for a failed write: nothing was written, and trying again may work."""
+    return {"id": bundle_id, "ok": False, "changed": False, "code": "io_error",
+            "message": f"{what}: {_reason(error)}", "retry": True}
+
+
+# The HTTP status of a failure a single-bundle command reports from a batch result.
+_STATUS = {"not_found": 404, "io_error": 500}
+
+
+def _single(results):
+    """The result of a command on one bundle; a failure is raised as LibraryError."""
+    [result] = results
+    if not result["ok"]:
+        details = {k: v for k, v in result.items() if k not in ("id", "ok", "changed", "code", "message")}
+        raise LibraryError(_STATUS.get(result["code"], 409), result["code"], result["message"], **details)
+    return result
 
 
 def _place(org, bundle_id, category):

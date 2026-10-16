@@ -120,7 +120,7 @@ class OrganizationTest(unittest.TestCase):
         self.store.purge(red["id"])
         stored = json.loads(self.org_file.read_text(encoding="utf-8"))
         self.assertEqual((list(stored["placement"]), stored["favorites"]), ([blue["id"]], [blue["id"]]))
-        self.store.empty_trash()
+        self.store.empty_trash({blue["id"]: 2})
         stored = json.loads(self.org_file.read_text(encoding="utf-8"))
         self.assertEqual((stored["placement"], stored["favorites"]), ({}, []))
 

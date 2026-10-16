@@ -12,6 +12,7 @@ from .constants import (
 
 ASSET_EXTENSIONS = {e for e, _ in IMAGE_FORMATS.values()} | set(VIDEO_EXTENSIONS) | set(AUDIO_EXTENSIONS)
 CODEC_RE = re.compile(r"^[a-z0-9_.-]{1,32}$")
+_SURROGATE = re.compile("[\ud800-\udfff]")
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 # A file of the trash folder of 0.0.10 and earlier: trash/<bundle id>.<UTC time>[-n].json.
@@ -56,6 +57,35 @@ def check_sha256(value):
 def name_key(name):
     """Names sort regardless of case."""
     return name.casefold()
+
+
+def lone_surrogates(data):
+    """Whether a string in a JSON value (keys included) holds a lone surrogate.
+    JSON can escape one (\\ud800), but it is not text and cannot be written as
+    UTF-8, so a file or request with one is not valid. Walks without recursion:
+    the value may be nested deeply."""
+    stack = [data]
+    while stack:
+        value = stack.pop()
+        if isinstance(value, str):
+            if _SURROGATE.search(value):
+                return True
+        elif isinstance(value, dict):
+            stack.extend(value.keys())
+            stack.extend(value.values())
+        elif isinstance(value, list):
+            stack.extend(value)
+    return False
+
+
+def _finite(value):
+    """An int or float as a finite float, or None: infinite, NaN, or an int too
+    large for a float (float() of such an int raises OverflowError)."""
+    try:
+        number = float(value)
+    except OverflowError:
+        return None
+    return number if math.isfinite(number) else None
 
 
 def clean_original_name(name):
@@ -133,9 +163,10 @@ def _value(field_type, value, label, rules):
     # float
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise invalid(f"{label}: must be a number.")
-    if not math.isfinite(value):
+    number = _finite(value)
+    if number is None:
         raise invalid(f"{label}: must be a finite number.")
-    return float(value)
+    return number
 
 
 def _asset(value, label):
@@ -156,7 +187,7 @@ def _asset(value, label):
             raise invalid(f"{label}: asset.original_name must be a string.")
         asset["original_name"] = clean_original_name(original)
     ext = value.get("ext")
-    if ext in ASSET_EXTENSIONS:
+    if isinstance(ext, str) and ext in ASSET_EXTENSIONS:  # a list or object is not hashable
         asset["ext"] = ext
     for key in ("width", "height", "bytes", "sample_rate", "channels"):
         number = value.get(key)
@@ -164,8 +195,10 @@ def _asset(value, label):
             asset[key] = number
     for key in ("duration", "fps"):
         number = value.get(key)
-        if isinstance(number, (int, float)) and not isinstance(number, bool) and math.isfinite(number) and number >= 0:
-            asset[key] = float(number)
+        if isinstance(number, (int, float)) and not isinstance(number, bool):
+            finite = _finite(number)
+            if finite is not None and finite >= 0:
+                asset[key] = finite
     if isinstance(value.get("has_audio"), bool):
         asset["has_audio"] = value["has_audio"]
     for key in ("codec", "audio_codec"):

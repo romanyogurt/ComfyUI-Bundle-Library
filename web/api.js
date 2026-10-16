@@ -171,10 +171,20 @@ export const setFavorite = (bundleId, favorite) => request(`/bundles/${bundleId}
 /** The bundles in the trash, last deleted first, and the files this version cannot use: {trash, errors}. */
 export const listTrash = () => request("/trash");
 export const restoreBundle = (id) => request(`/bundles/${id}/restore`, { method: "POST" });
-/** Delete a bundle in the trash for good; `unreadable` also a file this version cannot fully read. */
-export const purgeBundle = (id, { unreadable = false } = {}) =>
-    request(`/trash/${id}${unreadable ? "?unreadable=1" : ""}`, { method: "DELETE" }, { changes: false });
-export const emptyTrash = () => request("/trash", { method: "DELETE" }, { changes: false });
+/**
+ * Delete a bundle in the trash for good. `revision` is the one shown (one
+ * changed or restored since is kept); `unreadable` also deletes a file this
+ * version cannot fully read, whose revision is not known.
+ */
+export const purgeBundle = (id, { revision = null, unreadable = false } = {}) => {
+    const query = new URLSearchParams();
+    if (revision !== null) query.set("expected_revision", String(revision));
+    if (unreadable) query.set("unreadable", "1");
+    return request(`/trash/${id}?${query}`, { method: "DELETE" }, { changes: false });
+};
+/** Delete for good the bundles shown in the trash ({id: revision}): {deleted, results}. */
+export const emptyTrash = (shown) =>
+    request("/trash", json("DELETE", { expected_revisions: shown }), { changes: false });
 /** Stored files that no bundle uses, in the library or in the trash. */
 export const listUnusedFiles = () => request("/cleanup");
 export const deleteUnusedFiles = (shas) => request("/cleanup", json("POST", { sha256: shas }), { changes: false });

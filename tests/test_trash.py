@@ -89,7 +89,7 @@ class TrashTest(unittest.TestCase):
         self.store.purge(ids[0])
         self.refused(lambda: self.store.purge(ids[0]), 404, "not_found")
         self.assertEqual(len(self.store.trash()["trash"]), 2)
-        self.assertEqual(self.store.empty_trash(), 2)
+        self.assertEqual(self.store.empty_trash({ids[1]: 2, ids[2]: 2})["deleted"], 2)
         self.assertEqual(self.store.trash(), {"trash": [], "errors": []})
         self.assertEqual([b["id"] for b in self.store.list()["bundles"]], [ids[3]])
 
@@ -107,7 +107,7 @@ class TrashTest(unittest.TestCase):
         self.assertEqual((listing["trash"], [(e["id"], e["code"]) for e in listing["errors"]]),
                          ([], [(broken, "corrupt")]))
         self.refused(lambda: self.store.restore(broken), 500, "corrupt_bundle")
-        self.assertEqual(self.store.empty_trash(), 0)  # whether it is in the trash cannot be told
+        self.assertEqual(self.store.empty_trash({broken: 1})["deleted"], 0)  # whether it is in the trash cannot be told
         self.refused(lambda: self.store.purge(broken), 409, "unreadable_file")
         self.store.purge(broken, unreadable=True)
         self.assertFalse((self.root / "bundles" / f"{broken}.json").exists())

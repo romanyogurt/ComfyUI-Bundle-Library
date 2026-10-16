@@ -9,9 +9,10 @@ shown if it can be and never written. Imports nothing from ComfyUI.
 """
 
 import json
+import logging
 
 from . import schema
-from .model import UUID_RE, LibraryError, _name, _Rules, invalid
+from .model import UUID_RE, LibraryError, _name, _Rules, invalid, lone_surrogates
 
 FORMAT = "comfyui-bundle-library/organization"
 SCHEMA_VERSION = 1
@@ -29,8 +30,10 @@ class Organization:
     missing file), and when it can be read, the categories, the placement
     (bundle id -> category id) and the favorites."""
 
-    def __init__(self, state, problem=None, revision=0, categories=(), placement=None, favorites=(), exists=True):
+    def __init__(self, state, problem=None, revision=0, categories=(), placement=None, favorites=(), exists=True,
+                 io_error=False):
         self.state = state
+        self.io_error = io_error  # could not be read at all: reported apart, read again next time
         self.problem = problem
         self.revision = revision
         self.categories = [dict(c) for c in categories]
@@ -69,8 +72,12 @@ def read(text):
         data = json.loads(text)
     except ValueError:
         return Organization(schema.CORRUPT, "not valid JSON")
+    except RecursionError:
+        return Organization(schema.CORRUPT, "nested too deeply")
     if not isinstance(data, dict):
         return Organization(schema.CORRUPT, "not a JSON object")
+    if lone_surrogates(data):
+        return Organization(schema.CORRUPT, "has text that is not valid Unicode")
     form = data.get("format")
     if form != FORMAT:
         if isinstance(form, str) and form:
@@ -128,8 +135,12 @@ def read_file(path):
     except FileNotFoundError:
         return empty()
     except OSError as e:
-        return Organization(schema.CORRUPT, e.strerror or type(e).__name__)
-    return read(text)
+        return Organization(schema.CORRUPT, f"could not be read ({e.strerror or type(e).__name__})", io_error=True)
+    try:
+        return read(text)
+    except Exception as e:  # noqa: BLE001 — the last defence of the file boundary, logged
+        logging.exception("[Bundle Library] could not check organization.json")
+        return Organization(schema.CORRUPT, f"could not be checked ({type(e).__name__})")
 
 
 def category_name(value, organization, own_id=None):

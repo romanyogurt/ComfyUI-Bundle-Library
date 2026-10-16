@@ -117,7 +117,7 @@ const PAGE_HELPERS = () => {
             }
             const { trash } = await this.request("GET", "/trash");
             for (const entry of trash.filter((e) => ids.includes(e.id))) {
-                await this.request("DELETE", `/trash/${entry.id}`);
+                await this.request("DELETE", `/trash/${entry.id}?expected_revision=${entry.revision}`);
             }
             return removed;
         },
