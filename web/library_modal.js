@@ -80,7 +80,8 @@ const EMPTY_WHILE_FILTERING = "No starred bundle matches.";
 
 /**
  * Open the library. With `onPick` it is the bundle picker of a Load Bundle
- * node: "Use this bundle" hands the selected bundle's summary to onPick, and
+ * node: "Use this bundle" hands the selected bundle's summary to onPick (with
+ * one bundle selected; several can still be selected and changed), and
  * `linked` (the node's connected slots) marks bundles that lack one.
  */
 export function openLibrary({ onPick = null, linked = [], selected = null } = {}) {
@@ -562,7 +563,8 @@ class LibraryModal {
             if (e.key === "Enter" && e.target === item) this.clickRow(e, groupKey, bundle.id);
         });
         if (this.onPick) {
-            item.addEventListener("dblclick", async () => {
+            item.addEventListener("dblclick", async (e) => {
+                if (e.ctrlKey || e.metaKey || e.shiftKey) return; // that was selecting, not picking
                 await this.open(bundle.id);
                 if (this.editor?.saved?.id === bundle.id) this.pick(); // not when opening it was cancelled
             });
@@ -659,7 +661,7 @@ class LibraryModal {
 
     /** A click (or Enter) on a row: Ctrl/⌘ adds or takes it out, Shift selects from the anchor row. */
     clickRow(e, groupKey, id) {
-        const several = !this.onPick && (e.ctrlKey || e.metaKey || e.shiftKey); // the picker picks one
+        const several = e.ctrlKey || e.metaKey || e.shiftKey; // in the picker too: Use this bundle then waits for one
         if (!several) {
             this.anchor = { group: groupKey, id };
             void this.open(id);
@@ -701,7 +703,7 @@ class LibraryModal {
     }
 
     selectAll() {
-        if (this.onPick || !this.allowed()) return;
+        if (!this.allowed()) return;
         void this.select(new Set(this.expandedRows().map((row) => row.dataset.id)));
     }
 
@@ -1185,7 +1187,8 @@ class LibraryModal {
         const summary = ready ? this.all.find((b) => b.id === this.editor.saved.id) : null;
         const lacking = summary ? this.lacking(summary) : [];
         this.pickButton.disabled = !summary;
-        this.pickHint.replaceChildren(...(!this.editor ? ["Select a bundle."]
+        this.pickHint.replaceChildren(...(!this.editor
+            ? [this.selection.size > 1 ? "Select only one bundle to use it." : "Select a bundle."]
             : !ready ? ["Save or revert your changes first."]
                 : lacking.length === 1 ? ["⚠ The node's connected output ", code(lacking[0]),
                     " is missing here or has another type; running would fail."]

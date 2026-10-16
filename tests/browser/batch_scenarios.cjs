@@ -359,22 +359,32 @@ const BATCH_HELPERS = () => {
         whileUploading && !(await b(() => window.__batch.locks().search)));
     await closeLibrary();
 
-    // ---- the picker picks one --------------------------------------------------------------------
+    // ---- the picker: several can be selected, one is used ----------------------------------------
     await ev(async (module) => {
         const { openLibrary } = await import(`${module}/library_modal.js`);
-        openLibrary({ onPick: () => {} });
+        openLibrary({ onPick: (summary) => { window.__picked = summary.id; } });
     }, MODULE);
     await overlay.waitFor();
     await page.evaluate(BATCH_HELPERS);
     await page.locator(".bl-overlay .bl-search").fill(PREFIX);
     await until((id) => window.__batch.row("uncategorized", id), ids.four);
     await page.locator(`.bl-overlay .bl-list-item[data-id="${ids.three}"]`).first().click();
+    await until(() => window.__batch.pane().editor !== null);
     await row("uncategorized", ids.four).click({ modifiers: ["Control"] });
-    await row("uncategorized", ids.four).click({ modifiers: ["Shift"] });
     p = await pane();
-    check("in the picker, Ctrl and Shift still pick one bundle", p.batch === null && p.editor === `${PREFIX} 4`
-        && new Set(await b(() => window.__batch.selectedRows())).size === 1, p);
-    await closeLibrary();
+    const footer = await b(() => ({ pick: !document.querySelector(".bl-overlay .bl-pick").disabled,
+        hint: document.querySelector(".bl-overlay .bl-pick-hint").textContent }));
+    check("in the picker Ctrl+click selects several too; Use this bundle then waits for one",
+        p.batch === "2 bundles selected" && !footer.pick && footer.hint === "Select only one bundle to use it.", { p: p.batch, footer });
+    await row("uncategorized", ids.four).dblclick({ modifiers: ["Control"] });
+    const notPicked = await ev(() => window.__picked ?? null);
+    await row("uncategorized", ids.four).click();
+    await until(() => window.__batch.pane().editor !== null);
+    await button("Use this bundle").click();
+    await overlay.waitFor({ state: "detached" });
+    const picked = await ev(() => window.__picked ?? null);
+    check("a Ctrl+double-click does not pick; one bundle selected, Use this bundle does", notPicked === null && picked === ids.four,
+        { notPicked, picked });
 
     await finish({ expectRemoved: 4 });
 })().catch((e) => {
