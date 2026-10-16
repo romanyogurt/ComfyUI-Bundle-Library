@@ -115,6 +115,7 @@ const LIB_HELPERS = () => {
     const fields = page.locator(".bl-overlay .bl-field");
     const layerBox = page.locator(".bl-overlay .bl-layer");
     const button = (name, scope = overlay) => scope.getByRole("button", { name, exact: true });
+    const menuItem = (name, scope = overlay) => scope.getByRole("menuitem", { name, exact: true });
     const item = (id) => page.locator(`.bl-overlay .bl-list-item[data-id="${id}"]`);
     const lib = (fn, arg) => ev(fn, arg);
     const state = () => lib(() => window.__lib.state());
@@ -204,7 +205,7 @@ const LIB_HELPERS = () => {
     for (const [type, name] of [["Text", "prompt"], ["Image", "ref_file"], ["Image", "ref_paste"], ["Image", "ref_drop"],
         ["Boolean", "flag"], ["Integer", "steps"], ["Float", "cfg"]]) {
         await button("+ Add field ▾").click();
-        await button(type).click();
+        await menuItem(type).click();
         await page.keyboard.type(name); // a new field's name is focused and selected
     }
     st = await state();
@@ -349,17 +350,22 @@ const LIB_HELPERS = () => {
     await search.fill("");
     await until((id) => window.__lib.items().some((i) => i.id === id), ids.A);
     const all = (await api("GET", "/bundles")).bundles;
-    await page.locator(".bl-overlay .bl-tag-filter").selectOption("ui");
+    await page.locator(".bl-overlay .bl-tag-button").click();
+    await page.getByRole("menuitemradio", { name: "ui" }).click();
     const tagged = all.filter((b) => b.tags.some((t) => t.toLowerCase() === "ui")).map((b) => b.id).sort();
     shownIds = (await visible()).sort();
     check("tag filter 'ui' shows exactly the bundles tagged ui", JSON.stringify(shownIds) === JSON.stringify(tagged) && shownIds.includes(uiId), shownIds);
-    const tagOptions = await lib(() => [...document.querySelectorAll(".bl-overlay .bl-tag-filter option")].map((o) => o.value));
+    await page.locator(".bl-overlay .bl-tag-button").click();
+    const tagOptions = await lib(() => [...document.querySelectorAll(".bl-overlay .bl-menu:not([hidden]) .bl-menu-item")]
+        .map((o) => o.dataset.value));
     check("tag options list 'test' and 'Test' once", tagOptions.filter((t) => t.toLowerCase() === "test").length === 1, tagOptions);
-    await page.locator(".bl-overlay .bl-tag-filter").selectOption("");
-    await page.locator(".bl-overlay .bl-sort").selectOption("updated");
+    await page.getByRole("menuitemradio", { name: "All tags" }).click();
+    await page.locator(".bl-overlay .bl-sort-button").click();
+    await page.getByRole("menuitemradio", { name: "Recently updated" }).click();
     shownIds = await visible();
     check("sort 'Recently updated' puts the newest bundle first", shownIds[0] === uiId, shownIds.slice(0, 3));
-    await page.locator(".bl-overlay .bl-sort").selectOption("name");
+    await page.locator(".bl-overlay .bl-sort-button").click();
+    await page.getByRole("menuitemradio", { name: "By name" }).click();
     const names = await lib(() => window.__lib.items().map((i) => i.name));
     const byName = all.map((b) => b.name).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
     check("sort 'By name' is alphabetical", JSON.stringify(names) === JSON.stringify(byName), names);
@@ -489,7 +495,7 @@ const LIB_HELPERS = () => {
 
     // ---- duplicate and delete --------------------------------------------------
     await button("Duplicate ▾", editor).click();
-    await button("Duplicate with values").click();
+    await menuItem("Duplicate with values").click();
     await editing(`${UI_NAME} copy`);
     const copyId = await lib(() => window.__lib.selected());
     const copy = await api("GET", `/bundles/${copyId}`);
@@ -499,7 +505,7 @@ const LIB_HELPERS = () => {
     await item(uiId).click();
     await editing(UI_NAME);
     await button("Duplicate ▾", editor).click();
-    await button("Duplicate structure only").click();
+    await menuItem("Duplicate structure only").click();
     await editing(`${UI_NAME} copy`);
     await until((id) => window.__lib.selected() !== id, copyId);
     const structureId = await lib(() => window.__lib.selected());
@@ -579,7 +585,7 @@ const LIB_HELPERS = () => {
     await editing("[test] A (red)");
     let footer = await lib(() => window.__lib.footer());
     check("📚 opens the picker at the node's bundle, ready to use",
-        footer.title === "Bundle Library — pick a bundle" && footer.pick === true && footer.hint === "", footer);
+        footer.title === "Bundle Library" && footer.pick === true && footer.hint === "", footer);
     const bundleA = await api("GET", `/bundles/${ids.A}`);
     st = await state();
     check("the modal shows every value of A: the text, both images, the boolean",
@@ -596,6 +602,13 @@ const LIB_HELPERS = () => {
     footer = await lib(() => window.__lib.footer());
     check("such a bundle can still be used, with a warning",
         footer.pick === true && footer.hint === "⚠ The node's connected output ref_2 is missing here or has another type; running would fail.", footer);
+    const coded = await lib((id) => ({
+        hint: [...document.querySelectorAll(".bl-overlay .bl-pick-hint code.bl-code")].map((c) => c.textContent),
+        row: [...document.querySelectorAll(`.bl-overlay .bl-list-item[data-id="${id}"] .bl-list-warn code.bl-code`)]
+            .map((c) => c.textContent),
+    }), ids.C);
+    check("the output names in the warnings are set apart as code",
+        JSON.stringify(coded.hint) === '["ref_2"]' && coded.row.length && coded.row.every((n) => n === "ref_2"), coded);
     await page.locator(".bl-overlay .bl-note-input").fill("draft");
     footer = await lib(() => window.__lib.footer());
     check("with unsaved changes 'Use this bundle' waits", footer.pick === false && footer.hint === "Save or revert your changes first.", footer);

@@ -153,7 +153,7 @@ function unplace(paths) {
             const row = await ev((selector) => document.querySelector(selector).textContent, attention(newer));
             const marked = await ev((ids) => ids.map((id) => [...document.querySelectorAll(
                 ".bl-overlay .bl-group.attention .bl-list-item")].some((r) => r.dataset.id === id)), [bigId, readOnlyId]);
-            const trashButton = await ev(() => document.querySelector(".bl-overlay .bl-trash-button").textContent);
+            const trashButton = await ev(() => document.querySelector(".bl-overlay .bl-trash-button").getAttribute("aria-label"));
             check("Needs attention lists a file saved by a newer version with the reason, and the bundles to look at",
                 row.includes("saved by a newer Bundle Library") && marked[1] && !trashButton.includes("⚠"),
                 { row, marked, trashButton });
@@ -194,6 +194,31 @@ function unplace(paths) {
         .then(() => "made", (e) => e.message));
     check("the server refuses a write from a page of another version", refused.includes("This page runs Bundle Library 0.0.1"),
         refused);
+    await page.unroute("**/api/bundle-library/v1/bundles");
+
+    // The other way round (left unchecked in 0.0.11, review C05): files updated
+    // without a restart, so the page is newer than the server.
+    const pageVersion = fs.readFileSync(path.join(__dirname, "..", "..", "web", "version.js"), "utf8")
+        .match(/VERSION = "([^"]+)"/)[1];
+    await page.route("**/api/bundle-library/v1/health", async (route) => {
+        const answer = await route.fetch();
+        await route.fulfill({ response: answer, json: { ...(await answer.json()), version: "0.0.1" } });
+    });
+    await session.reload();
+    const restart = await page.waitForFunction(() => [...document.querySelectorAll(".p-toast-message")]
+        .map((t) => t.textContent).find((t) => t.includes("ComfyUI still runs 0.0.1")), null, { timeout: 10000 })
+        .then((h) => h.jsonValue(), () => null);
+    check("an older server is noticed on start: restart ComfyUI",
+        restart?.includes(`Bundle Library was updated to ${pageVersion}, but ComfyUI still runs 0.0.1.`)
+        && restart.includes("Restart ComfyUI to finish the update."), restart);
+    await page.unroute("**/api/bundle-library/v1/health");
+    await page.route("**/api/bundle-library/v1/bundles", (route) => route.request().method() === "POST"
+        ? route.continue({ headers: { ...route.request().headers(), "x-bundle-library-version": "9.9.9" } })
+        : route.fallback());
+    const refusedNewer = await ev(() => window.__bl.request("POST", "/bundles", { name: "[test] Must not be made", fields: [] })
+        .then(() => "made", (e) => e.message));
+    check("the server refuses a write from a newer page too", refusedNewer.includes("This page runs Bundle Library 9.9.9"),
+        refusedNewer);
     await page.unroute("**/api/bundle-library/v1/bundles");
 
     await finish({ expectRemoved: 1 }); // the bundle of the saved workflow

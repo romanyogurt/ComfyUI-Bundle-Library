@@ -14,6 +14,7 @@ const NAME = "[test] Media UI";
     const overlay = page.locator(".bl-overlay");
     const fields = page.locator(".bl-overlay .bl-field");
     const button = (name, scope = overlay) => scope.getByRole("button", { name, exact: true });
+    const menuItem = (name, scope = overlay) => scope.getByRole("menuitem", { name, exact: true });
     const until = (fn, arg) => page.waitForFunction(fn, arg, { timeout: 10000 }).then(() => true, () => false);
     const api = (method, route) => ev(([m, r]) => window.__bl.request(m, r), [method, route]);
     const choose = async (card, label, file) => {
@@ -30,7 +31,7 @@ const NAME = "[test] Media UI";
     await page.keyboard.type(NAME);
     for (const [type, name] of [["Video", "clip"], ["Audio", "bgm"]]) {
         await button("+ Add field ▾").click();
-        await button(type).click();
+        await menuItem(type).click();
         await page.keyboard.type(name);
     }
     const empty = await ev(() => [...document.querySelectorAll(".bl-overlay .bl-field .bl-drop")].map((d) => d.textContent));

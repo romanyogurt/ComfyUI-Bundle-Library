@@ -17,7 +17,7 @@ const LIBRARY = process.env.BL_TEST_LIBRARY;
 const TRASH_HELPERS = () => {
     const $ = (selector, root = document) => root.querySelector(selector);
     window.__trash = {
-        button: () => $(".bl-overlay .bl-trash-button")?.textContent ?? null,
+        button: () => $(".bl-overlay .bl-trash-button")?.getAttribute("aria-label") ?? null,
         selected: () => !!$(".bl-overlay .bl-trash-button.selected"),
         rows: () => [...document.querySelectorAll(".bl-overlay .bl-trash-item")].map((row) => ({
             id: row.dataset.id,
@@ -87,12 +87,14 @@ function age(sha256) {
     await button("Delete", page.locator(".bl-overlay .bl-editor")).click();
     await button("Delete", layerBox).click();
     await until((name) => window.__trash.status() === `Deleted '${name}'. It is in the trash.`, KEPT);
-    await until((n) => window.__trash.button() === `🗑 Trash (${n})`, countBefore + 1);
+    await until((n) => window.__trash.button() === `Trash (${n})`, countBefore + 1);
+    const badge = await ev(() => document.querySelector(".bl-overlay .bl-trash-button .bl-count-badge").textContent);
     check("deleting a bundle says it is in the trash, and the trash button counts it",
-        await ev(() => window.__trash.button()) === `🗑 Trash (${countBefore + 1})`, await ev(() => window.__trash.button()));
+        await ev(() => window.__trash.button()) === `Trash (${countBefore + 1})` && badge === String(countBefore + 1),
+        { label: await ev(() => window.__trash.button()), badge });
 
     // ---- the trash view ---------------------------------------------------------------
-    await button(`🗑 Trash (${countBefore + 1})`).click();
+    await button(`Trash (${countBefore + 1})`).click();
     let trashed = await trashOf(made.kept.id);
     await until((id) => window.__trash.rows().some((r) => r.id === id), trashed.id);
     let rows = await ev(() => window.__trash.rows());
@@ -162,7 +164,7 @@ function age(sha256) {
         check("Empty trash asks, then deletes every trashed bundle for good",
             layer?.title === "Empty the trash?" && after.trash.length === 0
             && await status() === `Emptied the trash: ${before.length} bundle${before.length === 1 ? "" : "s"} deleted for good.`
-            && await ev(() => window.__trash.button()) === "🗑 Trash", { layer: layer?.title, status: await status() });
+            && await ev(() => window.__trash.button()) === "Trash", { layer: layer?.title, status: await status() });
     } else {
         await button("Cancel", layerBox).click();
         const after = await api("GET", "/trash");

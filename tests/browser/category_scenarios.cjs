@@ -94,6 +94,7 @@ const CAT_HELPERS = () => {
     const overlay = page.locator(".bl-overlay");
     const layerBox = page.locator(".bl-overlay .bl-layer");
     const button = (name, scope = overlay) => scope.getByRole("button", { name, exact: true });
+    const menuItem = (name, scope = overlay) => scope.getByRole("menuitem", { name, exact: true });
     const until = (fn, arg, timeout = 10000) => page.waitForFunction(fn, arg, { timeout }).then(() => true, () => false);
     const api = (method, route, body) => ev(([m, r, b]) => window.__bl.request(m, r, b), [method, route, body ?? null]);
     const cat = (fn, arg) => ev(fn, arg);
@@ -132,7 +133,7 @@ const CAT_HELPERS = () => {
         twins[0] !== twins[1] && twins.every((t) => t.startsWith(`${PREFIX} Twin · `)), twins);
 
     // ---- making a category ------------------------------------------------------------
-    await button("+ New category").click();
+    await button("New category").click();
     await page.locator(".bl-overlay .bl-ask-input").fill("Favorites");
     await page.keyboard.press("Enter");
     await until(() => window.__cat.layer()?.error);
@@ -147,7 +148,7 @@ const CAT_HELPERS = () => {
     let heroes = await cat((key) => window.__cat.group(key), heroesKey);
     check("+ New category makes an empty category, shown with a hint and a menu",
         heroes?.count === "0" && heroes.empty?.startsWith("No bundles. Drag one here") && heroes.menu, heroes);
-    await button("+ New category").click();
+    await button("New category").click();
     await page.locator(".bl-overlay .bl-ask-input").fill(HEROES.toUpperCase());
     await page.keyboard.press("Enter");
     await until(() => window.__cat.layer()?.error);
@@ -159,7 +160,7 @@ const CAT_HELPERS = () => {
 
     // ---- renaming it ------------------------------------------------------------------
     await page.locator(`.bl-overlay .bl-group[data-group="${heroesKey}"] .bl-group-menu`).click();
-    await button("Rename…").click();
+    await menuItem("Rename…").click();
     layer = await cat(() => window.__cat.layer());
     await page.locator(".bl-overlay .bl-ask-input").fill(ALLIES);
     await button("Rename", layerBox).click();
@@ -351,7 +352,7 @@ const CAT_HELPERS = () => {
     // ---- deleting a category ------------------------------------------------------------------
     await openLibrary();
     await page.locator(`.bl-overlay .bl-group[data-group="${newKey}"] .bl-group-menu`).click();
-    await button("Delete…").click();
+    await menuItem("Delete…").click();
     layer = await cat(() => window.__cat.layer());
     check("deleting a category says how many bundles move to Uncategorized",
         layer?.title === `Delete the category '${HEROES}'?` && layer.text[0] === "Its bundle moves to Uncategorized. "

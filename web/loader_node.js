@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { CHANGED_EVENT, assetURL, forgetBundles, listBundles, listLibrary, thumbnailURL } from "./api.js";
-import { el, formatDuration } from "./dom.js";
+import { code, el, formatDuration } from "./dom.js";
 import { compactGroups, groupLabel } from "./groups.js";
 import { openLibrary } from "./library_modal.js";
 import { displayNames } from "./names.js";
@@ -286,14 +286,16 @@ function valueChip(slot, field) {
 function renderNotice(node, bundle) {
     const { notice } = node.bundlePanel;
     const { added, removed, retyped } = planChanges(currentSlots(node), bundle.fields);
-    const parts = [...added.map((n) => `+${n}`), ...removed.map((n) => `−${n}`), ...retyped.map((n) => `~${n}`)];
+    const parts = [...added.map((n) => ["+", n]), ...removed.map((n) => ["−", n]), ...retyped.map((n) => ["~", n])];
     notice.replaceChildren();
     notice.hidden = parts.length === 0;
     if (notice.hidden) return;
     const update = el("button", "bl-update", "Update outputs");
     update.title = "Add new fields, drop unconnected outputs that left the bundle, retype unconnected outputs";
     update.addEventListener("click", () => selectBundle(node, bundle));
-    notice.append(el("span", "bl-notice-text", `Bundle fields changed: ${parts.join(", ")}`), update);
+    const text = el("span", "bl-notice-text", "Bundle fields changed: ");
+    parts.forEach(([sign, name], i) => text.append(...(i ? [", "] : []), sign, code(name)));
+    notice.append(text, update);
 }
 
 function renderPreview(node, bundle) {
@@ -348,7 +350,8 @@ function fillSelect(node, bundles, categories) {
     const optionOf = (bundle) => {
         const lacking = linked.filter((s) => slotStatuses([s], bundle.fields)[0] !== "ok");
         const label = labels.get(bundle.id);
-        return [bundle.id, lacking.length ? `${label}  ⚠ no ${lacking.map((s) => s.name).join(", ")}` : label];
+        // An <option> holds plain text only, so the names are set apart by quotes.
+        return [bundle.id, lacking.length ? `${label}  ⚠ no ${lacking.map((s) => `'${s.name}'`).join(", ")}` : label];
     };
     const groups = compactGroups(bundles, categories);
     // [value, label] for an option, {group, options} for an <optgroup>.

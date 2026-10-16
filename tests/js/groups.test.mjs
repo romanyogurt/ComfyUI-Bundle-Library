@@ -25,12 +25,22 @@ test("needs attention appears with warnings or files that cannot be read", () =>
     const groups = groupBundles([red, odd], [heroes], [{ file: "bundles/x.json", code: "corrupt" }]);
     assert.deepEqual(summary(groups)[0], ["attention", ["b3"], 1]);
     assert.deepEqual(summary(groupBundles([], [], [{ file: "bundles/x.json" }])).map((g) => g[0]),
-        ["attention", "favorites", "uncategorized"]);
+        ["attention", "favorites"]);
 });
 
-test("while filtering only groups with matches are left, without the errors", () => {
+test("while filtering only Favorites and the groups with matches are left, without the errors", () => {
     const groups = groupBundles([blue], [heroes, villains], [{ file: "bundles/x.json" }], { filtering: true });
-    assert.deepEqual(summary(groups), [["uncategorized", ["b2"], 0]]);
+    assert.deepEqual(summary(groups), [["favorites", [], 0], ["uncategorized", ["b2"], 0]]);
+    assert.deepEqual(summary(groupBundles([], [heroes], [], { filtering: true })), [["favorites", [], 0]]);
+});
+
+test("Favorites and categories show when empty, Uncategorized does not", () => {
+    assert.deepEqual(summary(groupBundles([red], [heroes, villains])), [
+        ["favorites", ["b1"], 0],
+        ["category:c1", ["b1"], 0],
+        ["category:c2", [], 0],
+    ]);
+    assert.deepEqual(summary(groupBundles([], [])), [["favorites", [], 0]]);
 });
 
 test("a short list leaves out empty groups and needs attention, and plain lists need no headings", () => {
@@ -39,7 +49,8 @@ test("a short list leaves out empty groups and needs attention, and plain lists 
         ["category:c1", ["b1", "b3"], 0],
         ["uncategorized", ["b2"], 0],
     ]);
-    assert.equal(compactGroups([blue, lost], [heroes]), null);
+    assert.equal(compactGroups([blue, lost], [heroes]), null); // an empty Favorites is left out here
+    assert.deepEqual(summary(compactGroups([red], [heroes, villains])), [["favorites", ["b1"], 0], ["category:c1", ["b1"], 0]]);
     assert.deepEqual(compactGroups([], [heroes]), []);
-    assert.deepEqual(groupBundles([red], [heroes]).map(groupLabel), ["★ Favorites", "Heroes", "Uncategorized"]);
+    assert.deepEqual(groupBundles([red, blue], [heroes]).map(groupLabel), ["★ Favorites", "Heroes", "Uncategorized"]);
 });

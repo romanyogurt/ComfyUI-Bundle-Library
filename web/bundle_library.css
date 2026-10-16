@@ -367,15 +367,80 @@
     gap: 4px;
 }
 
+/* The tools under the list. While a bundle is dragged the drop zone covers
+   them at the same height, so nothing in the list moves. */
 .bl-side-footer {
-    display: flex;
-    gap: 8px;
+    position: relative;
+    height: 32px;
     margin: 0 8px 8px;
 }
 
-.bl-side-footer > .bl-btn {
+.bl-list-tools {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    height: 100%;
+}
+
+.bl-tools-gap {
     flex: 1;
-    min-width: 0;
+}
+
+.bl-list-tools .bl-btn.icon {
+    height: 30px;
+    min-width: 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+}
+
+.bl-btn .pi {
+    font-size: 14px;
+}
+
+.bl-btn.icon.active {
+    border-color: #2563eb;
+    color: #93b4fb;
+}
+
+.bl-count-badge {
+    min-width: 16px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--comfy-menu-secondary-bg, #303030);
+    font-size: 11px;
+    line-height: 16px;
+}
+
+.bl-drop-zone {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--border-color, #4e4e4e);
+    border-radius: 6px;
+    background: var(--comfy-menu-bg, #171718);
+    color: var(--descrip-text, #999);
+    font-size: 12px;
+}
+
+.bl-drop-zone.drop-target {
+    border-color: #2563eb;
+    background: rgb(37 99 235 / 0.12);
+    color: var(--input-text, #ddd);
+}
+
+.bl-filter-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 8px 0;
+}
+
+.bl-filter-chip {
+    background: rgb(37 99 235 / 0.18);
 }
 
 .bl-trash-button.selected {
@@ -907,6 +972,7 @@
     top: calc(100% + 4px);
     left: 0;
     min-width: 190px;
+    max-height: min(360px, 60vh);
     display: flex;
     flex-direction: column;
     padding: 4px;
@@ -916,7 +982,28 @@
     box-shadow: var(--bar-shadow, 0 0 0.5rem rgb(0 0 0 / 0.5));
 }
 
+/* Opens above its button (the tools under the list sit at the bottom). */
+.bl-menu.up {
+    top: auto;
+    bottom: calc(100% + 4px);
+    min-width: 220px;
+}
+
+.bl-menu-list {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.bl-menu-search {
+    margin-bottom: 4px;
+}
+
 .bl-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     background: none;
     border: none;
     color: inherit;
@@ -927,8 +1014,41 @@
     cursor: pointer;
 }
 
-.bl-menu-item:hover {
+.bl-menu-item:hover,
+.bl-menu-item:focus-visible {
     background: var(--comfy-menu-secondary-bg, #303030);
+    outline: none;
+}
+
+.bl-menu-check {
+    width: 12px;
+    flex: none;
+}
+
+.bl-menu-text {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bl-menu-count,
+.bl-menu-empty {
+    color: var(--descrip-text, #999);
+}
+
+.bl-menu-empty {
+    padding: 6px 8px;
+}
+
+/* An output or field name inside a sentence, like `this` in Markdown. */
+.bl-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.92em;
+    padding: 0 4px;
+    border-radius: 3px;
+    background: rgb(255 255 255 / 0.1);
+    overflow-wrap: anywhere;
 }
 
 .bl-layer {

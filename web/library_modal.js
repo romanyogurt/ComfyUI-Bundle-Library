@@ -6,7 +6,7 @@ import {
     searchBundleIds, setCategory, setFavorite, thumbnailURL,
 } from "./api.js";
 import { BundleEditor } from "./bundle_editor.js";
-import { button, el, menu } from "./dom.js";
+import { button, closeMenus, code, codeList, el, icon, menu } from "./dom.js";
 import { ATTENTION, CATEGORY, FAVORITES, UNCATEGORIZED, compactGroups, groupBundles, groupLabel } from "./groups.js";
 import { displayNames } from "./names.js";
 import { slotStatuses } from "./reconcile.js";
@@ -21,32 +21,45 @@ const STRAY_EVENTS = ["keydown", "keyup", "keypress", "paste", "copy", "cut"];
 // outside do not have it and are not taken for a move.
 const DRAG_TYPE = "application/x-bundle-library-bundle";
 
-// The groups collapsed in this browser. Only a convenience: without storage
-// every group starts expanded.
+// Kept in this browser: the collapsed groups and the sort. Only a convenience:
+// without storage every group starts expanded and the list sorted by name.
 const COLLAPSED_KEY = "bundle-library.collapsed-groups";
+const SORT_KEY = "bundle-library.sort";
+const SORTS = [["name", "By name", "sort-alpha-down"], ["updated", "Recently updated", "clock"]];
 
-function loadCollapsed() {
+function remembered(key, fallback) {
     try {
-        const keys = JSON.parse(localStorage.getItem(COLLAPSED_KEY) ?? "[]");
-        return new Set(Array.isArray(keys) ? keys.filter((key) => typeof key === "string") : []);
+        const value = JSON.parse(localStorage.getItem(key) ?? "null");
+        return value ?? fallback;
     } catch {
-        return new Set();
+        return fallback;
     }
 }
 
-function saveCollapsed(keys) {
+function remember(key, value) {
     try {
-        localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...keys]));
+        localStorage.setItem(key, JSON.stringify(value));
     } catch {
         // not kept for the next time
     }
 }
 
+function loadCollapsed() {
+    const keys = remembered(COLLAPSED_KEY, []);
+    return new Set(Array.isArray(keys) ? keys.filter((key) => typeof key === "string") : []);
+}
+
+function loadSort() {
+    const sort = remembered(SORT_KEY, "name");
+    return SORTS.some(([value]) => value === sort) ? sort : "name";
+}
+
+// What an empty group says, unless the whole list is empty (that has its own line).
 const EMPTY_GROUP = {
     [FAVORITES]: "Star a bundle (☆) to list it here as well.",
     [CATEGORY]: "No bundles. Drag one here, or choose this category in the editor.",
-    [UNCATEGORIZED]: "Every bundle is in a category.",
 };
+const EMPTY_WHILE_FILTERING = "No starred bundle matches.";
 
 /**
  * Open the library. With `onPick` it is the bundle picker of a Load Bundle
@@ -68,6 +81,9 @@ class LibraryModal {
         this.categories = [];
         this.organization = { revision: 0, state: "missing" };
         this.collapsed = loadCollapsed();
+        this.sortMode = loadSort();
+        this.tag = ""; // the tag the list is filtered by, or ""
+        this.dragging = null; // the bundle id being dragged from a row (see startDrag())
         // Changes of categories and favorites go out one after another (see organize()).
         this.organizeQueue = Promise.resolve();
         this.organizing = 0;
@@ -98,7 +114,7 @@ class LibraryModal {
         this.dialog.tabIndex = -1; // holds the focus when the element that had it goes away
 
         const header = el("div", "bl-modal-header");
-        const title = el("div", "bl-modal-title", this.onPick ? "Bundle Library — pick a bundle" : "Bundle Library");
+        const title = el("div", "bl-modal-title", "Bundle Library");
         this.search = el("input", "bl-input bl-search");
         this.search.type = "search";
         this.search.placeholder = "Search names, tags, fields and text";
@@ -107,31 +123,18 @@ class LibraryModal {
             clearTimeout(searchTimer);
             searchTimer = setTimeout(() => void this.applySearch(), 250);
         });
-        this.tagFilter = el("select", "bl-input bl-tag-filter");
-        this.tagFilter.addEventListener("change", () => this.renderList());
-        this.sort = el("select", "bl-input bl-sort");
-        for (const [value, label] of [["name", "By name"], ["updated", "Recently updated"]]) {
-            const option = el("option", null, label);
-            option.value = value;
-            this.sort.append(option);
-        }
-        this.sort.addEventListener("change", () => this.renderList());
         const create = button("+ New bundle", "bl-btn primary bl-new");
         create.addEventListener("click", () => void this.newBundle());
         const close = button("✕", "bl-btn icon bl-close", "Close (Esc)");
         close.addEventListener("click", () => void this.requestClose());
-        header.append(title, this.search, this.tagFilter, this.sort, create, close);
+        header.append(title, this.search, create, close);
 
         const body = el("div", "bl-modal-body");
         const side = el("div", "bl-modal-side");
+        this.chips = el("div", "bl-filter-chips"); // the tag filter, when one is set
+        this.chips.hidden = true;
         this.list = el("div", "bl-modal-list");
-        const sideFooter = el("div", "bl-side-footer");
-        this.newCategoryButton = button("+ New category", "bl-btn bl-new-category");
-        this.newCategoryButton.addEventListener("click", () => void this.newCategory());
-        this.trashButton = button("🗑 Trash", "bl-btn bl-trash-button");
-        this.trashButton.addEventListener("click", () => void this.showTrash());
-        sideFooter.append(this.newCategoryButton, this.trashButton);
-        side.append(this.list, sideFooter);
+        side.append(this.chips, this.list, this.buildTools());
         this.pane = el("div", "bl-modal-editor");
         body.append(side, this.pane);
 
@@ -149,11 +152,7 @@ class LibraryModal {
         this.dialog.append(header, body, footer);
         this.overlay.append(this.dialog);
         // One listener for every popup menu: a click elsewhere closes it.
-        this.dialog.addEventListener("pointerdown", (e) => {
-            for (const open of this.dialog.querySelectorAll(".bl-menu:not([hidden])")) {
-                if (!open.parentElement.contains(e.target)) open.hidden = true;
-            }
-        });
+        this.dialog.addEventListener("pointerdown", (e) => closeMenus(this.dialog, e.target));
 
         // Nothing done in here may reach ComfyUI: its keyboard shortcuts listen
         // on window, and it handles paste, copy, drops and context menus on
@@ -168,8 +167,16 @@ class LibraryModal {
             this.overlay.addEventListener(type, (e) => {
                 e.stopPropagation();
                 if (type === "dragover" || type === "drop") e.preventDefault();
+                if (type === "drop") this.endDrag(); // after the place it was dropped on took it
             });
         }
+        // The row a drag started from may be gone before the drag ends (the
+        // list was drawn again), and then no dragend comes. The pointer moves
+        // again only once the drag is over, so that ends it too.
+        this.onPointerMove = () => {
+            if (this.dragging && performance.now() - this.dragStarted > 300) this.endDrag();
+        };
+        window.addEventListener("pointermove", this.onPointerMove, true);
         this.overlay.addEventListener("pointerdown", (e) => {
             if (e.target === this.overlay) void this.requestClose();
         });
@@ -208,9 +215,107 @@ class LibraryModal {
             if (key === "s" && !this.layer) void this.editor?.save();
         } else if (e.key === "Escape") {
             e.preventDefault();
+            // One thing at a time: a confirmation, an open menu, a drag, then the library.
             if (this.layer) this.layer.dismiss();
+            else if (closeMenus(this.dialog)) return;
+            else if (this.dragging) this.endDrag();
             else void this.requestClose();
         }
+    }
+
+    /** The tools under the list: new category, sort, tag filter and the trash. */
+    buildTools() {
+        const footer = el("div", "bl-side-footer");
+        const tools = el("div", "bl-list-tools");
+        this.newCategoryButton = button("", "bl-btn icon bl-new-category", "New category");
+        this.newCategoryButton.setAttribute("aria-label", "New category");
+        this.newCategoryButton.append(icon("folder-plus"));
+        this.newCategoryButton.addEventListener("click", () => void this.newCategory());
+        const sort = menu(icon("sort-alpha-down"), () => SORTS.map(([value, text]) => ({
+            text, value, checked: this.sortMode === value, action: () => this.setSort(value),
+        })), { className: "bl-btn icon bl-sort-button", up: true });
+        this.sortButton = sort.opener;
+        const tags = menu(icon("filter"), () => this.tagChoices(), {
+            className: "bl-btn icon bl-tag-button", up: true, search: "Find a tag", empty: "No tags match.",
+        });
+        this.tagButton = tags.opener;
+        this.trashButton = button("", "bl-btn icon bl-trash-button");
+        this.trashCount = el("span", "bl-count-badge");
+        this.trashButton.append(icon("trash"), this.trashCount);
+        this.trashButton.addEventListener("click", () => void this.showTrash());
+        tools.append(this.newCategoryButton, sort.root, tags.root, el("span", "bl-tools-gap"), this.trashButton);
+        // While a bundle in a category is dragged, this takes the place of the
+        // tools: Uncategorized may be hidden (it is when empty). Same height,
+        // so nothing in the list moves.
+        this.dropZone = el("div", "bl-drop-zone", "Drop here to take it out of its category");
+        this.dropZone.hidden = true;
+        this.dropTarget(this.dropZone, { kind: UNCATEGORIZED });
+        footer.append(tools, this.dropZone);
+        this.trashCounted(0);
+        this.showSort();
+        this.showTagFilter();
+        return footer;
+    }
+
+    setSort(sort) {
+        this.sortMode = sort;
+        remember(SORT_KEY, sort);
+        this.showSort();
+        this.renderList();
+    }
+
+    showSort() {
+        const [, text, name] = SORTS.find(([value]) => value === this.sortMode);
+        this.sortButton.replaceChildren(icon(name));
+        this.sortButton.title = `Sort: ${text.toLowerCase()}`;
+        this.sortButton.setAttribute("aria-label", this.sortButton.title);
+    }
+
+    /** The tags of the bundles in use, with how many bundles have each; for the tag menu. */
+    tagChoices() {
+        const tags = new Map();
+        for (const bundle of this.all) {
+            for (const tag of bundle.tags) {
+                const key = tag.toLowerCase();
+                const entry = tags.get(key) ?? { text: tag, count: 0 };
+                entry.count++;
+                tags.set(key, entry);
+            }
+        }
+        const sorted = [...tags.values()].sort((a, b) => a.text.localeCompare(b.text, undefined, { sensitivity: "base" }));
+        return [
+            { text: "All tags", value: "", checked: !this.tag, always: true, action: () => this.setTag("") },
+            ...sorted.map(({ text, count }) => ({
+                text, count, value: text, checked: this.tag.toLowerCase() === text.toLowerCase(), action: () => this.setTag(text),
+            })),
+        ];
+    }
+
+    setTag(tag) {
+        this.tag = tag;
+        this.showTagFilter();
+        this.renderList();
+    }
+
+    /** The chip above the list and the tag button say which tag the list is filtered by. */
+    showTagFilter() {
+        this.chips.hidden = !this.tag;
+        this.tagButton.classList.toggle("active", !!this.tag);
+        this.tagButton.title = this.tag ? `Tag: ${this.tag}` : "Filter by tag";
+        this.tagButton.setAttribute("aria-label", this.tag ? `Filter by tag (now: ${this.tag})` : "Filter by tag");
+        if (!this.tag) {
+            this.chips.replaceChildren();
+            return;
+        }
+        const chip = el("span", "bl-chip bl-filter-chip", `Tag: ${this.tag}`);
+        const clear = button("×", "bl-chip-x", "Show every tag");
+        clear.setAttribute("aria-label", "Clear the tag filter");
+        clear.addEventListener("click", () => {
+            this.setTag("");
+            this.tagButton.focus({ preventScroll: true });
+        });
+        chip.append(clear);
+        this.chips.replaceChildren(chip);
     }
 
     // -- list ------------------------------------------------------------------
@@ -229,8 +334,11 @@ class LibraryModal {
         this.categories = library.categories ?? [];
         this.organization = library.organization ?? { revision: 0, state: "missing" };
         this.newCategoryButton.disabled = !!this.organizeBlocker;
-        this.newCategoryButton.title = this.organizeBlocker ?? "";
-        this.renderTags();
+        this.newCategoryButton.title = this.organizeBlocker ?? "New category";
+        if (this.tag && !this.all.some((b) => b.tags.some((t) => t.toLowerCase() === this.tag.toLowerCase()))) {
+            this.tag = ""; // no bundle has it any more
+            this.showTagFilter();
+        }
         if (this.search.value.trim()) await this.applySearch();
         else this.renderList();
         this.editor?.organizationChanged();
@@ -256,30 +364,15 @@ class LibraryModal {
         this.renderList();
     }
 
-    renderTags() {
-        const chosen = this.tagFilter.value;
-        const tags = new Map();
-        for (const bundle of this.all) {
-            for (const tag of bundle.tags) tags.set(tag.toLowerCase(), tags.get(tag.toLowerCase()) ?? tag);
-        }
-        const options = [["", "All tags"], ...[...tags.values()].sort((a, b) => a.localeCompare(b)).map((t) => [t, t])];
-        this.tagFilter.replaceChildren(...options.map(([value, label]) => {
-            const option = el("option", null, label);
-            option.value = value;
-            return option;
-        }));
-        this.tagFilter.value = tags.has(chosen.toLowerCase()) ? chosen : "";
-    }
-
     visible() {
         let items = this.all;
         if (this.matches) items = items.filter((b) => this.matches.has(b.id));
-        const tag = this.tagFilter.value.toLowerCase();
+        const tag = this.tag.toLowerCase();
         if (tag) items = items.filter((b) => b.tags.some((t) => t.toLowerCase() === tag));
         // Names may repeat: the id keeps the order still.
         items = [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
             || a.id.localeCompare(b.id));
-        if (this.sort.value === "updated") items.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+        if (this.sortMode === "updated") items.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
         return items;
     }
 
@@ -288,24 +381,27 @@ class LibraryModal {
     }
 
     renderList() {
+        this.endDrag(); // the places to drop on belong to the list the drag started in
         this.labels = displayNames(this.all);
-        const filtering = !!this.matches || !!this.tagFilter.value;
-        const groups = groupBundles(this.visible(), this.categories, this.errors, { filtering });
+        const filtering = !!this.matches || !!this.tag;
+        const visible = this.visible();
+        const groups = groupBundles(visible, this.categories, this.errors, { filtering });
         const focus = this.focusedRow();
-        if (!this.all.length && !this.errors.length && !this.categories.length) {
-            this.list.replaceChildren(el("div", "bl-empty-state", "No bundles yet. Create one with + New bundle."));
-        } else if (!groups.length) {
-            this.list.replaceChildren(el("div", "bl-empty-state", "No bundles match."));
-        } else {
-            this.list.replaceChildren(...groups.map((group) => this.renderGroup(group, filtering)));
+        // Favorites always shows; when there is nothing at all to list, one line says so below it.
+        const nothing = !visible.length && !groups.some((g) => g.errors.length);
+        const parts = groups.map((group) => this.renderGroup(group, filtering, nothing));
+        if (nothing) {
+            parts.push(el("div", "bl-empty-state", filtering ? "No bundles match."
+                : "No bundles yet. Create one with + New bundle."));
         }
+        this.list.replaceChildren(...parts);
         this.restoreFocus(focus);
         this.keepFocus();
         this.editorChanged();
     }
 
     /** A group: its heading (collapse, count, the menu of a category) and its rows. */
-    renderGroup(group, filtering) {
+    renderGroup(group, filtering, nothing) {
         const root = el("div", `bl-group ${group.kind}`);
         root.dataset.group = group.key;
         const collapsed = !filtering && this.collapsed.has(group.key); // a search shows every match
@@ -319,7 +415,7 @@ class LibraryModal {
         toggle.addEventListener("click", () => {
             if (this.collapsed.has(group.key)) this.collapsed.delete(group.key);
             else this.collapsed.add(group.key);
-            saveCollapsed(this.collapsed);
+            remember(COLLAPSED_KEY, [...this.collapsed]);
             this.renderList();
         });
         head.append(toggle);
@@ -327,20 +423,26 @@ class LibraryModal {
             const actions = menu("⋯", [
                 ["Rename…", () => void this.askRename(group.category)],
                 ["Delete…", () => void this.askDelete(group.category)],
-            ], "bl-btn icon bl-group-menu", `Rename or delete '${group.name}'`);
+            ], { className: "bl-btn icon bl-group-menu", title: `Rename or delete '${group.name}'`,
+                label: `Category ${group.name}` });
             head.append(actions.root);
         }
         const rows = el("div", "bl-group-rows");
         rows.hidden = collapsed;
         rows.append(...group.errors.map((entry) => this.renderError(entry)),
             ...group.bundles.map((bundle) => this.renderItem(bundle)));
-        if (!group.bundles.length && !group.errors.length) rows.append(el("div", "bl-group-empty", EMPTY_GROUP[group.kind]));
+        if (!group.bundles.length && !group.errors.length && !nothing) {
+            rows.append(el("div", "bl-group-empty", filtering ? EMPTY_WHILE_FILTERING : EMPTY_GROUP[group.kind]));
+        }
         root.append(head, rows);
         if (group.kind !== ATTENTION && !this.organizeBlocker) this.dropTarget(root, group);
         return root;
     }
 
-    /** Dropping a bundle on a category puts it there, on Uncategorized takes it out, on Favorites stars it. */
+    /**
+     * Dropping a bundle on a category puts it there, on Uncategorized (or the
+     * place under the list) takes it out, on Favorites stars it.
+     */
     dropTarget(root, group) {
         const carries = (e) => e.dataTransfer?.types.includes(DRAG_TYPE);
         let depth = 0; // dragenter and dragleave also come from the rows inside
@@ -366,6 +468,7 @@ class LibraryModal {
             if (!carries(e)) return;
             e.preventDefault();
             const id = e.dataTransfer.getData(DRAG_TYPE);
+            this.endDrag();
             if (group.kind === FAVORITES) void this.setFavorite(id, true);
             else void this.moveBundle(id, group.kind === CATEGORY ? group.category.id : null);
         });
@@ -387,7 +490,12 @@ class LibraryModal {
         text.append(el("div", "bl-list-name", this.labels.get(bundle.id) ?? bundle.name),
             el("div", "bl-list-sub", bundle.tags.length ? bundle.tags.join(" · ") : `${bundle.fields.length} field(s)`));
         const lacking = this.lacking(bundle);
-        if (lacking.length) text.append(el("div", "bl-list-warn", `⚠ no ${lacking.join(", ")}`));
+        if (lacking.length) {
+            const warn = el("div", "bl-list-warn");
+            warn.title = `No ${lacking.join(", ")}`; // the line may be cut short
+            warn.append("⚠ no ", ...codeList(lacking));
+            text.append(warn);
+        }
         if (bundle.read_only) text.append(el("div", "bl-list-warn", "🔒 Cannot be changed by this version"));
         else if (bundle.warnings) text.append(el("div", "bl-list-warn", "⚠ Fix before saving"));
         const star = button(bundle.favorite ? "★" : "☆", "bl-star",
@@ -418,13 +526,31 @@ class LibraryModal {
                 e.dataTransfer.setData(DRAG_TYPE, bundle.id);
                 e.dataTransfer.effectAllowed = "copyMove";
                 item.classList.add("dragging");
+                this.startDrag(bundle);
             });
             item.addEventListener("dragend", () => {
                 item.classList.remove("dragging");
-                for (const target of this.list.querySelectorAll(".drop-target")) target.classList.remove("drop-target");
+                this.endDrag();
             });
         }
         return item;
+    }
+
+    /** A bundle row is being dragged: offer the place under the list if it can leave its category. */
+    startDrag(bundle) {
+        this.dragging = bundle.id;
+        this.dragStarted = performance.now();
+        this.dropZone.hidden = !bundle.category;
+    }
+
+    /** The drag is over (or the list it started in is gone): put the tools back. */
+    endDrag() {
+        if (!this.dragging) return;
+        this.dragging = null;
+        this.dropZone.hidden = true;
+        this.dropZone.classList.remove("drop-target");
+        for (const target of this.list.querySelectorAll(".drop-target")) target.classList.remove("drop-target");
+        for (const row of this.list.querySelectorAll(".dragging")) row.classList.remove("dragging");
     }
 
     /** A file this version cannot use: why, and a way to delete it on purpose when it is a bundle file. */
@@ -583,7 +709,7 @@ class LibraryModal {
         try {
             await this.organize(() => deleteCategory(category.id));
             this.collapsed.delete(`${CATEGORY}:${category.id}`);
-            saveCollapsed(this.collapsed);
+            remember(COLLAPSED_KEY, [...this.collapsed]);
             this.status(`Deleted the category '${category.name}'.`);
         } catch (error) {
             this.status(error.message, "error");
@@ -677,7 +803,10 @@ class LibraryModal {
     /** The trash button says how many bundles are in the trash. */
     trashCounted(count) {
         this.trashGeneration++; // a count still on its way is older
-        this.trashButton.textContent = count ? `🗑 Trash (${count})` : "🗑 Trash";
+        this.trashCount.textContent = count ? String(count) : "";
+        this.trashCount.hidden = !count;
+        this.trashButton.title = count ? `Trash (${count})` : "Trash";
+        this.trashButton.setAttribute("aria-label", this.trashButton.title);
     }
 
     async refreshTrashCount() {
@@ -735,11 +864,13 @@ class LibraryModal {
         const summary = ready ? this.all.find((b) => b.id === this.editor.saved.id) : null;
         const lacking = summary ? this.lacking(summary) : [];
         this.pickButton.disabled = !summary;
-        this.pickHint.textContent = !this.editor ? "Select a bundle."
-            : !ready ? "Save or revert your changes first."
-                : lacking.length === 1 ? `⚠ The node's connected output ${lacking[0]} is missing here or has another type; running would fail.`
-                    : lacking.length ? `⚠ The node's connected outputs ${lacking.join(", ")} are missing here or have another type; running would fail.`
-                        : "";
+        this.pickHint.replaceChildren(...(!this.editor ? ["Select a bundle."]
+            : !ready ? ["Save or revert your changes first."]
+                : lacking.length === 1 ? ["⚠ The node's connected output ", code(lacking[0]),
+                    " is missing here or has another type; running would fail."]
+                    : lacking.length ? ["⚠ The node's connected outputs ", ...codeList(lacking),
+                        " are missing here or have another type; running would fail."]
+                        : []));
     }
 
     pick() {
@@ -756,6 +887,8 @@ class LibraryModal {
 
     close() {
         this.editor?.dispose();
+        this.endDrag();
+        window.removeEventListener("pointermove", this.onPointerMove, true);
         this.overlay.remove();
         for (const type of STRAY_EVENTS) window.removeEventListener(type, this.onStrayEvent, true);
         window.removeEventListener("focusin", this.onStrayFocus, true);
