@@ -228,7 +228,8 @@ function mediaTile(slot, field, linked) {
     return tile;
 }
 
-// Audio from the node previews plays one sound at a time.
+// Audio from the node previews plays one sound at a time. A preview drawn
+// again, or a node removed, stops the sound it plays (and only that one).
 const player = new Audio();
 let playing = null; // the play button of the sound now playing
 
@@ -236,8 +237,18 @@ function stopped() {
     if (playing) playing.textContent = "▶";
     playing = null;
 }
-player.addEventListener("pause", stopped);
+// Not a pause that loading the next sound causes: that one is playing by the time it is reported.
+player.addEventListener("pause", () => {
+    if (player.paused) stopped();
+});
 player.addEventListener("ended", stopped);
+
+/** Stop the sound if its play button is inside `element`. */
+function stopSoundIn(element) {
+    if (!playing || !element?.contains(playing)) return;
+    player.pause();
+    stopped();
+}
 
 function audioChip(slot, field, linked) {
     const chip = item("div", "bl-value-chip bl-audio-chip", slot);
@@ -259,7 +270,9 @@ function audioChip(slot, field, linked) {
         playing = play;
         play.textContent = "⏸";
         player.src = assetURL(media.sha256);
-        player.play().catch(stopped);
+        player.play().catch(() => {
+            if (playing === play) stopped(); // not when another sound was started meanwhile
+        });
     });
     chip.append(play, el("span", "bl-value", formatDuration(media.duration ?? 0)));
     return chip;
@@ -307,6 +320,7 @@ function renderPreview(node, bundle) {
         specOf(node), node.outputs.map(isLinked)]);
     if (panel.previewSignature === signature) return;
     panel.previewSignature = signature;
+    stopSoundIn(rows);
     rows.replaceChildren();
     notice.hidden = true;
     if (!widget(node, "bundle_id")?.value) {
@@ -496,6 +510,7 @@ export function setupLoaderNode(nodeType) {
     const onRemoved = nodeType.prototype.onRemoved;
     nodeType.prototype.onRemoved = function () {
         panels.delete(this);
+        stopSoundIn(this.bundlePanel?.rows);
         return onRemoved?.apply(this, arguments);
     };
 }

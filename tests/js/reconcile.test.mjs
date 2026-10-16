@@ -67,6 +67,14 @@ test("slot_spec round-trips and rejects malformed text", () => {
     assert.equal(parseSpec(JSON.stringify({ v: 1, slots: [{ name: "", type: "text" }] })), null);
 });
 
+test("slot_spec takes only the types themselves, not what every object has (R15-11)", () => {
+    for (const type of ["constructor", "toString", "__proto__", "hasOwnProperty", 1, null, ["text"]]) {
+        assert.equal(parseSpec(JSON.stringify({ v: 1, slots: [{ name: "x", type }] })), null, String(type));
+    }
+    assert.deepEqual(parseSpec('{"v": 1.0, "slots": [{"name": "x", "type": "text"}]}'), [{ name: "x", type: "text" }],
+        "1.0 reads as 1 here; the server takes it too");
+});
+
 test("changes list what an update would do, and nothing for linked misfits", () => {
     const none = { added: [], removed: [], retyped: [] };
     assert.deepEqual(planChanges(linked(A, ["prompt"]), A), none);

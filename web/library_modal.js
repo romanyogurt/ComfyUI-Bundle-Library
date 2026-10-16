@@ -7,6 +7,7 @@ import {
 } from "./api.js";
 import { BatchPanel, BatchResult } from "./batch_panel.js";
 import { BundleEditor } from "./bundle_editor.js";
+import { Commands } from "./commands.js";
 import { button, closeMenus, code, codeList, el, icon, menu, plural } from "./dom.js";
 import { ATTENTION, CATEGORY, FAVORITES, UNCATEGORIZED, compactGroups, groupBundles, groupLabel } from "./groups.js";
 import { displayNames } from "./names.js";
@@ -80,9 +81,10 @@ const EMPTY_WHILE_FILTERING = "No starred bundle matches.";
 
 /**
  * Open the library. With `onPick` it is the bundle picker of a Load Bundle
- * node: "Use this bundle" hands the selected bundle's summary to onPick (with
- * one bundle selected; several can still be selected and changed), and
- * `linked` (the node's connected slots) marks bundles that lack one.
+ * node: "Use this bundle" hands onPick the summary of the bundle the editor
+ * shows, as saved (with one bundle selected; several can still be selected
+ * and changed), and `linked` (the node's connected slots) marks bundles that
+ * lack one.
  */
 export function openLibrary({ onPick = null, linked = [], selected = null } = {}) {
     if (!current) current = new LibraryModal({ onPick, linked, selected });
@@ -98,8 +100,10 @@ class LibraryModal {
         // range starts from: {group, id}.
         this.selection = new Set(selected ? [selected] : []);
         this.anchor = null;
-        this.batchRunning = null; // the change to several bundles that is out, until its answer (or Stop waiting)
-        this.batchToken = 0;
+        // The commands that wait for the server, the one holding the window,
+        // and who owns the pane and the question layer (commands.js).
+        this.commands = new Commands(() => this.editorChanged());
+        this.batchJobs = 0;
         this.all = [];
         this.errors = []; // the files this version cannot use, shown under Needs attention
         this.categories = [];
@@ -114,10 +118,9 @@ class LibraryModal {
         this.matches = null;
         this.editor = null;
         this.trashPanel = null; // shown in the pane instead of an editor
-        this.layer = null;
-        // Answers that arrive after a newer request was made are dropped: each
-        // kind of request counts its generations.
-        this.editorGeneration = 0; // what the editor pane shows
+        this.layer = null; // the question or picture over the window: {token, element, dismiss, behind, returnFocus}
+        // Answers to reads that arrive after a newer read was made are dropped:
+        // each kind of read counts its generations.
         this.listGeneration = 0;
         this.searchGeneration = 0;
         this.trashGeneration = 0;
@@ -224,13 +227,39 @@ class LibraryModal {
         this.search.focus();
     }
 
-    /** Put the focus back in the modal when the element holding it went away. */
+    /** Put the focus back in the modal (in the question, while one is open) when the element holding it went away. */
     keepFocus() {
-        if (!this.overlay.contains(document.activeElement)) this.dialog.focus({ preventScroll: true });
+        if (this.layer) {
+            if (!this.layer.element.contains(document.activeElement)) {
+                (this.layerStops()[0] ?? this.dialog).focus({ preventScroll: true });
+            }
+        } else if (!this.overlay.contains(document.activeElement)) {
+            this.dialog.focus({ preventScroll: true });
+        }
+    }
+
+    /** What Tab moves through in the open question. */
+    layerStops() {
+        return [...this.layer.element.querySelectorAll("button, input, select, textarea, a[href], [tabindex]")]
+            .filter((e) => !e.disabled && e.tabIndex >= 0 && e.getClientRects().length > 0);
+    }
+
+    /** Tab and Shift+Tab go round the open question instead of leaving it. */
+    trapTab(e) {
+        const stops = this.layerStops();
+        if (!stops.length) return;
+        const at = stops.indexOf(document.activeElement);
+        e.preventDefault();
+        const next = at < 0 ? (e.shiftKey ? stops.length - 1 : 0) : (at + (e.shiftKey ? -1 : 1) + stops.length) % stops.length;
+        stops[next].focus({ preventScroll: true });
     }
 
     onKey(e) {
         if (e.isComposing) return; // Enter or Escape that ends an IME composition (Korean input)
+        if (e.key === "Tab" && this.layer) {
+            this.trapTab(e);
+            return;
+        }
         const mod = e.ctrlKey || e.metaKey;
         const key = (e.key ?? "").toLowerCase(); // autofill sends keydowns without a key
         // Stopping propagation also kept ComfyUI from cancelling the browser's
@@ -249,7 +278,7 @@ class LibraryModal {
             if (this.layer) this.layer.dismiss();
             else if (closeMenus(this.dialog)) return;
             else if (this.dragging) this.endDrag();
-            else if (this.batchRunning) this.status(this.lockReason);
+            else if (this.commands.running) this.status(this.lockReason);
             else if (this.selection.size > 1) this.clearSelection();
             else void this.requestClose();
         }
@@ -330,7 +359,7 @@ class LibraryModal {
         if (!this.allowed()) return;
         this.tag = tag;
         this.showTagFilter();
-        this.renderList();
+        this.listChanged();
     }
 
     /** The chip above the list and the tag button say which tag the list is filtered by. */
@@ -357,13 +386,19 @@ class LibraryModal {
 
     // -- list ------------------------------------------------------------------
 
+    /**
+     * Read the list again. When it cannot be read, the list shown stays, with
+     * the selection, the filter and a new draft's category, and the status
+     * line says why.
+     */
     async reload(selectId = null) {
         const generation = ++this.listGeneration;
-        let library = {};
+        let library;
         try {
             library = await listLibrary({ fresh: true });
         } catch (error) {
-            if (generation === this.listGeneration) this.status(error.message, "error");
+            if (generation === this.listGeneration) this.status(`Could not read the library: ${error.message}`, "error");
+            return;
         }
         if (generation !== this.listGeneration) return; // a newer reload answers instead
         this.all = library.bundles ?? [];
@@ -377,7 +412,7 @@ class LibraryModal {
             this.showTagFilter();
         }
         if (this.search.value.trim()) await this.applySearch();
-        else this.renderList();
+        else this.listChanged();
         this.editor?.organizationChanged();
         if (selectId && this.all.some((b) => b.id === selectId)) await this.open(selectId, { force: true });
     }
@@ -387,18 +422,23 @@ class LibraryModal {
         return this.all.find((b) => b.id === id) ?? null;
     }
 
+    /**
+     * Search for what the box says. When the search fails, the matches found
+     * last stay (the list is still drawn: it may have been read again) and the
+     * status line says why.
+     */
     async applySearch() {
         const generation = ++this.searchGeneration;
         const query = this.search.value.trim();
-        let matches = null;
+        let matches = this.matches;
         try {
             matches = query ? await searchBundleIds(query) : null;
         } catch (error) {
-            if (generation === this.searchGeneration) this.status(error.message, "error");
+            if (generation === this.searchGeneration) this.status(`Could not search: ${error.message}`, "error");
         }
         if (generation !== this.searchGeneration) return; // the query changed meanwhile
         this.matches = matches;
-        this.renderList();
+        this.listChanged();
     }
 
     visible() {
@@ -417,6 +457,7 @@ class LibraryModal {
         return this.linked.filter((s) => slotStatuses([s], bundle.fields)[0] !== "ok").map((s) => s.name);
     }
 
+    /** Draw the list as the state has it. It changes no state: listChanged() does that, before drawing. */
     renderList() {
         this.endDrag(); // the places to drop on belong to the list the drag started in
         this.labels = displayNames(this.all);
@@ -432,7 +473,6 @@ class LibraryModal {
                 : "No bundles yet. Create one with + New bundle."));
         }
         this.list.replaceChildren(...parts);
-        this.pruneSelection(visible);
         this.restoreFocus(focus);
         this.keepFocus();
         this.editorChanged();
@@ -750,12 +790,24 @@ class LibraryModal {
     }
 
     /**
-     * Take out of a selection of several the bundles a search or filter hides
-     * (and say how many), and those that are gone. A single selection stays:
-     * its editor stays open. A result on screen stays too.
+     * The list, the search or the tag filter changed: take out of a selection
+     * of several the bundles no longer shown, draw the list, and let the pane
+     * follow. The batch panel shows the selection as it is now and keeps what
+     * was chosen in it; a selection down to one bundle opens it, to none the
+     * placeholder. A single selection stays (its editor stays open), and so
+     * does a result on screen.
      */
+    listChanged() {
+        const several = this.selection.size > 1;
+        if (several) this.pruneSelection(this.visible());
+        this.renderList();
+        if (!several || !this.batchPanel) return;
+        if (this.selection.size > 1) this.batchPanel.show(this.selectedBundles());
+        else void this.applySelection();
+    }
+
+    /** Take out of the selection the bundles not in `visible`, and say how many a search or filter hid. */
     pruneSelection(visible) {
-        if (this.selection.size < 2) return;
         const shown = new Set(visible.map((b) => b.id));
         const gone = [...this.selection].filter((id) => !shown.has(id));
         for (const id of gone) this.selection.delete(id);
@@ -763,14 +815,6 @@ class LibraryModal {
         if (hidden) {
             this.status(`${plural(hidden, "selected bundle")} hidden by the search or filter ${hidden === 1 ? "was" : "were"} `
                 + "taken out of the selection.");
-        }
-        if (this.batchPanel) {
-            // after this list is drawn: opening an editor draws it again
-            queueMicrotask(() => {
-                if (!this.batchPanel) return;
-                if (this.selection.size > 1) this.batchPanel.show(this.selectedBundles());
-                else void this.applySelection();
-            });
         }
     }
 
@@ -782,19 +826,22 @@ class LibraryModal {
     }
 
     /**
-     * Why everything but the editor is locked now, or null: a draft with changes
-     * (save or discard it first), a save on its way, or a change to several
-     * bundles that is out. The editor's own star and category stay free.
+     * Why everything but the editor is locked now, or null: a command holding
+     * the window (a save, duplicate or delete on its way, or a change to
+     * several bundles), or a draft with changes (save or discard it first).
+     * The editor's own star and category stay free.
      */
     get lockReason() {
-        if (this.batchRunning) return "Wait until the change to the selected bundles is done.";
-        if (this.editor?.saving) return "Wait until the bundle is saved.";
-        if (this.unsaved) return "Save or discard your changes first.";
-        return null;
+        return this.commands.waiting ?? (this.unsaved ? "Save or discard your changes first." : null);
     }
 
-    /** Whether a command outside the editor may run now; if not, the status line says why. */
+    /**
+     * Whether a command outside the editor may run now; if not, the status
+     * line says why. Nothing behind a question runs while it is open (what is
+     * behind it cannot be reached either: it is inert).
+     */
     allowed() {
+        if (this.layer) return false;
         const why = this.lockReason;
         if (why) this.status(why);
         return !why;
@@ -843,14 +890,15 @@ class LibraryModal {
 
     /**
      * One change to several bundles. What it changes (the ids, the arguments
-     * and the revisions seen) is fixed before anything is awaited. The window
-     * stays locked until the answer, whose result stays in the pane until the
-     * user leaves it, even when the selection is gone by then.
+     * and the revisions seen) is fixed before anything is awaited. It holds the
+     * window until its answer is in and the list read again (or until Stop
+     * waiting); its result then stays in the pane until the user leaves it,
+     * even when the selection is gone by then.
      */
     async runBatch(action, args, bundles) {
         if (!bundles.length || !this.allowed()) return;
         const job = {
-            token: ++this.batchToken, action, args: { ...args },
+            token: ++this.batchJobs, action, args: { ...args },
             summaries: bundles.map((b) => ({ id: b.id, label: this.labels?.get(b.id) ?? b.name, revision: b.revision })),
         };
         job.describe = this.describeBatch(action, args, bundles.length);
@@ -861,40 +909,35 @@ class LibraryModal {
                 "Move to trash", { danger: true });
             if (!confirmed) return;
         }
-        this.batchRunning = job;
-        const view = new BatchResult(this, job, { waiting: true });
-        this.showPane(view.root, { result: view });
-        this.refreshLock();
-        this.renderList();
-        clearTimeout(this.stallTimer);
-        this.stallTimer = setTimeout(() => {
-            if (this.batchRunning === job) view.stalled();
-        }, STALL_MS);
-        let outcome;
-        try {
-            outcome = { answer: await batchBundles(job.summaries.map((b) => b.id), action, job.args) };
-        } catch (error) {
-            // A refusal changed nothing. No answer, or a failure in the server, may have changed some.
-            outcome = error.status >= 400 && error.status < 500 ? { refused: error } : { unknown: true };
-        }
-        if (this.batchRunning === job) {
-            clearTimeout(this.stallTimer);
-            this.batchRunning = null;
-            this.refreshLock();
-        }
-        if (this.result?.job.token === job.token) this.result.render(outcome); // also after Stop waiting
-        if (action === "trash") void this.refreshTrashCount();
-        await this.reload();
+        await this.commands.hold({
+            kind: "batch", wait: "Wait until the change to the selected bundles is done.", stallMs: STALL_MS,
+            onStall: () => {
+                if (this.result?.job === job) this.result.stalled();
+            },
+        }, async (ticket) => {
+            job.ticket = ticket;
+            const view = new BatchResult(this, job, { waiting: true });
+            ticket.view = this.showPane(view.root, { result: view }); // the pane content this batch owns
+            this.renderList();
+            let outcome;
+            try {
+                outcome = { answer: await batchBundles(job.summaries.map((b) => b.id), action, job.args) };
+            } catch (error) {
+                // A refusal changed nothing. No answer, or a failure in the server, may have changed some.
+                outcome = error.status >= 400 && error.status < 500 ? { refused: error } : { unknown: true };
+            }
+            if (action === "trash") void this.refreshTrashCount();
+            await this.reload();
+            // To its result while that is shown, also after Stop waiting: the user has not left it.
+            if (this.commands.pane.shows(ticket.view)) view.render(outcome);
+        });
     }
 
     /** Give up waiting for a batch's answer: unlock, and say it is not known what happened. */
     stopWaiting(job) {
-        if (this.batchRunning !== job) return;
-        clearTimeout(this.stallTimer);
-        this.batchRunning = null;
-        this.refreshLock();
+        if (!job.ticket || !this.commands.stop(job.ticket)) return;
         this.renderList();
-        if (this.result?.job.token === job.token) this.result.render({ unknown: true });
+        if (this.result?.job === job) this.result.render({ unknown: true });
     }
 
     /** Run a batch again for some of its bundles, as they are in the list now. */
@@ -1070,20 +1113,20 @@ class LibraryModal {
         }
         if (!force && !(await this.leaveEditor())) return;
         this.selection = new Set([id]);
-        const generation = this.showPane(el("div", "bl-empty-state bl-loading", "Loading…"));
+        const view = this.showPane(el("div", "bl-empty-state bl-loading", "Loading…"));
         this.renderList();
         let bundle;
         try {
             bundle = await getBundle(id);
         } catch (error) {
-            if (generation !== this.editorGeneration) return;
+            if (!this.commands.pane.shows(view)) return;
             this.selection = new Set();
             this.showPlaceholder();
             this.renderList();
             this.status(error.message, "error");
             return;
         }
-        if (generation !== this.editorGeneration) return; // another bundle or a new draft was opened meanwhile
+        if (!this.commands.pane.shows(view)) return; // another bundle or a new draft was opened meanwhile
         this.show(new BundleEditor(this, bundle));
         this.renderList();
     }
@@ -1141,9 +1184,9 @@ class LibraryModal {
     }
 
     /**
-     * Put `content` in the pane, dropping the editor shown before; the new
-     * generation. Name what it is: an editor, the trash, the batch panel or a
-     * batch's result.
+     * Put `content` in the pane, dropping the editor shown before; returns its
+     * view number (what was shown before no longer owns the pane). Name what
+     * it is: an editor, the trash, the batch panel or a batch's result.
      */
     showPane(content, { editor = null, trash = null, batch = null, result = null } = {}) {
         if (this.editor !== editor) this.editor?.dispose();
@@ -1154,9 +1197,10 @@ class LibraryModal {
         this.trashButton.classList.toggle("selected", !!trash);
         this.pane.replaceChildren(content);
         this.pane.scrollTop = 0;
+        const view = this.commands.pane.show();
         this.keepFocus();
         this.editorChanged();
-        return ++this.editorGeneration;
+        return view;
     }
 
     // Called by the editor.
@@ -1166,12 +1210,13 @@ class LibraryModal {
         if (open) await this.open(bundle.id, { force: true });
     }
 
-    async bundleDeleted(bundle) {
+    async bundleDeleted(bundle, answer = {}) {
         this.selection = new Set();
         this.showPlaceholder();
         void this.refreshTrashCount();
         await this.reload();
-        this.status(`Deleted '${bundle.name}'. It is in the trash.`);
+        if (answer.warning) this.status(`Deleted '${bundle.name}'. It is in the trash. ${answer.warning}`, "error");
+        else this.status(`Deleted '${bundle.name}'. It is in the trash.`);
     }
 
     discardDraft() {
@@ -1180,16 +1225,26 @@ class LibraryModal {
         this.status("Discarded the new bundle.");
     }
 
+    /**
+     * What "Use this bundle" would hand to the node now, or null: the summary
+     * of the bundle the editor shows, as saved, once nothing is on its way (a
+     * save holds the window until the list is read again).
+     */
+    pickable() {
+        if (!this.editor?.saved || this.unsaved || this.commands.running || this.layer) return null;
+        return this.editor.model.summary();
+    }
+
     editorChanged() {
         this.refreshLock();
         if (!this.onPick) return;
-        const ready = this.editor?.saved && !this.unsaved;
-        const summary = ready ? this.all.find((b) => b.id === this.editor.saved.id) : null;
+        const summary = this.pickable();
         const lacking = summary ? this.lacking(summary) : [];
         this.pickButton.disabled = !summary;
         this.pickHint.replaceChildren(...(!this.editor
             ? [this.selection.size > 1 ? "Select only one bundle to use it." : "Select a bundle."]
-            : !ready ? ["Save or revert your changes first."]
+            : this.commands.running ? [this.commands.waiting]
+            : !summary ? ["Save or revert your changes first."]
                 : lacking.length === 1 ? ["⚠ The node's connected output ", code(lacking[0]),
                     " is missing here or has another type; running would fail."]
                     : lacking.length ? ["⚠ The node's connected outputs ", ...codeList(lacking),
@@ -1198,8 +1253,11 @@ class LibraryModal {
     }
 
     pick() {
-        const summary = this.editor?.saved && !this.unsaved && this.all.find((b) => b.id === this.editor.saved.id);
-        if (!summary) return;
+        const summary = this.pickable();
+        if (!summary) {
+            if (this.lockReason) this.status(this.lockReason);
+            return;
+        }
         this.onPick(summary);
         this.close();
     }
@@ -1207,7 +1265,7 @@ class LibraryModal {
     /** Close, unless something is on its way; with unsaved changes, ask: Save, Discard or Keep editing. */
     async requestClose() {
         if (this.layer) return;
-        if (this.batchRunning || this.editor?.saving) {
+        if (this.commands.running) {
             this.status(this.lockReason);
             return;
         }
@@ -1224,15 +1282,15 @@ class LibraryModal {
         if (choice === "discard") {
             this.close();
         } else if (choice === "save") {
-            await editor.save();
-            if (this.editor === editor && !this.unsaved) this.close();
+            // Closes only when it was saved as it is: a failure, a conflict or a
+            // category it could not be put in stays on screen.
+            if (await editor.save() && this.editor === editor && !this.unsaved) this.close();
         }
     }
 
     close() {
         this.editor?.dispose();
         this.endDrag();
-        clearTimeout(this.stallTimer);
         window.removeEventListener("pointermove", this.onPointerMove, true);
         this.overlay.remove();
         for (const type of STRAY_EVENTS) window.removeEventListener(type, this.onStrayEvent, true);
@@ -1248,26 +1306,41 @@ class LibraryModal {
         if (kind !== "error") this.statusTimer = setTimeout(() => { this.statusLine.textContent = ""; }, 6000);
     }
 
-    // -- layers: confirmations and the image viewer ----------------------------
+    // -- layers: questions and the image viewer ---------------------------------
 
+    /**
+     * Show `content` over the window; returns its token. One at a time: one
+     * still open is dismissed first. While it is open, the rest of the window
+     * is inert (neither the pointer, nor Tab, nor a shortcut reaches it), and
+     * when it closes the focus goes back where it was.
+     */
     showLayer(content, dismiss) {
-        this.hideLayer();
-        const layer = el("div", "bl-layer");
-        layer.append(content);
-        layer.addEventListener("pointerdown", (e) => {
-            if (e.target === layer) dismiss();
+        this.layer?.dismiss();
+        const element = el("div", "bl-layer");
+        element.append(content);
+        element.addEventListener("pointerdown", (e) => {
+            if (e.target === element) dismiss();
         });
-        this.dialog.append(layer);
-        this.layer = { element: layer, dismiss, returnFocus: document.activeElement };
+        const behind = [...this.dialog.children];
+        for (const part of behind) part.inert = true;
+        const returnFocus = document.activeElement;
+        this.dialog.append(element);
+        const token = this.commands.question.show();
+        this.layer = { token, element, dismiss, behind, returnFocus };
+        return token;
     }
 
-    hideLayer() {
-        if (!this.layer) return;
-        const { element, returnFocus } = this.layer;
+    /** Close the layer `token` names, if it is still the one shown; whether it was. */
+    hideLayer(token) {
+        if (!this.layer || !this.commands.question.hide(token)) return false;
+        const { element, behind, returnFocus } = this.layer;
         this.layer = null;
         element.remove();
+        for (const part of behind) part.inert = false;
         if (returnFocus?.isConnected && this.overlay.contains(returnFocus)) returnFocus.focus({ preventScroll: true });
         else this.keepFocus();
+        this.editorChanged(); // "Use this bundle" waits while a question is open
+        return true;
     }
 
     /**
@@ -1278,8 +1351,9 @@ class LibraryModal {
         return new Promise((resolve) => {
             const box = el("div", extra ? "bl-confirm wide" : "bl-confirm");
             const row = el("div", "bl-confirm-buttons");
+            let token = null;
             const finish = (value) => {
-                this.hideLayer();
+                this.hideLayer(token); // its own question only
                 resolve(value);
             };
             for (const [label, value, style] of choices) {
@@ -1289,7 +1363,7 @@ class LibraryModal {
             }
             box.append(el("div", "bl-confirm-title", title),
                 ...[message].flat().map((text) => el("div", "bl-confirm-text", text)), ...(extra ? [extra] : []), row);
-            this.showLayer(box, () => finish(choices.at(-1)[1]));
+            token = this.showLayer(box, () => finish(choices.at(-1)[1]));
             row.lastChild.focus(); // the safe choice
         });
     }
@@ -1297,7 +1371,9 @@ class LibraryModal {
     /**
      * Ask for a line of text. `submit(value)` does the work: when it throws, its
      * message shows under the input and the question stays. Resolves to true
-     * once submitted, false when cancelled.
+     * once submitted, false when cancelled. Cancel works while `submit` is out
+     * too: what it then finishes no longer touches this question, nor the one
+     * shown by then.
      */
     ask(title, message, { value = "", placeholder = "", maxLength = 60, action = "OK", submit }) {
         return new Promise((resolve) => {
@@ -1313,8 +1389,9 @@ class LibraryModal {
             ok.type = "submit";
             const cancel = button("Cancel");
             let busy = false;
+            let token = null;
             const finish = (done) => {
-                this.hideLayer();
+                this.hideLayer(token);
                 resolve(done);
             };
             cancel.addEventListener("click", () => finish(false));
@@ -1326,6 +1403,7 @@ class LibraryModal {
                     await submit(input.value);
                     finish(true);
                 } catch (error) {
+                    if (!this.commands.question.shows(token)) return; // cancelled meanwhile
                     problem.textContent = error.message;
                     problem.hidden = false;
                     busy = ok.disabled = false;
@@ -1335,7 +1413,7 @@ class LibraryModal {
             row.append(ok, cancel);
             box.append(el("div", "bl-confirm-title", title), ...(message ? [el("div", "bl-confirm-text", message)] : []),
                 input, problem, row);
-            this.showLayer(box, () => {
+            token = this.showLayer(box, () => {
                 if (!busy) finish(false);
             });
             input.focus();
@@ -1353,8 +1431,8 @@ class LibraryModal {
         img.src = url;
         img.alt = caption;
         box.append(img, el("div", "bl-viewer-caption", caption));
-        box.addEventListener("click", () => this.hideLayer());
-        this.showLayer(box, () => this.hideLayer());
+        const token = this.showLayer(box, () => this.hideLayer(token));
+        box.addEventListener("click", () => this.hideLayer(token));
     }
 }
 

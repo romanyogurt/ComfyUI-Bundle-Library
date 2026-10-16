@@ -38,11 +38,19 @@ class SlotSpecTest(unittest.TestCase):
             "name not a string": json.dumps({"v": 1, "slots": [{"name": 3, "type": "text"}]}),
             "unknown type": spec(("mesh", "mesh")),
             "a ComfyUI type, not a field type": spec(("prompt", "STRING")),
+            "what every object has, in the frontend": spec(("prompt", "constructor")),
+            "a type that is not a string": json.dumps({"v": 1, "slots": [{"name": "x", "type": ["text"]}]}),
+            "a type that is an object": json.dumps({"v": 1, "slots": [{"name": "x", "type": {}}]}),
+            "a version that is true": json.dumps({"v": True, "slots": []}),
             "more slots than outputs": spec(*[(f"f{i}", "text") for i in range(POOL_SIZE + 1)]),
         }
         for label, text in refused.items():
             with self.subTest(label), self.assertRaises(ValueError):
                 parse_slot_spec(text)
+
+    def test_the_version_reads_as_the_frontend_reads_it(self):
+        # JavaScript's JSON reads 1.0 as 1: a spec the frontend takes is taken here too.
+        self.assertEqual(parse_slot_spec('{"v": 1.0, "slots": [{"name": "x", "type": "text"}]}'), [("x", "text")])
 
 
 class FieldProblemTest(unittest.TestCase):

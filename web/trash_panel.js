@@ -36,8 +36,10 @@ export class TrashPanel {
         const cleanup = button("Clean up unused files…");
         cleanup.addEventListener("click", () => void this.cleanup());
         const empty = button("Empty trash", "bl-btn danger");
-        empty.disabled = trash.length === 0;
-        empty.addEventListener("click", () => void this.empty(trash));
+        const deletable = trash.filter((entry) => !entry.read_only); // emptying leaves the others alone
+        empty.disabled = deletable.length === 0;
+        if (trash.length && !deletable.length) empty.title = "This version cannot change the bundles in the trash.";
+        empty.addEventListener("click", () => void this.empty(deletable, trash.length - deletable.length));
         head.append(el("div", "bl-trash-title", "Trash"), cleanup, empty);
         const hint = el("div", "bl-hint", "Deleted bundles stay here until you delete them for good. "
             + "The files they use are kept, so a restored bundle is whole.");
@@ -64,7 +66,12 @@ export class TrashPanel {
         text.append(el("div", "bl-list-name", label ?? entry.name),
             el("div", "bl-list-sub", [`Deleted ${formatTime(entry.deleted_at)}`, plural(entry.fields.length, "field"),
                 category ? `back to ${category}` : null, entry.favorite ? "★" : null].filter(Boolean).join(" · ")));
+        // A bundle this version cannot change (it holds data from a newer one)
+        // cannot be restored by it; deleting it for good is asked for as such.
+        if (entry.read_only) text.append(el("div", "bl-list-warn", "🔒 Cannot be changed by this version"));
         const restore = button("Restore");
+        restore.disabled = !!entry.read_only;
+        if (entry.read_only) restore.title = "This version of Bundle Library cannot change this bundle. Update the node pack to restore it.";
         restore.addEventListener("click", () => void this.restore(entry));
         const purge = button("Delete forever", "bl-btn danger");
         purge.addEventListener("click", () => void this.purge(entry, `'${label ?? entry.name}'`));
@@ -83,14 +90,20 @@ export class TrashPanel {
         await this.refresh();
     }
 
-    /** Delete one bundle for good, as it was shown (the server keeps it if it changed since). */
+    /**
+     * Delete one bundle for good, as it was shown (the server keeps it if it
+     * changed since). One this version cannot change is deleted only when the
+     * user confirms that as well.
+     */
     async purge(entry, what) {
-        const confirmed = await this.modal.confirm(`Delete ${what} for good?`,
+        const confirmed = await this.modal.confirm(`Delete ${what} for good?`, [
+            ...(entry.read_only ? [`This version of Bundle Library cannot fully use it: it ${entry.read_only}. `
+                + "If a newer Bundle Library saved it, that version loses it too."] : []),
             "It cannot be restored afterwards. The files it used stay in the library until you clean up unused files.",
-            "Delete forever", { danger: true });
+        ], "Delete forever", { danger: true });
         if (!confirmed) return;
         try {
-            await purgeBundle(entry.id, { revision: entry.revision });
+            await purgeBundle(entry.id, { revision: entry.revision, unreadable: !!entry.read_only });
             this.modal.status(`Deleted ${what} for good.`);
         } catch (error) {
             this.modal.status(error.message, "error");
@@ -98,20 +111,26 @@ export class TrashPanel {
         await this.refresh();
     }
 
-    /** Delete for good the bundles shown; any put in the trash or changed since stay. */
-    async empty(trash) {
+    /**
+     * Delete for good the bundles shown (`trash`: those this version can
+     * change; `locked` more stay); any put in the trash or changed since stay.
+     */
+    async empty(trash, locked = 0) {
         const count = trash.length;
         const confirmed = await this.modal.confirm("Empty the trash?",
             `${plural(count, "deleted bundle")} will be gone for good. `
             + "The files they used stay in the library until you clean up unused files. "
-            + "Files this version cannot read are not touched.",
+            + (locked ? `${plural(locked, "bundle")} this version cannot change ${locked === 1 ? "stays" : "stay"}, `
+                + "and files it cannot read are not touched." : "Files this version cannot read are not touched."),
             "Empty trash", { danger: true });
         if (!confirmed) return;
         try {
             const { deleted, results } = await emptyTrash(Object.fromEntries(trash.map((e) => [e.id, e.revision])));
-            const left = results.length - deleted;
+            const unchangeable = results.filter((r) => r.code === "unreadable_file").length;
+            const left = results.length - deleted - unchangeable;
             this.modal.status(`Emptied the trash: ${plural(deleted, "bundle")} deleted for good.`
-                + (left ? ` ${plural(left, "bundle")} changed or restored meanwhile ${left === 1 ? "was" : "were"} kept.` : ""));
+                + (left ? ` ${plural(left, "bundle")} changed or restored meanwhile ${left === 1 ? "was" : "were"} kept.` : "")
+                + (unchangeable ? ` ${plural(unchangeable, "bundle")} this version cannot change ${unchangeable === 1 ? "was" : "were"} kept.` : ""));
         } catch (error) {
             this.modal.status(error.message, "error");
         }

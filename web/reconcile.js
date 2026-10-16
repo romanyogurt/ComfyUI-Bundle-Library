@@ -28,7 +28,9 @@ export function parseSpec(text) {
     if (data?.v !== 1 || !Array.isArray(data.slots)) return null;
     const slots = [];
     for (const slot of data.slots) {
-        if (typeof slot?.name !== "string" || !slot.name || !(slot.type in COMFY_TYPES)) return null;
+        // Only the types themselves: `in` would also take what every object has ("constructor", "toString").
+        if (typeof slot?.name !== "string" || !slot.name || typeof slot.type !== "string"
+            || !Object.hasOwn(COMFY_TYPES, slot.type)) return null;
         slots.push({ name: slot.name, type: slot.type });
     }
     return slots.length <= POOL_SIZE ? slots : null;

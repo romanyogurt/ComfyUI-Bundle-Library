@@ -17,17 +17,28 @@ function thumb(bundle) {
     return element;
 }
 
+// The category select's entry while the category chosen in it is gone (deleted
+// since): Move waits for a new choice instead of quietly taking "No category".
+const GONE = "gone";
+
 export class BatchPanel {
     /** `bundles`: the selected summaries, in list order. */
     constructor(modal, bundles) {
         this.modal = modal;
+        // What the panel's inputs hold, kept when the selection or the list is
+        // drawn again: the category Move puts the bundles in, an id or "" for
+        // none, or null once the chosen category is gone.
+        this.category = "";
         this.root = el("div", "bl-batch");
         this.show(bundles);
     }
 
+    /** Show the selection as it is now; what was chosen in the panel stays. */
     show(bundles) {
         this.bundles = bundles;
         const { modal } = this;
+        const focused = this.root.contains(document.activeElement) ? document.activeElement.dataset.control : null;
+        if (this.category && !modal.categories.some((c) => c.id === this.category)) this.category = null;
         const head = el("div", "bl-batch-head");
         const clear = button("Clear selection");
         clear.addEventListener("click", () => modal.clearSelection());
@@ -49,33 +60,51 @@ export class BatchPanel {
         const why = modal.organizeBlocker;
         const place = el("div", "bl-batch-row");
         this.categorySelect = el("select", "bl-input bl-batch-category");
-        for (const [value, label] of [["", "No category"], ...modal.categories.map((c) => [c.id, c.name])]) {
+        this.categorySelect.dataset.control = "category";
+        const choices = [["", "No category"], ...modal.categories.map((c) => [c.id, c.name])];
+        if (this.category === null) choices.unshift([GONE, "Choose a category (the one chosen was deleted)"]);
+        for (const [value, label] of choices) {
             const option = el("option", null, label);
             option.value = value;
+            option.disabled = value === GONE;
             this.categorySelect.append(option);
         }
+        this.categorySelect.value = this.category ?? GONE;
         const move = button("Move", "bl-btn primary");
+        move.dataset.control = "move";
+        const chosen = () => {
+            move.disabled = !!why || this.category === null;
+            move.title = why ?? (this.category === null ? "The category chosen was deleted. Choose one again." : "");
+        };
+        this.categorySelect.addEventListener("change", () => {
+            this.category = this.categorySelect.value;
+            chosen();
+        });
         move.addEventListener("click", () => {
-            const category = this.categorySelect.value || null;
-            void modal.runBatch("set_category", { category }, this.bundles);
+            if (this.category === null) return;
+            void modal.runBatch("set_category", { category: this.category || null }, this.bundles);
         });
         place.append(el("span", "bl-label", "Category"), this.categorySelect, move);
 
         const stars = el("div", "bl-batch-row");
         const add = button("", "bl-btn");
+        add.dataset.control = "add-favorites";
         add.append("★ Add to favorites");
         add.addEventListener("click", () => void modal.runBatch("set_favorite", { favorite: true }, this.bundles));
         const remove = button("", "bl-btn");
+        remove.dataset.control = "remove-favorites";
         remove.append("☆ Remove from favorites");
         remove.addEventListener("click", () => void modal.runBatch("set_favorite", { favorite: false }, this.bundles));
         stars.append(el("span", "bl-label", "Favorites"), add, remove);
-        for (const control of [this.categorySelect, move, add, remove]) {
+        for (const control of [this.categorySelect, add, remove]) {
             control.disabled = !!why;
             if (why) control.title = why;
         }
+        chosen();
 
         const trash = el("div", "bl-batch-row");
         const toTrash = button("", "bl-btn danger");
+        toTrash.dataset.control = "trash";
         toTrash.append(icon("trash"), " Move to trash…");
         toTrash.addEventListener("click", () => void modal.runBatch("trash", {}, this.bundles));
         trash.append(el("span", "bl-label", "Trash"), toTrash);
@@ -85,6 +114,7 @@ export class BatchPanel {
         }
 
         this.root.replaceChildren(head, names, place, stars, trash);
+        if (focused) this.root.querySelector(`[data-control="${focused}"]`)?.focus({ preventScroll: true });
     }
 }
 

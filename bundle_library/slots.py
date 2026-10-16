@@ -16,6 +16,8 @@ def parse_slot_spec(text):
     except json.JSONDecodeError as e:
         raise ValueError(f"not JSON ({e.msg})") from None
     version = data.get("v") if isinstance(data, dict) else None
+    if type(version) is float and version == 1:
+        version = 1  # JSON's 1.0: JavaScript reads it as 1, so the frontend takes it too
     if type(version) is int and version > 1:
         raise ValueError(f"version {version} of the outputs is from a newer Bundle Library")
     if version != 1 or type(version) is not int or not isinstance(data.get("slots"), list):
@@ -27,7 +29,7 @@ def parse_slot_spec(text):
         if isinstance(name, str) and name and isinstance(field_type, str) and field_type and field_type not in COMFY_TYPES:
             raise ValueError(f"output '{name}' has the type '{field_type}', unknown to this version "
                              "(saved by a newer Bundle Library?)")
-        if not isinstance(name, str) or not name or field_type not in COMFY_TYPES:
+        if not isinstance(name, str) or not name or not isinstance(field_type, str) or field_type not in COMFY_TYPES:
             raise ValueError(f"invalid slot {slot!r}")
         slots.append((name, field_type))
     if len(slots) > POOL_SIZE:

@@ -48,9 +48,10 @@ class VersionTest(unittest.TestCase):
 
     def test_int_range_and_text_preview_match(self):
         self.assertEqual((model.INT_MIN, model.INT_MAX), (-(2 ** 53 - 1), 2 ** 53 - 1))  # Number.MAX_SAFE_INTEGER
-        self.assertIn("Number.MAX_SAFE_INTEGER", js("bundle_editor.js"))
-        preview = re.search(r"const TEXT_PREVIEW = (\d+);", js("loader_node.js")).group(1)
-        self.assertEqual(int(preview), store.TEXT_PREVIEW)
+        self.assertIn("Number.MAX_SAFE_INTEGER", js("editor_model.js"))
+        for name in ("loader_node.js", "editor_model.js"):  # the node's preview, and the summary the picker hands over
+            preview = re.search(r"const TEXT_PREVIEW = (\d+);", js(name)).group(1)
+            self.assertEqual(int(preview), store.TEXT_PREVIEW, name)
 
 
 if __name__ == "__main__":
