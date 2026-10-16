@@ -236,8 +236,12 @@ async function waitForApp(page) {
     });
 }
 
-/** Open ComfyUI in a fresh browser; `name` picks the output folder for screenshots and results. */
-async function startSession(name) {
+/**
+ * Open ComfyUI in a fresh browser; `name` picks the output folder for screenshots
+ * and results. `expectedErrors` adds console errors this scenario provokes on
+ * purpose ({text, url} patterns, like EXPECTED_CONSOLE_ERRORS).
+ */
+async function startSession(name, { expectedErrors = [] } = {}) {
     const out = process.env.BL_TEST_OUT || path.join(os.tmpdir(), `bundle-library-${name}`);
     fs.mkdirSync(out, { recursive: true });
     const results = [];
@@ -317,7 +321,8 @@ async function startSession(name) {
             await browser.close(); // first, so the page cannot queue anything more
             check("test runs removed from the job history (record)", true, { runs: await forgetRuns(clientIds) });
             check("no settings/workflow writes reached the server (blocked list)", true, [...new Set(blocked)]);
-            const unexpected = consoleErrors.filter((e) => !expectedError(e));
+            const expectedHere = (e) => expectedErrors.some((k) => k.text.test(e.text) && (!k.url || k.url.test(e.url)));
+            const unexpected = consoleErrors.filter((e) => !expectedError(e) && !expectedHere(e));
             check("no unexpected browser console errors", unexpected.length === 0,
                 { unexpected: unexpected.slice(0, 10), expected: consoleErrors.length - unexpected.length });
             fs.writeFileSync(path.join(out, "results.json"),

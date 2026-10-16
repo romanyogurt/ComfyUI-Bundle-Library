@@ -1248,3 +1248,117 @@
     margin-bottom: 10px;
 }
 
+
+/* While the editor holds changes (or a save or a batch is out), the list is locked. */
+.bl-modal-list.locked .bl-list-item:not(.selected) {
+    opacity: 0.55;
+    cursor: default;
+}
+
+/* Several bundles at once, in the pane: the selection, the actions, a result. */
+.bl-batch {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.bl-batch-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.bl-batch-title {
+    flex: 1;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.bl-batch-names {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 6px;
+    border-radius: 6px;
+    background: var(--comfy-menu-secondary-bg, #303030);
+}
+
+.bl-batch-name {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 8px;
+    align-items: center;
+}
+
+.bl-batch-thumb {
+    width: 32px;
+    height: 32px;
+    object-fit: cover;
+    border-radius: 4px;
+    background: var(--comfy-input-bg, #222);
+}
+
+.bl-batch-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.bl-batch-row > .bl-label {
+    width: 80px;
+}
+
+.bl-batch-category {
+    min-width: 200px;
+}
+
+.bl-batch-summary {
+    color: var(--descrip-text, #999);
+}
+
+.bl-batch-outcome {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--comfy-menu-secondary-bg, #303030);
+}
+
+.bl-batch-outcome.retry,
+.bl-batch-outcome.other {
+    border-left: 3px solid var(--error-text, #ff4444);
+}
+
+.bl-batch-outcome.revision_conflict,
+.bl-batch-outcome.protected,
+.bl-batch-outcome.not_found,
+.bl-batch-outcome.in_trash {
+    border-left: 3px solid #f59e0b;
+}
+
+.bl-batch-outcome-title {
+    font-weight: 600;
+}
+
+.bl-batch-outcome-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.bl-batch-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.bl-batch-stall {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+}

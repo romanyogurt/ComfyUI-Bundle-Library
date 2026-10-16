@@ -65,6 +65,7 @@ export class BundleEditor {
         this.modal = modal;
         this.saved = bundle;
         this.draft = bundle ? draftOf(bundle) : { name: newName, tags: [], note: "", fields: [] };
+        this.blank = bundle ? null : JSON.stringify(editable(this.draft)); // a new draft as it started
         // Uploads running, by field: { controller, name, sent, bar }. Only the
         // file chosen last for a field counts; an earlier upload is stopped.
         this.transfers = new Map();
@@ -72,6 +73,7 @@ export class BundleEditor {
         this.pendingCategory = null; // where a new bundle goes when first saved (an id, or null)
         this.cards = [];
         this.invalid = new Set(); // fields whose number input does not parse
+        this.typed = new Set(); // of those, the ones the user typed (not a value the bundle came with)
         this.problems = 0; // fields with a name the server would refuse
         this.root = el("div", "bl-editor");
         this.render();
@@ -80,6 +82,21 @@ export class BundleEditor {
     /** How many uploads are running. */
     get uploads() {
         return this.transfers.size;
+    }
+
+    /**
+     * Whether leaving now would lose something: a change to the draft, a
+     * number typed that does not parse, or an upload in progress. A warning
+     * the stored bundle came with is not a change.
+     */
+    get changed() {
+        return this.dirty || this.uploads > 0 || this.typed.size > 0;
+    }
+
+    /** A new draft nobody has touched yet: it goes without asking. */
+    get untouched() {
+        return !this.saved && !this.pendingCategory && this.uploads === 0 && this.typed.size === 0
+            && JSON.stringify(editable(this.draft)) === this.blank;
     }
 
     get dirty() {
@@ -103,6 +120,7 @@ export class BundleEditor {
 
     render() {
         this.invalid.clear(); // the inputs are rebuilt from the draft's (valid) values
+        this.typed.clear();
         const fields = el("div", "bl-fields");
         this.cards = this.draft.fields.map((field, index) => this.renderField(field, index));
         fields.append(...this.cards.map((card) => card.root));
@@ -201,6 +219,7 @@ export class BundleEditor {
         } else {
             this.pendingCategory = category;
             this.organizationChanged();
+            this.refreshState(); // a chosen category makes a new draft one to keep
         }
     }
 
@@ -343,6 +362,7 @@ export class BundleEditor {
             // which a browser number would round: show that, and keep the bundle
             // from being saved until it is changed.
             input.value = field.value_text ?? String(field.value);
+            const original = input.value;
             const tooLarge = `Whole numbers must be within ±${Number.MAX_SAFE_INTEGER.toLocaleString("en-US")}.`;
             if (field.value_text) {
                 error.textContent = `${tooLarge} Change this value before saving.`;
@@ -358,10 +378,14 @@ export class BundleEditor {
                     field.value = value;
                     delete field.value_text;
                     this.invalid.delete(field);
+                    this.typed.delete(field);
                 } else {
                     error.textContent = field.type !== "int" ? "Enter a number."
                         : Number.isInteger(value) ? tooLarge : "Enter a whole number.";
                     this.invalid.add(field);
+                    // the text the bundle came with is not a change, even when it cannot be saved
+                    if (input.value === original) this.typed.delete(field);
+                    else this.typed.add(field);
                 }
                 this.refreshState();
             });

@@ -92,6 +92,8 @@ class RoutesTest(AioHTTPTestCase):
             "delete category": lambda headers: self.client.delete(f"{P}/categories/{SOME_ID}", headers=headers),
             "place": lambda headers: self.client.put(path + "/category", json={"category": None}, headers=headers),
             "star": lambda headers: self.client.put(path + "/favorite", json={"favorite": True}, headers=headers),
+            "batch": lambda headers: self.client.post(P + "/bundles/batch", json={
+                "ids": [bundle["id"]], "action": "trash", "expected_revisions": {bundle["id"]: 1}}, headers=headers),
         }
         refusals = [({}, "missing_header"), ({**WRITE, "Sec-Fetch-Site": "same-site"}, "cross_site"),
                     ({**WRITE, "Origin": "null"}, "origin_mismatch"),
@@ -282,6 +284,21 @@ class RoutesTest(AioHTTPTestCase):
         await self.error(await self.client.put(f"{P}/bundles/{bundle['id']}/category", json={"category": "../x"},
                                                headers=WRITE), 400, "invalid_id")
         self.assertEqual((await self.body(await self.client.get(f"{P}/bundles/{bundle['id']}"), 200))["revision"], 1)
+
+    async def test_batch(self):
+        made = [await self.body(await self.client.post(P + "/bundles", json=await self.bundle_data(color=color), headers=WRITE),
+                                201) for color in ("navy", "olive")]
+        ids = [b["id"] for b in made]
+        starred = await self.body(await self.client.post(P + "/bundles/batch", json={
+            "ids": ids + [ids[0]], "action": "set_favorite", "favorite": True}, headers=WRITE), 200)
+        self.assertEqual((starred["changed"], [r["id"] for r in starred["results"]]), (2, ids))
+        trashed = await self.body(await self.client.post(P + "/bundles/batch", json={
+            "ids": ids, "action": "trash", "expected_revisions": {ids[0]: 1, ids[1]: 7}}, headers=WRITE), 200)
+        self.assertEqual([(r["ok"], r.get("code")) for r in trashed["results"]], [(True, None), (False, "revision_conflict")])
+        await self.error(await self.client.post(P + "/bundles/batch", json={"ids": ids, "action": "add_tags", "tags": ["x"]},
+                                                headers=WRITE), 400, "unsupported_action")
+        await self.error(await self.client.post(P + "/bundles/batch", json={"ids": ["../x"], "action": "trash"},
+                                                headers=WRITE), 400, "invalid_id")
 
     async def test_writes_from_a_page_of_another_version_are_refused(self):
         data = await self.bundle_data()

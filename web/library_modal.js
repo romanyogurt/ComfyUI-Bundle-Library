@@ -2,11 +2,12 @@
 // the editor on the right. It is a document.body overlay of its own: ComfyUI's
 // dialogs need Vue components, and they would open underneath it.
 import {
-    CHANGED_EVENT, createCategory, deleteCategory, getBundle, listLibrary, listTrash, purgeBundle, renameCategory,
-    searchBundleIds, setCategory, setFavorite, thumbnailURL,
+    CHANGED_EVENT, batchBundles, createCategory, deleteCategory, getBundle, listLibrary, listTrash, purgeBundle,
+    renameCategory, searchBundleIds, setCategory, setFavorite, thumbnailURL,
 } from "./api.js";
+import { BatchPanel, BatchResult } from "./batch_panel.js";
 import { BundleEditor } from "./bundle_editor.js";
-import { button, closeMenus, code, codeList, el, icon, menu } from "./dom.js";
+import { button, closeMenus, code, codeList, el, icon, menu, plural } from "./dom.js";
 import { ATTENTION, CATEGORY, FAVORITES, UNCATEGORIZED, compactGroups, groupBundles, groupLabel } from "./groups.js";
 import { displayNames } from "./names.js";
 import { slotStatuses } from "./reconcile.js";
@@ -17,9 +18,25 @@ let current = null;
 // Caught on window while the modal is open; see build().
 const STRAY_EVENTS = ["keydown", "keyup", "keypress", "paste", "copy", "cut"];
 
-// What a bundle row carries while dragged onto a group. Files dragged in from
-// outside do not have it and are not taken for a move.
+// What a bundle row carries while dragged onto a group: the ids moved, as a
+// JSON list. Files dragged in from outside do not have it and are not taken
+// for a move.
 const DRAG_TYPE = "application/x-bundle-library-bundle";
+
+// How long a change to several bundles may go unanswered before the user is
+// offered to stop waiting (fetch has no time limit of its own).
+const STALL_MS = 30000;
+
+/** The ids a drag carries (a JSON list; a bare id from an older page counts as one). */
+function draggedIds(data) {
+    try {
+        const ids = JSON.parse(data);
+        if (Array.isArray(ids)) return ids.filter((id) => typeof id === "string");
+    } catch {
+        // not JSON
+    }
+    return data ? [data] : [];
+}
 
 // Kept in this browser: the collapsed groups and the sort. Only a convenience:
 // without storage every group starts expanded and the list sorted by name.
@@ -75,7 +92,13 @@ class LibraryModal {
     constructor({ onPick, linked, selected }) {
         this.onPick = onPick;
         this.linked = linked;
-        this.selectedId = selected;
+        // The selected bundles, by id: one opens in the editor, two or more show
+        // what can be done to all of them. The anchor is the row a Shift+click
+        // range starts from: {group, id}.
+        this.selection = new Set(selected ? [selected] : []);
+        this.anchor = null;
+        this.batchRunning = null; // the change to several bundles that is out, until its answer (or Stop waiting)
+        this.batchToken = 0;
         this.all = [];
         this.errors = []; // the files this version cannot use, shown under Needs attention
         this.categories = [];
@@ -120,11 +143,13 @@ class LibraryModal {
         this.search.placeholder = "Search names, tags, fields and text";
         let searchTimer = null;
         this.search.addEventListener("input", () => {
+            if (this.lockReason) return; // disabled meanwhile; a typed key that slipped through does nothing
             clearTimeout(searchTimer);
             searchTimer = setTimeout(() => void this.applySearch(), 250);
         });
         const create = button("+ New bundle", "bl-btn primary bl-new");
         create.addEventListener("click", () => void this.newBundle());
+        this.createButton = create;
         const close = button("✕", "bl-btn icon bl-close", "Close (Esc)");
         close.addEventListener("click", () => void this.requestClose());
         header.append(title, this.search, create, close);
@@ -213,12 +238,18 @@ class LibraryModal {
         if (mod && (key === "s" || key === "o")) {
             e.preventDefault();
             if (key === "s" && !this.layer) void this.editor?.save();
+        } else if (mod && key === "a" && !this.layer && this.list.contains(e.target)) {
+            e.preventDefault(); // in the list only: a text box keeps its own Select all
+            this.selectAll();
         } else if (e.key === "Escape") {
             e.preventDefault();
-            // One thing at a time: a confirmation, an open menu, a drag, then the library.
+            // One thing at a time: a confirmation, an open menu, a drag, a selection of
+            // several bundles, then the library.
             if (this.layer) this.layer.dismiss();
             else if (closeMenus(this.dialog)) return;
             else if (this.dragging) this.endDrag();
+            else if (this.batchRunning) this.status(this.lockReason);
+            else if (this.selection.size > 1) this.clearSelection();
             else void this.requestClose();
         }
     }
@@ -230,7 +261,9 @@ class LibraryModal {
         this.newCategoryButton = button("", "bl-btn icon bl-new-category", "New category");
         this.newCategoryButton.setAttribute("aria-label", "New category");
         this.newCategoryButton.append(icon("folder-plus"));
-        this.newCategoryButton.addEventListener("click", () => void this.newCategory());
+        this.newCategoryButton.addEventListener("click", () => {
+            if (this.allowed()) void this.newCategory();
+        });
         const sort = menu(icon("sort-alpha-down"), () => SORTS.map(([value, text]) => ({
             text, value, checked: this.sortMode === value, action: () => this.setSort(value),
         })), { className: "bl-btn icon bl-sort-button", up: true });
@@ -258,6 +291,7 @@ class LibraryModal {
     }
 
     setSort(sort) {
+        if (!this.allowed()) return;
         this.sortMode = sort;
         remember(SORT_KEY, sort);
         this.showSort();
@@ -267,8 +301,8 @@ class LibraryModal {
     showSort() {
         const [, text, name] = SORTS.find(([value]) => value === this.sortMode);
         this.sortButton.replaceChildren(icon(name));
-        this.sortButton.title = `Sort: ${text.toLowerCase()}`;
-        this.sortButton.setAttribute("aria-label", this.sortButton.title);
+        this.sortButton.setAttribute("aria-label", `Sort: ${text.toLowerCase()}`);
+        this.sortButton.title = this.lockReason ?? `Sort: ${text.toLowerCase()}`;
     }
 
     /** The tags of the bundles in use, with how many bundles have each; for the tag menu. */
@@ -292,6 +326,7 @@ class LibraryModal {
     }
 
     setTag(tag) {
+        if (!this.allowed()) return;
         this.tag = tag;
         this.showTagFilter();
         this.renderList();
@@ -301,7 +336,7 @@ class LibraryModal {
     showTagFilter() {
         this.chips.hidden = !this.tag;
         this.tagButton.classList.toggle("active", !!this.tag);
-        this.tagButton.title = this.tag ? `Tag: ${this.tag}` : "Filter by tag";
+        this.tagButton.title = this.lockReason ?? (this.tag ? `Tag: ${this.tag}` : "Filter by tag");
         this.tagButton.setAttribute("aria-label", this.tag ? `Filter by tag (now: ${this.tag})` : "Filter by tag");
         if (!this.tag) {
             this.chips.replaceChildren();
@@ -309,6 +344,7 @@ class LibraryModal {
         }
         const chip = el("span", "bl-chip bl-filter-chip", `Tag: ${this.tag}`);
         const clear = button("×", "bl-chip-x", "Show every tag");
+        clear.disabled = !!this.lockReason;
         clear.setAttribute("aria-label", "Clear the tag filter");
         clear.addEventListener("click", () => {
             this.setTag("");
@@ -333,8 +369,8 @@ class LibraryModal {
         this.errors = library.errors ?? [];
         this.categories = library.categories ?? [];
         this.organization = library.organization ?? { revision: 0, state: "missing" };
-        this.newCategoryButton.disabled = !!this.organizeBlocker;
-        this.newCategoryButton.title = this.organizeBlocker ?? "New category";
+        this.shownLock = undefined; // the organization may have changed what the tools allow
+        this.refreshLock();
         if (this.tag && !this.all.some((b) => b.tags.some((t) => t.toLowerCase() === this.tag.toLowerCase()))) {
             this.tag = ""; // no bundle has it any more
             this.showTagFilter();
@@ -395,6 +431,7 @@ class LibraryModal {
                 : "No bundles yet. Create one with + New bundle."));
         }
         this.list.replaceChildren(...parts);
+        this.pruneSelection(visible);
         this.restoreFocus(focus);
         this.keepFocus();
         this.editorChanged();
@@ -425,12 +462,13 @@ class LibraryModal {
                 ["Delete…", () => void this.askDelete(group.category)],
             ], { className: "bl-btn icon bl-group-menu", title: `Rename or delete '${group.name}'`,
                 label: `Category ${group.name}` });
+            actions.opener.disabled = !!this.lockReason;
             head.append(actions.root);
         }
         const rows = el("div", "bl-group-rows");
         rows.hidden = collapsed;
         rows.append(...group.errors.map((entry) => this.renderError(entry)),
-            ...group.bundles.map((bundle) => this.renderItem(bundle)));
+            ...group.bundles.map((bundle) => this.renderItem(bundle, group.key)));
         if (!group.bundles.length && !group.errors.length && !nothing) {
             rows.append(el("div", "bl-group-empty", filtering ? EMPTY_WHILE_FILTERING : EMPTY_GROUP[group.kind]));
         }
@@ -467,18 +505,27 @@ class LibraryModal {
             root.classList.remove("drop-target");
             if (!carries(e)) return;
             e.preventDefault();
-            const id = e.dataTransfer.getData(DRAG_TYPE);
+            const ids = draggedIds(e.dataTransfer.getData(DRAG_TYPE));
             this.endDrag();
-            if (group.kind === FAVORITES) void this.setFavorite(id, true);
-            else void this.moveBundle(id, group.kind === CATEGORY ? group.category.id : null);
+            if (!ids.length || !this.allowed()) return;
+            const category = group.kind === CATEGORY ? group.category.id : null;
+            if (ids.length > 1) { // a selection of several: one change for all, with its result in the pane
+                const bundles = this.all.filter((b) => ids.includes(b.id));
+                if (group.kind === FAVORITES) void this.runBatch("set_favorite", { favorite: true }, bundles);
+                else void this.runBatch("set_category", { category }, bundles);
+            } else if (group.kind === FAVORITES) {
+                void this.setFavorite(ids[0], true);
+            } else {
+                void this.moveBundle(ids[0], category);
+            }
         });
     }
 
-    renderItem(bundle) {
+    renderItem(bundle, groupKey) {
         const item = el("div", "bl-list-item");
         item.tabIndex = 0;
         item.dataset.id = bundle.id;
-        item.classList.toggle("selected", bundle.id === this.selectedId); // in every group it shows in
+        item.classList.toggle("selected", this.selection.has(bundle.id)); // in every group it shows in
         const image = bundle.fields.find((f) => (f.type === "image" || f.type === "video") && f.preview);
         const thumb = el(image ? "img" : "div", "bl-list-thumb");
         if (image) {
@@ -502,17 +549,17 @@ class LibraryModal {
             this.organizeBlocker ?? (bundle.favorite ? "Remove from the favorites" : "Add to the favorites"));
         star.classList.toggle("on", !!bundle.favorite);
         star.setAttribute("aria-pressed", String(!!bundle.favorite));
-        star.disabled = !!this.organizeBlocker;
+        star.disabled = !!this.organizeBlocker || !!this.lockReason;
         // Starring neither selects the row nor, with a double click, picks the bundle.
         star.addEventListener("click", (e) => {
             e.stopPropagation();
-            void this.toggleFavorite(bundle.id);
+            if (this.allowed()) void this.toggleFavorite(bundle.id);
         });
         star.addEventListener("dblclick", (e) => e.stopPropagation());
         item.append(thumb, text, star);
-        item.addEventListener("click", () => void this.open(bundle.id));
+        item.addEventListener("click", (e) => this.clickRow(e, groupKey, bundle.id));
         item.addEventListener("keydown", (e) => {
-            if (e.key === "Enter" && e.target === item) void this.open(bundle.id);
+            if (e.key === "Enter" && e.target === item) this.clickRow(e, groupKey, bundle.id);
         });
         if (this.onPick) {
             item.addEventListener("dblclick", async () => {
@@ -521,12 +568,18 @@ class LibraryModal {
             });
         }
         if (!this.organizeBlocker) {
-            item.draggable = true;
+            item.draggable = !this.lockReason;
             item.addEventListener("dragstart", (e) => {
-                e.dataTransfer.setData(DRAG_TYPE, bundle.id);
+                if (this.lockReason) {
+                    e.preventDefault();
+                    return;
+                }
+                // A row of the selection carries all of it, as it is now; any other row, itself.
+                const moving = this.selection.has(bundle.id) && this.selection.size > 1 ? this.selectedBundles() : [bundle];
+                e.dataTransfer.setData(DRAG_TYPE, JSON.stringify(moving.map((b) => b.id)));
                 e.dataTransfer.effectAllowed = "copyMove";
                 item.classList.add("dragging");
-                this.startDrag(bundle);
+                this.startDrag(moving);
             });
             item.addEventListener("dragend", () => {
                 item.classList.remove("dragging");
@@ -536,11 +589,11 @@ class LibraryModal {
         return item;
     }
 
-    /** A bundle row is being dragged: offer the place under the list if it can leave its category. */
-    startDrag(bundle) {
-        this.dragging = bundle.id;
+    /** Bundle rows are being dragged: offer the place under the list if one can leave its category. */
+    startDrag(bundles) {
+        this.dragging = bundles.map((b) => b.id);
         this.dragStarted = performance.now();
-        this.dropZone.hidden = !bundle.category;
+        this.dropZone.hidden = !bundles.some((b) => b.category);
     }
 
     /** The drag is over (or the list it started in is gone): put the tools back. */
@@ -562,7 +615,10 @@ class LibraryModal {
         row.append(el("div", "bl-list-thumb"), text);
         if (entry.id) {
             const purge = button("Delete forever", "bl-btn danger");
-            purge.addEventListener("click", () => void this.purgeUnreadable(entry));
+            purge.disabled = !!this.lockReason;
+            purge.addEventListener("click", () => {
+                if (this.allowed()) void this.purgeUnreadable(entry);
+            });
             row.append(purge);
         }
         return row;
@@ -597,6 +653,262 @@ class LibraryModal {
             target = focus.part === "star" ? row?.querySelector(".bl-star") : focus.part === "row" ? row : null;
         }
         target?.focus({ preventScroll: true });
+    }
+
+    // -- selection -------------------------------------------------------------
+
+    /** A click (or Enter) on a row: Ctrl/⌘ adds or takes it out, Shift selects from the anchor row. */
+    clickRow(e, groupKey, id) {
+        const several = !this.onPick && (e.ctrlKey || e.metaKey || e.shiftKey); // the picker picks one
+        if (!several) {
+            this.anchor = { group: groupKey, id };
+            void this.open(id);
+            return;
+        }
+        if (!this.allowed()) return;
+        let next;
+        const anchor = this.anchorRow();
+        if (e.shiftKey && anchor) {
+            next = new Set([...(e.ctrlKey || e.metaKey ? this.selection : []), ...this.rangeTo(anchor, groupKey, id)]);
+        } else {
+            next = new Set(this.selection);
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+            this.anchor = { group: groupKey, id };
+        }
+        void this.select(next);
+    }
+
+    /** The bundle rows a range or Select all may take: those in groups that are not collapsed. */
+    expandedRows() {
+        return [...this.list.querySelectorAll(".bl-group-rows:not([hidden]) .bl-list-item")];
+    }
+
+    /** The anchor's row, if it is still shown (in its own group: the same bundle elsewhere is another row). */
+    anchorRow() {
+        if (!this.anchor) return null;
+        return this.expandedRows().find((row) => row.dataset.id === this.anchor.id
+            && row.closest(".bl-group")?.dataset.group === this.anchor.group) ?? null;
+    }
+
+    /** The ids from the anchor row to a row, in list order, each once. */
+    rangeTo(anchor, groupKey, id) {
+        const rows = this.expandedRows();
+        const from = rows.indexOf(anchor);
+        const to = rows.findIndex((row) => row.dataset.id === id && row.closest(".bl-group")?.dataset.group === groupKey);
+        const [first, last] = from < to ? [from, to] : [to, from];
+        return [...new Set(rows.slice(first, last + 1).map((row) => row.dataset.id))];
+    }
+
+    selectAll() {
+        if (this.onPick || !this.allowed()) return;
+        void this.select(new Set(this.expandedRows().map((row) => row.dataset.id)));
+    }
+
+    clearSelection() {
+        this.selection = new Set();
+        this.anchor = null;
+        this.showPlaceholder();
+        this.renderList();
+    }
+
+    /** The selected bundles, in list order. */
+    selectedBundles() {
+        const order = new Map(this.visible().map((b, i) => [b.id, i]));
+        return this.all.filter((b) => this.selection.has(b.id))
+            .sort((a, b) => (order.get(a.id) ?? Infinity) - (order.get(b.id) ?? Infinity));
+    }
+
+    async select(ids) {
+        this.selection = ids;
+        await this.applySelection();
+    }
+
+    /** Show what the selection calls for: an editor for one bundle, the batch panel for more. */
+    async applySelection() {
+        const ids = [...this.selection];
+        if (ids.length > 1) {
+            this.showBatch();
+            this.renderList();
+        } else if (ids.length === 1) {
+            await this.open(ids[0], { force: true });
+        } else {
+            this.clearSelection();
+        }
+    }
+
+    showBatch() {
+        const bundles = this.selectedBundles();
+        if (this.batchPanel) {
+            this.batchPanel.show(bundles);
+            return;
+        }
+        const panel = new BatchPanel(this, bundles);
+        this.showPane(panel.root, { batch: panel });
+    }
+
+    /**
+     * Take out of a selection of several the bundles a search or filter hides
+     * (and say how many), and those that are gone. A single selection stays:
+     * its editor stays open. A result on screen stays too.
+     */
+    pruneSelection(visible) {
+        if (this.selection.size < 2) return;
+        const shown = new Set(visible.map((b) => b.id));
+        const gone = [...this.selection].filter((id) => !shown.has(id));
+        for (const id of gone) this.selection.delete(id);
+        const hidden = gone.filter((id) => this.all.some((b) => b.id === id)).length;
+        if (hidden) {
+            this.status(`${plural(hidden, "selected bundle")} hidden by the search or filter ${hidden === 1 ? "was" : "were"} `
+                + "taken out of the selection.");
+        }
+        if (this.batchPanel) {
+            // after this list is drawn: opening an editor draws it again
+            queueMicrotask(() => {
+                if (!this.batchPanel) return;
+                if (this.selection.size > 1) this.batchPanel.show(this.selectedBundles());
+                else void this.applySelection();
+            });
+        }
+    }
+
+    // -- the lock ----------------------------------------------------------------
+
+    /** Whether the editor holds something leaving would lose (a new draft nobody touched does not count). */
+    get unsaved() {
+        return !!this.editor && this.editor.changed && !this.editor.untouched;
+    }
+
+    /**
+     * Why everything but the editor is locked now, or null: a draft with changes
+     * (save or discard it first), a save on its way, or a change to several
+     * bundles that is out. The editor's own star and category stay free.
+     */
+    get lockReason() {
+        if (this.batchRunning) return "Wait until the change to the selected bundles is done.";
+        if (this.editor?.saving) return "Wait until the bundle is saved.";
+        if (this.unsaved) return "Save or discard your changes first.";
+        return null;
+    }
+
+    /** Whether a command outside the editor may run now; if not, the status line says why. */
+    allowed() {
+        const why = this.lockReason;
+        if (why) this.status(why);
+        return !why;
+    }
+
+    /** Enable or disable what the lock covers, when it changes. */
+    refreshLock() {
+        const why = this.lockReason;
+        if (why === this.shownLock) return;
+        this.shownLock = why;
+        const locked = !!why;
+        for (const control of [this.search, this.createButton, this.sortButton, this.tagButton, this.trashButton]) {
+            control.disabled = locked;
+        }
+        this.newCategoryButton.disabled = locked || !!this.organizeBlocker;
+        this.search.title = why ?? "";
+        this.createButton.title = why ?? "";
+        this.newCategoryButton.title = why ?? this.organizeBlocker ?? "New category";
+        this.trashButton.title = why ?? this.trashButton.getAttribute("aria-label");
+        this.showSort();
+        this.showTagFilter();
+        this.list.classList.toggle("locked", locked);
+        for (const star of this.list.querySelectorAll(".bl-list-item .bl-star")) star.disabled = locked || !!this.organizeBlocker;
+        for (const row of this.list.querySelectorAll(".bl-list-item")) row.draggable = !locked && !this.organizeBlocker;
+        for (const control of this.list.querySelectorAll(".bl-group-menu, .bl-error-item button")) control.disabled = locked;
+    }
+
+    // -- changes to several bundles ------------------------------------------------
+
+    /** What a batch is called in the pane, by its action and arguments. */
+    describeBatch(action, args, count) {
+        const n = plural(count, "bundle");
+        if (action === "set_category") {
+            const name = this.categories.find((c) => c.id === args.category)?.name;
+            return args.category
+                ? { doing: `Moving ${n} to ${name}`, done: `Moved to ${name}`, what: "The move" }
+                : { doing: `Taking ${n} out of their categories`, done: "Taken out of their categories", what: "The change" };
+        }
+        if (action === "set_favorite") {
+            return args.favorite
+                ? { doing: `Adding ${n} to the favorites`, done: "Added to the favorites", what: "The change" }
+                : { doing: `Removing ${n} from the favorites`, done: "Removed from the favorites", what: "The change" };
+        }
+        return { doing: `Moving ${n} to the trash`, done: "Moved to the trash", what: "The move to the trash" };
+    }
+
+    /**
+     * One change to several bundles. What it changes (the ids, the arguments
+     * and the revisions seen) is fixed before anything is awaited. The window
+     * stays locked until the answer, whose result stays in the pane until the
+     * user leaves it, even when the selection is gone by then.
+     */
+    async runBatch(action, args, bundles) {
+        if (!bundles.length || !this.allowed()) return;
+        const job = {
+            token: ++this.batchToken, action, args: { ...args },
+            summaries: bundles.map((b) => ({ id: b.id, label: this.labels?.get(b.id) ?? b.name, revision: b.revision })),
+        };
+        job.describe = this.describeBatch(action, args, bundles.length);
+        if (action === "trash") {
+            job.args.expected_revisions = Object.fromEntries(job.summaries.map((b) => [b.id, b.revision]));
+            const confirmed = await this.confirm(`Move ${plural(bundles.length, "bundle")} to the trash?`,
+                "They can be restored from the trash. Until then, workflows that use them report them as missing.",
+                "Move to trash", { danger: true });
+            if (!confirmed) return;
+        }
+        this.batchRunning = job;
+        const view = new BatchResult(this, job, { waiting: true });
+        this.showPane(view.root, { result: view });
+        this.refreshLock();
+        this.renderList();
+        clearTimeout(this.stallTimer);
+        this.stallTimer = setTimeout(() => {
+            if (this.batchRunning === job) view.stalled();
+        }, STALL_MS);
+        let outcome;
+        try {
+            outcome = { answer: await batchBundles(job.summaries.map((b) => b.id), action, job.args) };
+        } catch (error) {
+            // A refusal changed nothing. No answer, or a failure in the server, may have changed some.
+            outcome = error.status >= 400 && error.status < 500 ? { refused: error } : { unknown: true };
+        }
+        if (this.batchRunning === job) {
+            clearTimeout(this.stallTimer);
+            this.batchRunning = null;
+            this.refreshLock();
+        }
+        if (this.result?.job.token === job.token) this.result.render(outcome); // also after Stop waiting
+        if (action === "trash") void this.refreshTrashCount();
+        await this.reload();
+    }
+
+    /** Give up waiting for a batch's answer: unlock, and say it is not known what happened. */
+    stopWaiting(job) {
+        if (this.batchRunning !== job) return;
+        clearTimeout(this.stallTimer);
+        this.batchRunning = null;
+        this.refreshLock();
+        this.renderList();
+        if (this.result?.job.token === job.token) this.result.render({ unknown: true });
+    }
+
+    /** Run a batch again for some of its bundles, as they are in the list now. */
+    async retryBatch(job, ids) {
+        const bundles = this.all.filter((b) => ids.includes(b.id));
+        if (!bundles.length) {
+            this.status("None of them is in the list any more; reload to see where things stand.");
+            return;
+        }
+        const { expected_revisions: _seen, ...args } = job.args;
+        await this.runBatch(job.action, args, bundles);
+    }
+
+    /** Leave a result: back to what the selection calls for. */
+    leaveResult() {
+        void this.applySelection();
     }
 
     // -- categories and favorites ----------------------------------------------
@@ -688,6 +1000,7 @@ class LibraryModal {
     }
 
     async askRename(category) {
+        if (!this.allowed()) return;
         let renamed = null;
         await this.ask(`Rename '${category.name}'`, null, {
             value: category.name, action: "Rename",
@@ -699,6 +1012,7 @@ class LibraryModal {
     }
 
     async askDelete(category) {
+        if (!this.allowed()) return;
         const count = this.all.filter((b) => b.category === category.id).length;
         const confirmed = await this.confirm(`Delete the category '${category.name}'?`,
             count ? `${count === 1 ? "Its bundle moves" : `Its ${count} bundles move`} to Uncategorized. `
@@ -735,26 +1049,25 @@ class LibraryModal {
 
     // -- editor ----------------------------------------------------------------
 
-    /** Whether the editor holds changes (or an upload in progress) that are not saved. */
-    get unsaved() {
-        return !!this.editor && (this.editor.dirty || this.editor.uploads > 0);
-    }
-
-    /** Ask before an unsaved draft would be lost; true when it may go. */
+    /**
+     * Whether the pane may change: not while the editor holds changes (they
+     * are saved or discarded first), a save is out, or a batch runs. A new
+     * draft nobody touched goes without asking.
+     */
     async leaveEditor() {
-        if (this.editor?.saving) {
-            this.status("Wait until the bundle is saved.");
-            return false;
-        }
-        if (!this.unsaved) return true;
-        return this.confirm("Discard unsaved changes?",
-            `Your changes to '${this.editor.draft.name || "this bundle"}' have not been saved.`, "Discard", { danger: true });
+        return this.allowed();
     }
 
     async open(id, { force = false } = {}) {
-        if (this.editor?.saved?.id === id && !this.editor.dirty) return;
+        if (this.editor?.saved?.id === id) { // open already: just make it the selection
+            if (this.selection.size !== 1 || !this.selection.has(id)) {
+                this.selection = new Set([id]);
+                this.renderList();
+            }
+            return;
+        }
         if (!force && !(await this.leaveEditor())) return;
-        this.selectedId = id;
+        this.selection = new Set([id]);
         const generation = this.showPane(el("div", "bl-empty-state bl-loading", "Loading…"));
         this.renderList();
         let bundle;
@@ -762,7 +1075,7 @@ class LibraryModal {
             bundle = await getBundle(id);
         } catch (error) {
             if (generation !== this.editorGeneration) return;
-            this.selectedId = null;
+            this.selection = new Set();
             this.showPlaceholder();
             this.renderList();
             this.status(error.message, "error");
@@ -770,6 +1083,7 @@ class LibraryModal {
         }
         if (generation !== this.editorGeneration) return; // another bundle or a new draft was opened meanwhile
         this.show(new BundleEditor(this, bundle));
+        this.renderList();
     }
 
     async newBundle() {
@@ -777,7 +1091,7 @@ class LibraryModal {
         const taken = new Set(this.all.map((b) => b.name.toLowerCase()));
         let name = "New bundle";
         for (let n = 2; taken.has(name.toLowerCase()); n++) name = `New bundle ${n}`;
-        this.selectedId = null;
+        this.selection = new Set();
         this.show(new BundleEditor(this, null, name));
         this.renderList();
         this.editor.nameInput.focus();
@@ -785,7 +1099,7 @@ class LibraryModal {
     }
 
     show(editor) {
-        this.showPane(editor.root, editor);
+        this.showPane(editor.root, { editor });
     }
 
     async showTrash() {
@@ -794,9 +1108,9 @@ class LibraryModal {
             return;
         }
         if (!(await this.leaveEditor())) return;
-        this.selectedId = null;
+        this.selection = new Set();
         const panel = new TrashPanel(this);
-        this.showPane(panel.root, null, panel);
+        this.showPane(panel.root, { trash: panel });
         this.renderList();
     }
 
@@ -805,8 +1119,8 @@ class LibraryModal {
         this.trashGeneration++; // a count still on its way is older
         this.trashCount.textContent = count ? String(count) : "";
         this.trashCount.hidden = !count;
-        this.trashButton.title = count ? `Trash (${count})` : "Trash";
-        this.trashButton.setAttribute("aria-label", this.trashButton.title);
+        this.trashButton.setAttribute("aria-label", count ? `Trash (${count})` : "Trash");
+        this.trashButton.title = this.lockReason ?? this.trashButton.getAttribute("aria-label");
     }
 
     async refreshTrashCount() {
@@ -824,12 +1138,18 @@ class LibraryModal {
         this.showPane(el("div", "bl-empty-state", "Select a bundle on the left, or create one with + New bundle."));
     }
 
-    /** Put `content` in the editor pane, dropping the editor shown before; the new generation. */
-    showPane(content, editor = null, trashPanel = null) {
+    /**
+     * Put `content` in the pane, dropping the editor shown before; the new
+     * generation. Name what it is: an editor, the trash, the batch panel or a
+     * batch's result.
+     */
+    showPane(content, { editor = null, trash = null, batch = null, result = null } = {}) {
         if (this.editor !== editor) this.editor?.dispose();
         this.editor = editor;
-        this.trashPanel = trashPanel;
-        this.trashButton.classList.toggle("selected", !!trashPanel);
+        this.trashPanel = trash;
+        this.batchPanel = batch;
+        this.result = result;
+        this.trashButton.classList.toggle("selected", !!trash);
         this.pane.replaceChildren(content);
         this.pane.scrollTop = 0;
         this.keepFocus();
@@ -839,13 +1159,13 @@ class LibraryModal {
 
     // Called by the editor.
     async bundleSaved(bundle, { open = false } = {}) {
-        this.selectedId = bundle.id;
+        this.selection = new Set([bundle.id]);
         await this.reload();
         if (open) await this.open(bundle.id, { force: true });
     }
 
     async bundleDeleted(bundle) {
-        this.selectedId = null;
+        this.selection = new Set();
         this.showPlaceholder();
         void this.refreshTrashCount();
         await this.reload();
@@ -859,6 +1179,7 @@ class LibraryModal {
     }
 
     editorChanged() {
+        this.refreshLock();
         if (!this.onPick) return;
         const ready = this.editor?.saved && !this.unsaved;
         const summary = ready ? this.all.find((b) => b.id === this.editor.saved.id) : null;
@@ -880,14 +1201,35 @@ class LibraryModal {
         this.close();
     }
 
+    /** Close, unless something is on its way; with unsaved changes, ask: Save, Discard or Keep editing. */
     async requestClose() {
         if (this.layer) return;
-        if (await this.leaveEditor()) this.close();
+        if (this.batchRunning || this.editor?.saving) {
+            this.status(this.lockReason);
+            return;
+        }
+        if (!this.unsaved) {
+            this.close();
+            return;
+        }
+        const editor = this.editor;
+        const choices = [["Discard", "discard", "danger"], ["Keep editing", null]];
+        if (!editor.blocker) choices.unshift(["Save", "save", "primary"]); // what cannot be saved can still be dropped
+        const choice = await this.choose("Save your changes?",
+            [`Your changes to '${editor.draft.name || "this bundle"}' have not been saved.`,
+                ...(editor.blocker ? [`They cannot be saved as they are: ${editor.blocker}`] : [])], choices);
+        if (choice === "discard") {
+            this.close();
+        } else if (choice === "save") {
+            await editor.save();
+            if (this.editor === editor && !this.unsaved) this.close();
+        }
     }
 
     close() {
         this.editor?.dispose();
         this.endDrag();
+        clearTimeout(this.stallTimer);
         window.removeEventListener("pointermove", this.onPointerMove, true);
         this.overlay.remove();
         for (const type of STRAY_EVENTS) window.removeEventListener(type, this.onStrayEvent, true);

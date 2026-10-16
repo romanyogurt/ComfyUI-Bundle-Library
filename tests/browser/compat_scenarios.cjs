@@ -112,6 +112,9 @@ function unplace(paths) {
 
             await page.locator(`.bl-overlay .bl-group.attention .bl-list-item[data-id="${bigId}"]`).click();
             await until(() => document.querySelector(".bl-overlay .bl-number"));
+            const lockedByWarning = await ev(() => document.querySelector(".bl-overlay .bl-search").disabled);
+            check("a value the bundle came with that cannot be saved is not a change: the window is not locked",
+                !lockedByWarning);
             await page.locator(".bl-overlay .bl-note-input").fill("only the note changed");
             let editor = await ev(() => ({
                 number: document.querySelector(".bl-overlay .bl-number").value,

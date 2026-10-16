@@ -218,6 +218,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | PUT | `/bundles/{id}` | `{"expected_revision", "name", "tags", "note", "fields"}` | 번들 (revision +1) |
 | DELETE | `/bundles/{id}?expected_revision=N` | — | `{"deleted": id}`. 휴지통으로 보낸다 (`deleted_at`, revision +1) |
 | POST | `/bundles/{id}/duplicate` | `{"mode": "values" 또는 "structure", "name"?}` | 201, 새 번들. 이름을 비우면 `<이름> copy`. 원본의 카테고리에 두고, 배치만 실패하면 `placement_error` |
+| POST | `/bundles/batch` | `{"ids", "action", 작업별 인수}` | 여러 번들에 한 작업 (아래 "여러 번들에 한 번에", 0.0.14부터) |
 | PUT | `/bundles/{id}/category` | `{"category": id 또는 null}` | `{"id", "category"}`. 쓰는 번들과 휴지통의 번들 모두. revision은 그대로다 |
 | PUT | `/bundles/{id}/favorite` | `{"favorite": true 또는 false}` | `{"id", "favorite"}`. revision은 그대로다 |
 | GET | `/categories` | — | `{"categories": [{"id", "name", "parent", "count"}], "revision", "state"}` |
@@ -244,6 +245,51 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 응답의 정수 필드는 정확한 십진수 문자열 `value_text`를 함께 주고, 요약의 `preview`는 그 문자열이다.
 `value_text`는 응답에만 있고 파일에는 쓰지 않는다.
 
+### 여러 번들에 한 번에
+
+`POST /bundles/batch`는 번들 여러 개에 같은 작업을 한다 (0.0.14).
+
+```json
+{"ids": ["0b0fd10b-…", "6f1c0e5a-…"], "action": "trash",
+ "expected_revisions": {"0b0fd10b-…": 3, "6f1c0e5a-…": 1}}
+```
+
+| `action` | 인수 | 쓰는 것 |
+| --- | --- | --- |
+| `set_category` | `category`: 카테고리 id 또는 `null` | 정리 파일 한 번 |
+| `set_favorite` | `favorite`: `true` 또는 `false` | 정리 파일 한 번 |
+| `trash` | `expected_revisions`: 번들 id → 고를 때 본 revision | 번들 파일마다 |
+
+- 요청 전체를 먼저 검사하고, 문제가 있으면 아무것도 쓰지 않고 거부한다: `ids`가 비었거나 UUID가 아님,
+  1000개 초과, 모르는 `action`(400 `invalid`), 아직 받지 않는 `add_tags`·`remove_tags`(400
+  `unsupported_action`, Phase 7.8b), 인수 오류, 없는 카테고리(404), 이 버전이 쓸 수 없는 정리
+  파일(409 `organization_unwritable`), `trash`에 revision이 빠진 id(400).
+- `ids`의 중복은 하나로 친다. 결과는 처음 나온 순서다.
+- 카테고리·즐겨찾기는 최신 정리 정보에 적용한다. 바뀌는 번들이 있을 때만 정리 파일을 한 번 쓰고
+  `revision`을 1 올린다. 그 쓰기가 실패하면 바뀔 번들은 모두 실패(`io_error`)이고 파일은 그대로다.
+  번들 파일과 revision은 바뀌지 않는다. 읽기 전용 번들도 된다(파일 밖의 정리이므로).
+- `trash`는 저장소 잠금 안에서 id 순서로 한 번들씩 쓴다. 번들마다 `expected_revisions`와 지금 revision을
+  견주고, 다르면 그 번들만 `revision_conflict`로 건너뛴다. 이미 휴지통에 있으면 변경 없는 성공이다. 한
+  번들의 쓰기가 실패해도 앞의 성공은 그대로이고 뒤의 번들은 계속 처리한다. 여러 파일에 걸친 원자성은
+  없다.
+
+응답 (요청이 받아들여지면 늘 200):
+
+```json
+{"action": "trash", "changed": 1, "unchanged": 0, "failed": 1,
+ "results": [
+   {"id": "0b0fd10b-…", "ok": true, "changed": true, "revision": 4},
+   {"id": "6f1c0e5a-…", "ok": false, "changed": false, "code": "revision_conflict", "message": "…"}]}
+```
+
+- `ok`와 `changed`로 바뀜, 변경 없는 성공(이미 그 상태), 실패를 구분한다. 변경이 없으면 파일, revision,
+  시각을 건드리지 않는다. `revision`은 번들 파일을 쓴 경우의 새 revision이다.
+- 실패의 `code`는 단건 API와 같다(`not_found`, `revision_conflict`, `read_only`, `newer_version`,
+  `unsupported`, `corrupt_bundle` 등). 쓰기 실패는 `io_error`이고 `"retry": true`가 붙어, 다시 시도하면 될 수
+  있음을 알린다. 이 버전이 바꿀 수 없는 파일은 다시 시도해도 같다.
+- 화면은 요청을 보내기 전에 대상 id와 revision을 정해 두고, 답이 올 때까지 창을 잠근다. 답이 없으면(통신
+  오류나 "Stop waiting") 완료 여부를 알 수 없다고 보이고, 서버 작업을 취소한 것으로 보지 않는다.
+
 ### 오류
 
 오류 본문은 `{"error": {"code", "message", ...}}`이다. `message`는 화면에 그대로 보여 줄 수
@@ -254,6 +300,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | 400 | `invalid` | 값이나 형식이 규칙에 맞지 않음 |
 | 400 | `invalid_id` | 번들·카테고리 UUID나 에셋 SHA-256 형식이 아님 |
 | 400 | `nesting_not_supported` | 카테고리 안에 카테고리를 만들려 함 |
+| 400 | `unsupported_action` | 이 버전이 아직 받지 않는 일괄 작업 (`add_tags`, `remove_tags`) |
 | 400 | `invalid_json` | JSON을 읽을 수 없음 |
 | 400 | `unsupported_type` | 지원하지 않는 필드 타입 |
 | 400 | `unknown_asset` | 올린 적 없는 파일을 가리킴 |

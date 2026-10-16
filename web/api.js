@@ -154,6 +154,13 @@ export const deleteBundle = (id, revision) =>
     request(`/bundles/${id}?expected_revision=${revision}`, { method: "DELETE" });
 export const duplicateBundle = (id, mode) => request(`/bundles/${id}/duplicate`, json("POST", { mode }));
 
+/**
+ * One action on several bundles: "set_category" ({category}), "set_favorite"
+ * ({favorite}) or "trash" ({expected_revisions}). The answer has a result per
+ * bundle (data-format.md); a refused request changes nothing.
+ */
+export const batchBundles = (ids, action, args = {}) => request("/bundles/batch", json("POST", { ids, action, ...args }));
+
 // Categories and favorites: they organize the list and leave the bundles (and their revisions) alone.
 export const createCategory = (name) => request("/categories", json("POST", { name }));
 export const renameCategory = (id, name) => request(`/categories/${id}`, json("PATCH", { name }));

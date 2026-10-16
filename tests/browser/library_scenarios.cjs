@@ -427,13 +427,22 @@ const LIB_HELPERS = () => {
     st = await state();
     check("Revert brings the saved version back", st.fields.length === 7 && st.state === "Saved" && st.name === UI_NAME, st.state);
 
-    // ---- unsaved changes -------------------------------------------------------
+    // ---- unsaved changes: the rest of the window waits ------------------------------
     await page.locator(".bl-overlay .bl-note-input").fill("changed, not saved");
     check("leaving the page with unsaved changes makes the browser ask", await lib(() => window.__lib.unloadAsks()));
     await item(ids.B).click();
+    st = await state();
+    let locked = await lib(() => ({ status: window.__lib.status(), layer: window.__lib.layer(),
+        search: document.querySelector(".bl-overlay .bl-search").disabled,
+        create: document.querySelector(".bl-overlay .bl-new").disabled }));
+    check("with unsaved changes another bundle does not open: the window says to save or discard first",
+        st.name === UI_NAME && st.note === "changed, not saved" && locked.layer === null
+        && locked.status.text === "Save or discard your changes first." && locked.search && locked.create, locked);
+    await page.keyboard.press("Escape");
     layer = await lib(() => window.__lib.layer());
-    check("opening another bundle with unsaved changes asks first",
-        layer?.title === "Discard unsaved changes?" && JSON.stringify(layer.buttons) === JSON.stringify(["Discard", "Cancel"]), layer);
+    check("Escape asks: Save, Discard or Keep editing",
+        layer?.title === "Save your changes?" && JSON.stringify(layer.buttons) === JSON.stringify(["Save", "Discard", "Keep editing"]),
+        layer);
     await page.keyboard.press("Escape");
     st = await state();
     check("Escape on the question keeps editing (the modal stays open)",
@@ -441,19 +450,29 @@ const LIB_HELPERS = () => {
         && await lib(() => window.__lib.open()), st.note);
     await page.locator(".bl-overlay .bl-close").click();
     layer = await lib(() => window.__lib.layer());
-    await button("Cancel", layerBox).click();
+    await button("Keep editing", layerBox).click();
     await page.mouse.click(8, 500); // the dimmed backdrop beside the dialog
     const backdrop = await lib(() => window.__lib.layer());
-    await button("Cancel", layerBox).click();
+    await button("Keep editing", layerBox).click();
     check("✕ and a click on the backdrop ask too",
-        layer?.title === "Discard unsaved changes?" && backdrop?.title === "Discard unsaved changes?" && await lib(() => window.__lib.open()),
+        layer?.title === "Save your changes?" && backdrop?.title === "Save your changes?" && await lib(() => window.__lib.open()),
         { close: layer?.title, backdrop: backdrop?.title });
+    await button("Revert", editor).click();
     await button("+ New bundle").click();
-    await button("Discard", layerBox).click();
     st = await state();
     const untouched = await api("GET", `/bundles/${uiId}`);
-    check("Discard drops the change and starts the new draft; nothing reached the server",
+    check("after Revert the window is free again: + New bundle starts a draft; nothing reached the server",
         st.state === "● New, not saved yet" && untouched.note === NOTE && untouched.revision === 2, { state: st.state, note: untouched.note });
+    await item(ids.B).click();
+    await editing("[test] B (blue)");
+    check("a new draft nobody touched goes without asking when another bundle is opened",
+        (await lib(() => window.__lib.layer())) === null);
+    await button("+ New bundle").click();
+    await page.locator(".bl-overlay .bl-name-input").fill("Typed into");
+    await item(ids.B).click();
+    locked = await lib(() => ({ name: document.querySelector(".bl-overlay .bl-name-input").value, status: window.__lib.status().text }));
+    check("one that was typed into keeps the window locked", locked.name === "Typed into"
+        && locked.status === "Save or discard your changes first.", locked);
     await button("Discard", editor).click();
     const discarded = await lib(() => ({ pane: window.__lib.pane(), status: window.__lib.status().text }));
     check("Discard on a new draft closes it", discarded.pane?.startsWith("Select a bundle") && discarded.status === "Discarded the new bundle.", discarded);

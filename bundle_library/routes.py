@@ -170,6 +170,13 @@ def register(routes, get_store):
             get_store().duplicate, bundle_id, data.get("mode", "values"), data.get("name"))
         return web.json_response(present(bundle), status=201)
 
+    @routes.post(prefix + "/bundles/batch")
+    @_api
+    @_writes
+    async def batch(request):
+        data = await _read_json(request)
+        return web.json_response(await asyncio.to_thread(get_store().batch, data))
+
     @routes.put(prefix + "/bundles/{bundle_id}/category")
     @_api
     @_writes

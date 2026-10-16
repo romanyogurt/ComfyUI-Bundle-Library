@@ -32,6 +32,9 @@ from .model import (
 )
 
 TEXT_PREVIEW = 200
+MAX_BATCH = 1000  # bundles in one batch request
+BATCH_ACTIONS = ("set_category", "set_favorite", "trash")
+LATER_BATCH_ACTIONS = ("add_tags", "remove_tags")  # Phase 7.8b
 SYNC_FOLDERS = os.name != "nt"  # Windows cannot open a folder to sync it
 
 
@@ -418,15 +421,18 @@ class BundleStore:
         ids |= {m.group(1) for p in self._legacy_trash_files() if (m := TRASH_ID_RE.match(p.stem))}
         return ids
 
+    def _organization_unwritable(self, org):
+        return LibraryError(409, "organization_unwritable",
+                            f"organization.json {org.problem}; this version does not change categories or "
+                            "favorites.", state=org.state)
+
     def _change_organization(self, change):
         """Apply `change(org)` to a copy of the organization and save it, dropping
         places and stars of bundles that are gone and places in categories that
         are gone. Returns what `change` returns."""
         current = self._organization()
         if not current.writable:
-            raise LibraryError(409, "organization_unwritable",
-                               f"organization.json {current.problem}; this version does not change categories or "
-                               "favorites.", state=current.state)
+            raise self._organization_unwritable(current)
         org = organization.Organization(schema.OK, None, current.revision, current.categories, current.placement,
                                         current.favorites)
         result = change(org)
@@ -529,6 +535,108 @@ class BundleStore:
         with self._lock:
             self._bundle_file(bundle_id)
             return self._change_organization(change)
+
+    # -- one action on many bundles --------------------------------------------
+
+    def batch(self, data):
+        """Apply one action to many bundles: {"action", "results", "changed",
+        "unchanged", "failed"}, with a result per bundle in the order asked
+        ({"id", "ok", "changed"} and "revision" for a bundle file written, or
+        "code" and "message" for a failure; "retry" when trying again may help).
+
+        The request as a whole (action, ids, arguments, an organization this
+        version cannot write) is checked before anything is written. Categories
+        and favorites are written in one change of organization.json, and only
+        if something changes. The trash is written bundle by bundle under the
+        lock, each with its expected revision: a failure stops that bundle only.
+        """
+        if not isinstance(data, dict):
+            raise invalid("A batch is a JSON object.")
+        action = data.get("action")
+        if action in LATER_BATCH_ACTIONS:
+            raise LibraryError(400, "unsupported_action", f"This version of Bundle Library cannot {action} in a batch.")
+        if action not in BATCH_ACTIONS:
+            raise invalid(f"Unknown batch action: {action!r}.")
+        ids = data.get("ids")
+        if not isinstance(ids, list) or not ids:
+            raise invalid("ids must be a non-empty list of bundle ids.")
+        ids = list(dict.fromkeys(check_bundle_id(bundle_id) for bundle_id in ids))
+        if len(ids) > MAX_BATCH:
+            raise invalid(f"A batch takes {MAX_BATCH} bundles at most.")
+        if action == "trash":
+            results = self._batch_trash(ids, data.get("expected_revisions"))
+        elif action == "set_category":
+            category = data.get("category")
+            if category is not None:
+                _check_category_id(category)
+            results = self._batch_organize(ids, lambda org, bundle_id: org.category_of(bundle_id) == category,
+                                           lambda org, bundle_id: _place(org, bundle_id, category), category=category)
+        else:
+            favorite = data.get("favorite")
+            if not isinstance(favorite, bool):
+                raise invalid("favorite must be true or false.")
+            results = self._batch_organize(ids, lambda org, bundle_id: (bundle_id in org.favorites) == favorite,
+                                           lambda org, bundle_id: _star(org, bundle_id, favorite))
+        return {"action": action, "results": results,
+                "changed": sum(1 for r in results if r["ok"] and r["changed"]),
+                "unchanged": sum(1 for r in results if r["ok"] and not r["changed"]),
+                "failed": sum(1 for r in results if not r["ok"])}
+
+    def _batch_organize(self, ids, done, apply, category=None):
+        """Categories or favorites of many bundles in one write of organization.json.
+        `done(org, id)` says the bundle is as asked already; `apply(org, id)` makes it so."""
+        with self._lock:
+            org = self._organization()
+            if not org.writable:
+                raise self._organization_unwritable(org)
+            if category is not None and org.category(category) is None:
+                raise LibraryError(404, "not_found", f"Category not found: {category}")
+            results = {}
+            to_change = []
+            for bundle_id in ids:
+                if not self._path(bundle_id).is_file():
+                    results[bundle_id] = _failure(bundle_id, _not_found(bundle_id))
+                elif done(org, bundle_id):
+                    results[bundle_id] = {"id": bundle_id, "ok": True, "changed": False}
+                else:
+                    to_change.append(bundle_id)
+            if to_change:
+                try:
+                    self._change_organization(lambda changing: [apply(changing, b) for b in to_change])
+                except OSError as e:
+                    for bundle_id in to_change:
+                        results[bundle_id] = {"id": bundle_id, "ok": False, "changed": False, "code": "io_error",
+                                              "message": f"organization.json could not be written: {_reason(e)}",
+                                              "retry": True}
+                else:
+                    for bundle_id in to_change:
+                        results[bundle_id] = {"id": bundle_id, "ok": True, "changed": True}
+        return [results[bundle_id] for bundle_id in ids]
+
+    def _batch_trash(self, ids, expected_revisions):
+        if not isinstance(expected_revisions, dict):
+            raise invalid("expected_revisions must map each bundle id to the revision it was seen at.")
+        for bundle_id in ids:
+            revision = expected_revisions.get(bundle_id)
+            if isinstance(revision, bool) or not isinstance(revision, int):
+                raise invalid(f"expected_revisions has no revision for {bundle_id}.")
+        results = []
+        with self._lock:
+            for bundle_id in ids:
+                try:
+                    loaded = self._load(bundle_id)
+                    if loaded is not None and loaded.readable and loaded.deleted:
+                        results.append({"id": bundle_id, "ok": True, "changed": False})  # in the trash already
+                        continue
+                    current = self._in_use(self._writable(bundle_id, expected_revisions[bundle_id]))
+                    saved = self._save({**current, "deleted_at": _now(), "revision": current["revision"] + 1})
+                    results.append({"id": bundle_id, "ok": True, "changed": True, "revision": saved["revision"]})
+                except LibraryError as e:
+                    results.append(_failure(bundle_id, e))
+                except OSError as e:
+                    results.append({"id": bundle_id, "ok": False, "changed": False, "code": "io_error",
+                                    "message": f"The bundle file could not be written: {_reason(e)}", "retry": True})
+        return results
 
     # -- the trash folder of 0.0.10 and earlier --------------------------------
 
@@ -642,6 +750,22 @@ class BundleStore:
             thumbnails = self.assets.remove_stray_thumbnails()
         return {"deleted": deleted, "bytes": freed, "kept": len(dict.fromkeys(shas)) - deleted,
                 "thumbnails": thumbnails}
+
+
+def _failure(bundle_id, error):
+    """A bundle's result in a batch for a refusal (LibraryError)."""
+    return {"id": bundle_id, "ok": False, "changed": False, "code": error.code, "message": error.message}
+
+
+def _place(org, bundle_id, category):
+    if category is None:
+        org.placement.pop(bundle_id, None)
+    else:
+        org.placement[bundle_id] = category
+
+
+def _star(org, bundle_id, favorite):
+    org.favorites = [b for b in org.favorites if b != bundle_id] + ([bundle_id] if favorite else [])
 
 
 def _check_category_id(value):
