@@ -4,7 +4,7 @@ import { code, el, formatDuration } from "./dom.js";
 import { compactGroups, groupLabel } from "./groups.js";
 import { openLibrary } from "./library_modal.js";
 import { displayNames } from "./names.js";
-import { COMFY_TYPES, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
+import { COMFY_TYPES, misplacedOutputs, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
 import { showImage, showVideo } from "./viewer.js";
 
 export const NODE_ID = "BundleLibraryLoad";
@@ -122,11 +122,26 @@ function restoreOutputs(node, saved) {
         return;
     }
     const slots = specOf(node);
+    warnMisplaced(misplacedOutputs(saved, slots));
     for (let i = node.outputs.length - 1; i >= slots.length; i--) {
         if (!isLinked(node.outputs[i])) node.removeOutput(i);
     }
     slots.forEach((slot, i) => {
         if (node.outputs[i]) dressOutput(node, i, slot);
+    });
+}
+
+/** Say which linked outputs the workflow saved under another field than the node records (they carry the recorded one). */
+function warnMisplaced(misplaced) {
+    if (!misplaced.length) return;
+    const list = misplaced.map(({ index, was, now }) => (was === now ? `${index + 1} (${now}, another type)`
+        : `${index + 1} (${was} → ${now})`)).join(", ");
+    app.extensionManager?.toast?.add({
+        severity: "warn",
+        summary: "Load Bundle",
+        detail: `This workflow saved linked output${misplaced.length === 1 ? "" : "s"} ${list} under another field than `
+            + "the node records. The links now carry the recorded fields; check them.",
+        life: 10000,
     });
 }
 

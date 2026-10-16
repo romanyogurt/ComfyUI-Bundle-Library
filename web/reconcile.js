@@ -108,3 +108,23 @@ export function slotStatuses(slots, fields) {
         return field.type === slot.type ? "ok" : "type_mismatch";
     });
 }
+
+/**
+ * The linked outputs a workflow saved under another field or type than the
+ * node's `slot_spec` gives their place: [{index, was, now}]. The run reads
+ * `slot_spec`, so a link on such an output carries the field it names, not
+ * the one the link was drawn to. `saved` is the node's serialized outputs.
+ * An output never shown as a field (still `field_NN`, or of type `*`) is not
+ * counted against it.
+ */
+export function misplacedOutputs(saved, slots) {
+    return slots.flatMap((slot, index) => {
+        const out = saved?.[index];
+        if (!out?.links?.length) return [];
+        const label = out.label ?? out.name;
+        const named = typeof label === "string" && !/^field_\d{2}$/.test(label);
+        const typed = typeof out.type === "string" && out.type !== "*";
+        const differs = (named && label !== slot.name) || (typed && out.type !== COMFY_TYPES[slot.type]);
+        return differs ? [{ index, was: named ? label : slot.name, now: slot.name }] : [];
+    });
+}

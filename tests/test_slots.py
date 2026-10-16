@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 from bundle_library.constants import POOL_SIZE
-from bundle_library.slots import field_problem, linked_outputs, output_fingerprint, parse_slot_spec
+from bundle_library.slots import field_problem, linked_outputs, output_fingerprint, parse_slot_spec, slot_problems
 from bundle_library.store import BundleStore
 
 from . import helpers
@@ -90,6 +90,13 @@ class FieldProblemTest(unittest.TestCase):
             with self.subTest(expected):
                 self.assertEqual(self.problem(field, slot_type), expected)
 
+    def test_the_slots_a_bundle_cannot_fill_by_index(self):
+        fields = {"ref": {"name": "ref", "type": "image", "asset": {"sha256": self.sha}},
+                  "empty": {"name": "empty", "type": "image", "asset": None}}
+        slots = [("ref", "image"), ("empty", "image"), ("gone", "text"), ("ref", "video")]
+        self.assertEqual(slot_problems(self.store, slots, fields),
+                         {1: "has no image", 2: "is missing from the bundle", 3: "is image, not video"})
+
 
 class OutputFingerprintTest(unittest.TestCase):
     SLOTS = [("prompt", "text"), ("ref", "image"), ("seed", "int")]
@@ -120,6 +127,19 @@ class OutputFingerprintTest(unittest.TestCase):
         for fields in different:
             self.assertNotEqual(output_fingerprint(self.SLOTS, fields), base)
         self.assertNotEqual(output_fingerprint(self.SLOTS[:2], self.fields()), base)  # another set of outputs
+
+    def test_a_slot_that_cannot_be_filled_counts_by_its_reason(self):
+        # No NaN: the same bundle gives the same fingerprint, so it is cached like any other (N16).
+        slots = [*self.SLOTS, ("bgm", "audio")]
+        fields = self.fields()
+        base = output_fingerprint(slots, fields, {3: "is missing from the bundle"})
+        self.assertEqual(output_fingerprint(slots, fields, {3: "is missing from the bundle"}), base)
+        self.assertNotEqual(output_fingerprint(slots, fields, {3: "has no audio"}), base)
+        filled = {**fields, "bgm": {"name": "bgm", "type": "audio", "asset": {"sha256": "c" * 64}}}
+        self.assertNotEqual(output_fingerprint(slots, filled), base)
+        # a text that reads like a reason is still a value
+        self.assertNotEqual(output_fingerprint(self.SLOTS, self.fields(prompt={"value": "has no audio"})),
+                            output_fingerprint(self.SLOTS, self.fields(), {0: "has no audio"}))
 
 
 class LinkedOutputsTest(unittest.TestCase):

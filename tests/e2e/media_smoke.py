@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from api_smoke import TEST_SERVER, Api, expect, remove_created
-from node_smoke import error_text, forget_runs, run
+from node_smoke import error_text, forget_runs, messages, run
 
 NAME = "[test] Media"
 FIXTURES = Path(__file__).resolve().parents[1] / "browser" / "fixtures"
@@ -46,6 +46,12 @@ def checks(api, created):
     expect((bgm["ext"], bgm["sample_rate"], bgm["channels"]) == ("mp3", 44100, 2) and abs(bgm["duration"] - 1.5) < 0.1,
            f"audio metadata from the file: {bgm}")
 
+    # Linked from the first run: Load Bundle runs, and fails the run.
+    status, entry = run(api, graph(bundle["id"], video_slot=2))
+    failure = error_text(entry) if status == 200 else str(entry)
+    expect(status == 200 and entry["status"]["status_str"] == "error" and "'empty_clip' has no video" in failure,
+           f"a connected empty video field fails the loader: {failure[:100]}")
+
     status, entry = run(api, graph(bundle["id"]))
     outputs = entry["outputs"] if status == 200 else {}
     expect(status == 200 and entry["status"]["status_str"] == "success",
@@ -55,10 +61,13 @@ def checks(api, created):
     expect(len(outputs.get("5", {}).get("audio", [])) == 1, "VIDEO → GetVideoComponents: the clip's sound")
     expect(len(outputs.get("6", {}).get("audio", [])) == 1, "AUDIO field → Preview Audio")
 
+    # Linked after a run that left it unlinked: Load Bundle comes from the cache, and the node reading the empty
+    # field is blocked with the reason (on the page's socket; ComfyUI records such a run as a success).
     status, entry = run(api, graph(bundle["id"], video_slot=2))
-    failure = error_text(entry) if status == 200 else str(entry)
-    expect(status == 200 and entry["status"]["status_str"] == "error" and "'empty_clip' has no video" in failure,
-           f"a connected empty video field fails the loader: {failure[:100]}")
+    cached = {node for m in messages(entry, "execution_cached") for node in m.get("nodes", [])} if status == 200 else set()
+    blocked = entry["outputs"] if status == 200 else {}
+    expect(status == 200 and "1" in cached and not blocked.get("3", {}).get("images"),
+           f"an empty video field linked after a cached run blocks what reads it: cached {sorted(cached)}, outputs {sorted(blocked)}")
 
 
 def main():

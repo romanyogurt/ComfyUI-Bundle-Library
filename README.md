@@ -6,7 +6,7 @@
 
 ## 현재 구현과 문서
 
-이 문서와 [설계 개요](docs/design.md)는 노드 0.0.17의 소스를 기준으로 한다.
+이 문서와 [설계 개요](docs/design.md)는 노드 0.0.18의 소스를 기준으로 한다.
 
 - 번들과 미디어는 ComfyUI 사용자 디렉토리의 `bundle_library/`에 저장한다. 번들은 UUID로 구분하고,
   이름은 같아도 된다. 라이브러리 창에서 만들기·편집·복제·삭제를 지원한다.
@@ -162,6 +162,7 @@ scripts/bundle-library-test-server.sh stop
 | `tests/e2e/compare_load_image.py`, `compare_media.py` | 변환 결과가 core LoadImage·LoadVideo·LoadAudio와 같은지 |
 | `tests/e2e/api_smoke.py` | 테스트 번들 두 개를 만들어 API로 확인한다 |
 | `tests/e2e/node_smoke.py` | Load Bundle을 실행해 출력, 캐시, 오류를 확인한다 |
+| `tests/e2e/cache_race.py` | ComfyUI의 실행기를 프로세스 안에서 돌려 캐시를 확인한다: 캐시 키를 정한 뒤 바뀐 번들, 빈 미디어 필드의 캐시, 나중에 연결한 문제 슬롯 |
 | `tests/e2e/media_smoke.py` | 비디오·오디오 필드로 Load Bundle을 실행해 VIDEO·AUDIO 출력을 확인한다 |
 | `tests/e2e/security_smoke.py` | 쓰기 보호와 제한값 (거부되는 요청만 보낸다) |
 | `tests/browser/*_scenarios.cjs` | 헤드리스 Chromium으로 노드, 라이브러리, 비디오·오디오 화면을 조작한다. `race_scenarios.cjs`는 응답을 늦추거나 순서를 뒤집어 열기·검색·저장·업로드를, `trash_scenarios.cjs`는 휴지통과 파일 정리를, `compat_scenarios.cjs`는 옛 워크플로·큰 정수·읽지 못하는 파일·버전 불일치를, `category_scenarios.cjs`는 카테고리·즐겨찾기·끌어다 놓기·묶인 목록을, `list_scenarios.cjs`는 목록 도구줄·메뉴의 키보드 조작·빈 묶음·끌기 뒤의 정리·코드 글꼴 이름을, `batch_scenarios.cjs`는 여러 번들 선택·일괄 작업과 결과·느리거나 답이 없는 요청·편집 중 잠금을, `window_scenarios.cjs`는 취소한 질문의 늦은 답·질문 뒤의 창·일괄 화면의 선택 유지·목록 읽기 실패·다시 그린 뒤의 숫자 입력과 초점·복제와 삭제의 대기·고르기가 넘기는 번들·휴지통의 읽기 전용 번들·노드 소리의 정리를 확인한다 |

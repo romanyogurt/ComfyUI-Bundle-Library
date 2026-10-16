@@ -1,10 +1,18 @@
 from comfy_api.latest import io
+from comfy_execution.graph_utils import ExecutionBlocker
 
 from .constants import MEDIA_TYPES, POOL_SIZE
 from .convert import load_audio, load_image, load_video
 from .library import get_store
 from .model import LibraryError
-from .slots import field_problem, linked_outputs, output_fingerprint, parse_slot_spec
+from .slots import linked_outputs, output_fingerprint, parse_slot_spec, slot_problems
+
+# The fingerprint each node's cache key was made with in the run going on, by
+# (node id, bundle id, slot_spec): execute() checks that what it reads is
+# still that. A run fingerprints its nodes before it executes any, and runs go
+# one at a time; an entry left by a node that came from the cache is replaced
+# the next time the node is fingerprinted.
+_keyed = {}
 
 
 class LoadBundle(io.ComfyNode):
@@ -52,15 +60,13 @@ class LoadBundle(io.ComfyNode):
         except (LibraryError, ValueError):
             return float("nan")  # validation reports it
         fields = {f["name"]: f for f in bundle["fields"]}
-        if any(field_problem(store, fields.get(name), field_type) for name, field_type in slots):
-            # Whether the slot is linked is not part of the cache key: a run
-            # that passed while it was unlinked would hand its cached None to a
-            # link made later. NaN never matches, so such a node always reruns.
-            return float("nan")
-        # Only what the outputs carry: a renamed bundle or a new note keeps the
-        # cache of every node downstream. A bundle in the trash fails before
-        # this, in get() (here and in validate_inputs).
-        return output_fingerprint(slots, fields)
+        # Only what the outputs carry, and why a slot cannot be filled: a
+        # renamed bundle or a new note keeps the cache of every node downstream,
+        # and so does a bundle with an empty image field. A bundle in the trash
+        # fails before this, in get() (here and in validate_inputs).
+        fingerprint = output_fingerprint(slots, fields, slot_problems(store, slots, fields))
+        _keyed[(cls.hidden.unique_id, bundle_id, slot_spec)] = fingerprint
+        return fingerprint
 
     @classmethod
     def execute(cls, bundle_id, slot_spec) -> io.NodeOutput:
@@ -68,21 +74,27 @@ class LoadBundle(io.ComfyNode):
         bundle = store.get(bundle_id)  # one read: every output comes from the same revision
         fields = {f["name"]: f for f in bundle["fields"]}
         slots = parse_slot_spec(slot_spec)
+        problems = slot_problems(store, slots, fields)
+        keyed = _keyed.pop((cls.hidden.unique_id, bundle_id, slot_spec), None)
+        if keyed is not None and keyed != output_fingerprint(slots, fields, problems):
+            # The bundle changed after this run made its cache key: the outputs
+            # would be kept under a key that does not describe them.
+            raise ValueError(f"Bundle '{bundle['name']}' changed while this run was starting. Run it again.")
         linked = linked_outputs(cls.hidden.prompt, cls.hidden.unique_id)
-        problems = [
-            f"'{name}' {problem}"
-            for index, (name, field_type) in enumerate(slots)
-            if index in linked and (problem := field_problem(store, fields.get(name), field_type))
-        ]
-        if problems:
+        connected = [f"'{slots[index][0]}' {problem}" for index, problem in problems.items() if index in linked]
+        if connected:
             raise ValueError(
-                f"Bundle '{bundle['name']}' cannot fill the connected outputs: {'; '.join(problems)}. "
+                f"Bundle '{bundle['name']}' cannot fill the connected outputs: {'; '.join(connected)}. "
                 "Pick another bundle or check the connections.")
         values = []
-        for name, field_type in slots:
+        for index, (name, field_type) in enumerate(slots):
             field = fields.get(name)
-            if field_problem(store, field, field_type):
-                values.append(None)  # not linked, so nothing reads it
+            if index in problems:
+                # Nothing in this prompt reads it. These outputs may be cached:
+                # a node linked to it later stops with the reason, not with None.
+                values.append(ExecutionBlocker(
+                    f"Bundle '{bundle['name']}' cannot fill the output '{name}': it {problems[index]}. "
+                    "Pick another bundle or check the connections."))
             elif field_type in MEDIA_TYPES:
                 load = {"image": load_image, "video": load_video, "audio": load_audio}[field_type]
                 try:

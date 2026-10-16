@@ -51,14 +51,30 @@ def field_problem(store, field, field_type):
     return None
 
 
-def output_fingerprint(slots, fields):
+def slot_problems(store, slots, fields):
+    """Why the bundle cannot fill each slot it cannot fill, by slot index."""
+    return {index: problem for index, (name, field_type) in enumerate(slots)
+            if (problem := field_problem(store, fields.get(name), field_type))}
+
+
+def output_fingerprint(slots, fields, problems=None):
     """A hash of what the outputs carry: for each slot (name, type) its field's
-    value, or the SHA-256 of its file (files never change under a hash).
+    value, the SHA-256 of its file (files never change under a hash), or why the
+    bundle cannot fill it (`problems`, by slot index, from slot_problems()).
     Everything else about the bundle (its name, note, tags, revision, times,
     category) leaves it unchanged, so editing those does not re-run the nodes
-    that read the outputs. Every slot's field must exist with its type."""
-    content = [[name, field_type, fields[name]["asset"]["sha256"] if field_type in MEDIA_TYPES else fields[name]["value"]]
-               for name, field_type in slots]
+    that read the outputs. The same bundle gives the same hash, also when it
+    cannot fill some slot: an empty image field is cached like any other."""
+    problems = problems or {}
+    content = []
+    for index, (name, field_type) in enumerate(slots):
+        if index in problems:
+            carried = {"problem": problems[index]}
+        elif field_type in MEDIA_TYPES:
+            carried = fields[name]["asset"]["sha256"]
+        else:
+            carried = fields[name]["value"]
+        content.append([name, field_type, carried])
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
 

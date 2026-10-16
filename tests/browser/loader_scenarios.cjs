@@ -547,6 +547,38 @@ const { startSession } = require("./harness.cjs");
         window.__bl.app.graph.clear();
     });
 
+    // ---- a workflow that saved linked outputs under other fields (N10) ----------------------------------
+    const WARNING = "under another field than the node records";
+    const warnings = () => ev((text) => [...document.querySelectorAll(".p-toast-message")]
+        .map((t) => t.textContent).filter((t) => t.includes(text)), WARNING);
+    const misplaced = await ev(async (id) => {
+        const b = window.__bl;
+        const n = b.add("BundleLibraryLoad", [80, 80]);
+        await b.pick(n, id);
+        n.connect(0, b.add("PreviewAny", [600, 80]), 0);
+        n.connect(1, b.add("PreviewImage", [600, 300]), 0);
+        const data = JSON.parse(JSON.stringify(b.app.graph.serialize()));
+        const saved = data.nodes.find((x) => x.type === "BundleLibraryLoad").outputs;
+        [saved[0].label, saved[1].label] = [saved[1].label, saved[0].label]; // as a hand-edited file might
+        await b.app.loadGraphData(data);
+        await b.sleep(800);
+        return { labels: b.outs(b.loaders()[0]).slice(0, 2).map((o) => o.label), spec: JSON.parse(b.spec(b.loaders()[0])).slots };
+    }, A);
+    const toast = await page.waitForFunction((text) => [...document.querySelectorAll(".p-toast-message")]
+        .map((t) => t.textContent).find((t) => t.includes(text)) ?? null, WARNING, { timeout: 5000 })
+        .then((h) => h.jsonValue(), () => null);
+    check("a workflow that saved linked outputs under other fields says so; the outputs follow slot_spec (N10)",
+        toast?.includes("1 (ref_1 → prompt)") && toast.includes("2 (prompt → ref_1)")
+        && JSON.stringify(misplaced.labels) === JSON.stringify(["prompt", "ref_1"]), { toast, misplaced });
+    const before = (await warnings()).length;
+    await ev(async () => {
+        const b = window.__bl;
+        await b.app.loadGraphData(JSON.parse(JSON.stringify(b.app.graph.serialize())));
+        await b.sleep(800);
+    });
+    check("the same workflow saved again (outputs and slot_spec agree) loads without it", (await warnings()).length === before);
+    await ev(() => window.__bl.app.graph.clear());
+
     await finish({ expectRemoved: 5 });
 })().catch((e) => {
     console.error(e);

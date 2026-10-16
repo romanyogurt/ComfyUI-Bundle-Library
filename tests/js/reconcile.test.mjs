@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { COMFY_TYPES, POOL_SIZE, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "../../web/reconcile.js";
+import {
+    COMFY_TYPES, POOL_SIZE, misplacedOutputs, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses,
+} from "../../web/reconcile.js";
 
 const A = [
     { name: "prompt", type: "text" },
@@ -65,6 +67,21 @@ test("slot_spec round-trips and rejects malformed text", () => {
     assert.equal(parseSpec(JSON.stringify({ v: 2, slots: [] })), null);
     assert.equal(parseSpec(JSON.stringify({ v: 1, slots: [{ name: "x", type: "mesh" }] })), null);
     assert.equal(parseSpec(JSON.stringify({ v: 1, slots: [{ name: "", type: "text" }] })), null);
+});
+
+test("linked outputs saved under another field or type than slot_spec are found (N10)", () => {
+    const slots = [{ name: "prompt", type: "text" }, { name: "ref", type: "image" }, { name: "seed", type: "int" }];
+    const out = (label, type, links = [1]) => ({ name: "field_01", label, type, links });
+    assert.deepEqual(misplacedOutputs([out("prompt", "STRING"), out("ref", "IMAGE"), out("seed", "INT")], slots), []);
+    assert.deepEqual(misplacedOutputs([out("ref", "IMAGE"), out("prompt", "STRING"), out("seed", "INT")], slots), [
+        { index: 0, was: "ref", now: "prompt" }, { index: 1, was: "prompt", now: "ref" }]);
+    assert.deepEqual(misplacedOutputs([out("prompt", "STRING"), out("ref", "IMAGE"), out("seed", "FLOAT")], slots),
+        [{ index: 2, was: "seed", now: "seed" }], "another type at the same name");
+    assert.deepEqual(misplacedOutputs([out("ref", "IMAGE", []), out("prompt", "STRING", null)], slots), [],
+        "an output nothing is linked to carries nothing wrong");
+    assert.deepEqual(misplacedOutputs([out("field_01", "*"), { name: "field_02", type: "*", links: [1] }], slots), [],
+        "outputs never shown as fields");
+    assert.deepEqual(misplacedOutputs(undefined, slots), []);
 });
 
 test("slot_spec takes only the types themselves, not what every object has (R15-11)", () => {
