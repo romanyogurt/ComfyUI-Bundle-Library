@@ -596,6 +596,7 @@
   "store.organization_unsupported": "organization.json {problem}; this version does not change categories or favorites.",
   "store.organization_write_failed": "organization.json could not be written: {reason}",
   "store.read_failed": "Cannot read bundle file {name}: {problem}",
+  "store.recent_boolean": "recent must be true or false.",
   "store.revision_conflict": "The bundle has changed since it was loaded (now revision {revision}).",
   "store.revision_integer": "expected_revisions: the revision of {bundle_id} must be an integer.",
   "store.revision_missing": "expected_revisions has no revision for {bundle_id}.",
@@ -667,6 +668,11 @@
   "trash.cleanup_recent": {
     "one": "{count} unused file stored in the last {hours} hours is kept: changes that are not saved yet may use them.",
     "other": "{count} unused files stored in the last {hours} hours are kept: changes that are not saved yet may use them."
+  },
+  "trash.cleanup_recent_risk": "Deleting cannot be undone, and a change not saved yet in another tab or browser may use them: it could not be saved until its file is chosen again.",
+  "trash.cleanup_recent_too": {
+    "one": "Delete the recent file too ({size})",
+    "other": "Delete the {count} recent files too ({size})"
   },
   "trash.cleanup_title": "Clean up unused files",
   "trash.close": "Close",

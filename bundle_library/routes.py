@@ -403,9 +403,10 @@ def register(routes, get_store):
     @_api
     @_writes
     async def delete_unused_assets(request):
-        """Deletes the files listed in "sha256" (what GET showed) that are still unused."""
+        """Deletes the files listed in "sha256" (what GET showed) that are still unused; with "recent": true, also
+        those within the grace time."""
         data = await _read_json(request)
-        return _json(await asyncio.to_thread(get_store().delete_unused_assets, data.get("sha256")))
+        return _json(await asyncio.to_thread(get_store().delete_unused_assets, data.get("sha256"), data.get("recent", False)))
 
     @routes.post(prefix + "/assets")
     @_api

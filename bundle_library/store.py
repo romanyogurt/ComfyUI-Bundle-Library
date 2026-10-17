@@ -1067,13 +1067,14 @@ class BundleStore:
 
     def unused_assets(self):
         """The stored files that no bundle uses (in use or in the trash), oldest
-        first. Files stored or uploaded again within the grace time are only
-        counted (`recent`): a draft in the editor may be using them."""
+        first. Files stored or uploaded again within the grace time come apart
+        (`recent_assets`, and their number in `recent`): a draft in the editor
+        may be using them, so they are deleted only when asked for (0.0.31)."""
         with self._lock:
             used = self._used_assets()
             stored = self.assets.stored()
         cutoff = time.time() - ASSET_GRACE_SECONDS
-        unused, recent = [], 0
+        unused, recent = [], []
         for sha256, path in stored:
             if sha256 in used:
                 continue
@@ -1081,27 +1082,28 @@ class BundleStore:
                 stat = path.stat()
             except OSError:
                 continue  # removed meanwhile
-            if stat.st_mtime >= cutoff:
-                recent += 1
-                continue
             ext = path.suffix[1:]
-            unused.append({"sha256": sha256, "kind": KINDS[ext], "ext": ext, "bytes": stat.st_size,
-                           "stored_at": _file_time(stat.st_mtime)})
+            (recent if stat.st_mtime >= cutoff else unused).append({
+                "sha256": sha256, "kind": KINDS[ext], "ext": ext, "bytes": stat.st_size, "stored_at": _file_time(stat.st_mtime)})
         unused.sort(key=lambda a: (a["stored_at"], a["sha256"]))
-        return {"assets": unused, "bytes": sum(a["bytes"] for a in unused), "recent": recent,
-                "grace_hours": ASSET_GRACE_SECONDS // 3600}
+        recent.sort(key=lambda a: (a["stored_at"], a["sha256"]))
+        return {"assets": unused, "bytes": sum(a["bytes"] for a in unused), "recent": len(recent),
+                "recent_assets": recent, "grace_hours": ASSET_GRACE_SECONDS // 3600}
 
-    def delete_unused_assets(self, shas):
+    def delete_unused_assets(self, shas, recent=False):
         """Delete these stored files (the ones unused_assets() showed) if they
         are still unused and past the grace time, with their thumbnails; also
-        thumbnails whose file is gone. Files in use again are kept."""
+        thumbnails whose file is gone. Files in use again are kept. With
+        `recent`, files within the grace time go too (the user chose it, 0.0.31)."""
         if not isinstance(shas, list):
             raise invalid(Text("store.sha256_list"))
+        if type(recent) is not bool:
+            raise invalid(Text("store.recent_boolean"))
         for sha256 in shas:
             check_sha256(sha256)
         with self._lock:  # no bundle is saved meanwhile, so no file becomes used unseen
             used = self._used_assets()
-            cutoff = time.time() - ASSET_GRACE_SECONDS
+            cutoff = float("inf") if recent else time.time() - ASSET_GRACE_SECONDS
             deleted, freed = 0, 0
             for sha256 in dict.fromkeys(shas):
                 size = None if sha256 in used else self.assets.remove(sha256, cutoff)

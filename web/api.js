@@ -202,7 +202,9 @@ export const emptyTrash = (shown) =>
     request("/trash", json("DELETE", { expected_revisions: shown }), { changes: false });
 /** Stored files that no bundle uses, in the library or in the trash. */
 export const listUnusedFiles = () => request("/cleanup");
-export const deleteUnusedFiles = (shas) => request("/cleanup", json("POST", { sha256: shas }), { changes: false });
+/** Delete unused files; with `recent`, also those within the grace time (0.0.31). */
+export const deleteUnusedFiles = (shas, { recent = false } = {}) =>
+    request("/cleanup", json("POST", { sha256: shas, ...(recent ? { recent: true } : {}) }), { changes: false });
 
 /**
  * Upload one file for a field of `kind` (image, video or audio); resolves to

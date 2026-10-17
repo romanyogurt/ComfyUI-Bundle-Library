@@ -146,19 +146,43 @@ export class TrashPanel {
             return;
         }
         const { assets, bytes, recent, grace_hours: hours } = unused;
-        const notes = [assets.length
-            ? t("trash.cleanup_detail", { count: assets.length, size: formatBytes(bytes) })
-            : t("trash.cleanup_nothing")];
+        const fresh = unused.recent_assets ?? []; // the recent ones themselves (0.0.31)
+        const notes = assets.length ? [t("trash.cleanup_detail", { count: assets.length, size: formatBytes(bytes) })]
+            : fresh.length ? [] : [t("trash.cleanup_nothing")]; // recent ones can be cleaned up when ticked
         if (recent) {
             notes.push(t("trash.cleanup_recent", { count: recent, hours }));
         }
-        const choices = assets.length ? [[t("trash.cleanup_delete", { files: t("count.files", { count: assets.length }) }), true, "danger"],
-            [t("common.cancel"), false]] : [[t("trash.close"), false]];
-        const confirmed = await this.modal.choose(t("trash.cleanup_title"), notes, choices,
-            assets.length ? this.renderFiles(assets) : null);
+        const deleteLabel = (count) => t("trash.cleanup_delete", { files: t("count.files", { count }) });
+        const choices = assets.length || fresh.length ? [[deleteLabel(assets.length), true, "danger"], [t("common.cancel"), false]]
+            : [[t("trash.close"), false]];
+        let withRecent = false;
+        // Recent files go only when ticked: a change not saved yet elsewhere may use them (0.0.31).
+        const extra = !fresh.length ? (assets.length ? this.renderFiles(assets) : null) : ([remove]) => {
+            const box = el("div", "bl-cleanup");
+            if (assets.length) box.append(this.renderFiles(assets));
+            const tick = el("input");
+            tick.type = "checkbox";
+            const label = el("label", "bl-cleanup-recent");
+            label.append(tick, t("trash.cleanup_recent_too", { count: fresh.length,
+                size: formatBytes(fresh.reduce((sum, asset) => sum + asset.bytes, 0)) }));
+            const grid = this.renderFiles(fresh);
+            grid.hidden = true;
+            const show = () => {
+                withRecent = tick.checked;
+                grid.hidden = !withRecent;
+                remove.textContent = deleteLabel(assets.length + (withRecent ? fresh.length : 0));
+                remove.disabled = !assets.length && !withRecent;
+            };
+            tick.addEventListener("change", show);
+            box.append(label, el("div", "bl-hint", t("trash.cleanup_recent_risk")), grid);
+            show();
+            return box;
+        };
+        const confirmed = await this.modal.choose(t("trash.cleanup_title"), notes, choices, extra);
         if (!confirmed) return;
         try {
-            const report = await deleteUnusedFiles(assets.map((asset) => asset.sha256));
+            const chosen = withRecent ? [...assets, ...fresh] : assets;
+            const report = await deleteUnusedFiles(chosen.map((asset) => asset.sha256), { recent: withRecent });
             this.modal.status([t("trash.cleanup_done", { files: t("count.unused_files", { count: report.deleted }),
                 size: formatBytes(report.bytes) }), report.kept ? t("trash.cleanup_kept", { count: report.kept }) : null].filter(Boolean).join(" "));
         } catch (error) {

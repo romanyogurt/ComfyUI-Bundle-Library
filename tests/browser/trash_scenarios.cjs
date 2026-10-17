@@ -34,8 +34,20 @@ const TRASH_HELPERS = () => {
             return {
                 title: $(".bl-confirm-title", layer)?.textContent ?? null,
                 text: [...layer.querySelectorAll(".bl-confirm-text")].map((t) => t.textContent),
-                files: [...layer.querySelectorAll(".bl-cleanup-file")].map((f) => f.dataset.sha256),
+                // the files listed to delete (a grid of recent files shows only once its box is ticked)
+                files: [...layer.querySelectorAll(".bl-cleanup-files:not([hidden]) .bl-cleanup-file")]
+                    .filter((f) => !f.closest(".bl-cleanup-files").previousElementSibling?.classList.contains("bl-hint"))
+                    .map((f) => f.dataset.sha256),
                 buttons: [...layer.querySelectorAll("button")].map((b) => b.textContent),
+                deleteDisabled: !!layer.querySelector("button.danger")?.disabled,
+                recent: $(".bl-cleanup-recent", layer) && {
+                    label: $(".bl-cleanup-recent", layer).textContent,
+                    checked: $(".bl-cleanup-recent input", layer).checked,
+                    hint: $(".bl-cleanup-recent + .bl-hint", layer)?.textContent ?? null,
+                    files: [...layer.querySelectorAll(".bl-cleanup-recent ~ .bl-cleanup-files .bl-cleanup-file")]
+                        .map((f) => f.dataset.sha256),
+                    shown: !$(".bl-cleanup-recent ~ .bl-cleanup-files", layer).hidden,
+                },
             };
         },
     };
@@ -181,7 +193,31 @@ function age(sha256) {
         layer.title === "Clean up unused files" && !layer.files.includes(made.gone.sha)
         && layer.text.some((t) => / stored in the last 24 hours (is|are) kept: changes that are not saved yet may use them\.$/.test(t)),
         layer);
-    await button(layer.buttons.at(-1), layerBox).click();
+    check("…and offered apart (0.0.31): a box, off, to delete the recent files too, with what it risks",
+        layer.recent && !layer.recent.checked && !layer.recent.shown && layer.recent.files.includes(made.gone.sha)
+        && /^Delete the (recent file|\d+ recent files) too \(/.test(layer.recent.label)
+        && layer.recent.hint?.startsWith("Deleting cannot be undone, and a change not saved yet in another tab or browser")
+        && (layer.files.length > 0 || (layer.deleteDisabled && !layer.text.some((t) => t.startsWith("There is nothing to clean up")))),
+        layer);
+    await page.locator(".bl-overlay .bl-cleanup-recent input").check();
+    await shot("cleanup-recent.png");
+    layer = await ev(() => window.__trash.layer());
+    const chosen = layer.files.length + layer.recent.files.length;
+    check("ticked: the recent files show and count in Delete", layer.recent.checked && layer.recent.shown && !layer.deleteDisabled
+        && layer.buttons[0] === `Delete ${chosen} file${chosen === 1 ? "" : "s"}`, layer);
+    // The server is not let delete them: the recent files on the test server are not all this scenario's.
+    let sent = null;
+    await page.route("**/bundle-library/v1/cleanup", async (route) => {
+        if (route.request().method() !== "POST") return route.fallback();
+        sent = route.request().postDataJSON();
+        return route.fulfill({ json: { deleted: 0, bytes: 0, kept: sent.sha256.length, thumbnails: 0 } });
+    });
+    await button(layer.buttons[0], layerBox).click();
+    await until(() => /^Deleted 0 unused files/.test(window.__trash.status() ?? ""));
+    await page.unroute("**/bundle-library/v1/cleanup");
+    check("Delete asks for the recent files too, and says so (answered here, so nothing is deleted)",
+        sent?.recent === true && JSON.stringify([...sent.sha256].sort())
+        === JSON.stringify([...layer.files, ...layer.recent.files].sort()), sent);
     if (CONTAINER && LIBRARY) {
         age(made.gone.sha);
         await button("Clean up unused files…").click();

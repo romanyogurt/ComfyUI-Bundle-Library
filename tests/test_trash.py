@@ -204,6 +204,28 @@ class TrashTest(unittest.TestCase):
         self.assertEqual(self.store.delete_unused_assets([sha])["deleted"], 0)
         self.assertIsNotNone(self.store.assets.path(sha))
 
+    def test_recent_unused_files_come_apart_and_go_only_when_asked(self):
+        # 0.0.31: the files within the grace time are listed apart, and deleted only with recent=True
+        old, a, b = (self.upload(helpers.png(c)) for c in ("red", "blue", "green"))
+        self.age(old)
+        listing = self.store.unused_assets()
+        self.assertEqual(([x["sha256"] for x in listing["assets"]], listing["recent"]), ([old], 2))
+        self.assertEqual(sorted(x["sha256"] for x in listing["recent_assets"]), sorted([a, b]))
+        self.assertEqual(set(listing["recent_assets"][0]), {"sha256", "kind", "ext", "bytes", "stored_at"})
+        report = self.store.delete_unused_assets([old, a, b])
+        self.assertEqual((report["deleted"], report["kept"]), (1, 2))  # the grace time holds without being asked
+        self.assertIsNotNone(self.store.assets.path(a))
+        used = self.upload(helpers.png("white"))
+        self.make("Uses white now", used)  # in use since the list was shown
+        report = self.store.delete_unused_assets([a, b, used], recent=True)
+        self.assertEqual((report["deleted"], report["kept"]), (2, 1))
+        self.assertIsNone(self.store.assets.path(a))
+        self.assertIsNotNone(self.store.assets.path(used))
+        self.assertEqual(self.store.unused_assets()["recent_assets"], [])
+        for value in ("yes", 1, None):
+            with self.subTest(value):
+                self.refused(lambda: self.store.delete_unused_assets([], recent=value), 400, "invalid")
+
     def test_videos_and_audio_are_cleaned_up_too(self):
         video = self.upload(helpers.video("mp4", "libx264"), "video")
         audio = self.upload(helpers.audio(), "audio")

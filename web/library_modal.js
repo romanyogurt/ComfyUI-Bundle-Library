@@ -1647,11 +1647,13 @@ class LibraryModal {
 
     /**
      * Resolves to the value of the chosen button; dismissing picks the last one.
-     * `message` is a paragraph or a list of them; `extra`, an element to show below.
+     * `message` is a paragraph or a list of them; `extra`, an element to show
+     * below, or a function that makes it from the buttons (to change them as
+     * the user chooses in it).
      */
     choose(title, message, choices, extra = null) {
         return new Promise((resolve) => {
-            const box = el("div", extra ? "bl-confirm wide" : "bl-confirm");
+            const box = el("div", "bl-confirm");
             const row = el("div", "bl-confirm-buttons");
             let token = null;
             const finish = (value) => {
@@ -1663,8 +1665,10 @@ class LibraryModal {
                 choice.addEventListener("click", () => finish(value));
                 row.append(choice);
             }
+            const below = typeof extra === "function" ? extra([...row.children]) : extra;
+            if (below) box.classList.add("wide");
             box.append(el("div", "bl-confirm-title", title),
-                ...[message].flat().map((text) => el("div", "bl-confirm-text", text)), ...(extra ? [extra] : []), row);
+                ...[message].flat().map((text) => el("div", "bl-confirm-text", text)), ...(below ? [below] : []), row);
             token = this.showLayer(box, () => finish(choices.at(-1)[1]));
             row.lastChild.focus(); // the safe choice
         });

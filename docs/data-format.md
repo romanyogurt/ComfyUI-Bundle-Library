@@ -264,8 +264,8 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | GET | `/trash` | — | `{"trash": [요약과 "deleted_at"], "errors": [{"file", "id", "code", "error"}]}`. 요약의 `category`는 되살아날 카테고리다. 마지막에 지운 것부터. `errors`는 이 버전이 쓸 수 없는 파일과 옮기지 못한 옛 휴지통 파일이다 |
 | DELETE | `/trash/{id}` | `expected_revision=N`(필수. `unreadable=1`이면 선택) | `{"deleted": id}`. 휴지통의 번들을 영구 삭제한다. 화면이 보여 준 revision과 다르면 409 `revision_conflict`로 남긴다. 이 버전이 완전히 읽지 못하는 파일은 `unreadable=1`이 있을 때만 지우고, 읽기 전용 번들은 휴지통에 있을 때만 지운다 |
 | DELETE | `/trash` | `{"expected_revisions": {id: revision}}` | `{"deleted": 개수, "results": [번들별 결과]}`. 화면이 보여 준 번들 중 그 revision 그대로 휴지통에 있는 것만 영구 삭제한다. 그 뒤에 휴지통에 들어온 번들과 완전히 읽지 못하는 파일은 남긴다 |
-| GET | `/cleanup` | — | `{"assets": [{"sha256", "kind", "ext", "bytes", "stored_at"}], "bytes", "recent", "grace_hours"}`. 아무 번들도, 휴지통의 번들도 쓰지 않는 파일. 오래된 것부터 |
-| POST | `/cleanup` | `{"sha256": [GET이 보여 준 것]}` | `{"deleted", "bytes", "kept", "thumbnails"}`. 아직 쓰이지 않는 파일만 썸네일과 함께 지운다 |
+| GET | `/cleanup` | — | `{"assets": [{"sha256", "kind", "ext", "bytes", "stored_at"}], "bytes", "recent", "recent_assets": [같은 모양], "grace_hours"}`. 아무 번들도, 휴지통의 번들도 쓰지 않는 파일. 오래된 것부터. 유예 시간 안의 파일은 `recent_assets`로 따로 준다(0.0.31부터. `recent`는 그 수) |
+| POST | `/cleanup` | `{"sha256": [GET이 보여 준 것], "recent"?: true}` | `{"deleted", "bytes", "kept", "thumbnails"}`. 아직 쓰이지 않는 파일만 썸네일과 함께 지운다. 유예 시간 안의 파일은 `recent`가 `true`일 때만 지운다(0.0.31부터. 참·거짓이 아니면 400) |
 
 목록의 요약은 필드마다 `preview`를 준다. 텍스트는 앞 200자, 이미지는
 `{"sha256", "width", "height"}`, 비디오는 `{"sha256", "width", "height", "duration"}`, 오디오는

@@ -1241,6 +1241,25 @@
     color: var(--descrip-text, #999);
 }
 
+/* The cleanup question's choice to delete recent files too (0.0.31). */
+.bl-cleanup {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+}
+
+.bl-cleanup .bl-cleanup-files {
+    max-height: 180px; /* two of them may show */
+}
+
+.bl-cleanup-recent {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+}
+
 .bl-confirm-title {
     font-size: 14px;
     font-weight: 600;
