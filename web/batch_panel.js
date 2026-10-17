@@ -2,8 +2,8 @@
 // the selection and what can be done to all of it (BatchPanel), a change
 // being sent, and its result (BatchResult). The modal runs the change
 // (LibraryModal.runBatch); these only draw.
-import { thumbnailURL } from "./api.js";
-import { button, el, icon, plural } from "./dom.js";
+import { exportURL, thumbnailURL } from "./api.js";
+import { button, el, formatBytes, icon, plural } from "./dom.js";
 import { tagCounts } from "./tags.js";
 
 /** The small picture of a bundle, if it has an image or a video. */
@@ -136,6 +136,14 @@ export class BatchPanel {
         });
         tags.append(addTag);
 
+        const out = el("div", "bl-batch-row");
+        const toZip = button("", "bl-btn");
+        toZip.dataset.control = "export";
+        toZip.append(icon("download"), " Export ZIP");
+        toZip.addEventListener("click", () => void modal.runExport(this.bundles));
+        out.append(el("span", "bl-label", "Export"), toZip,
+            el("span", "bl-hint", "The bundles and the files they use, to keep or to bring into another library."));
+
         const trash = el("div", "bl-batch-row");
         const toTrash = button("", "bl-btn danger");
         toTrash.dataset.control = "trash";
@@ -149,7 +157,7 @@ export class BatchPanel {
             tags.append(el("span", "bl-hint", note));
         }
 
-        this.root.replaceChildren(head, names, place, stars, tags, trash);
+        this.root.replaceChildren(head, names, place, stars, tags, out, trash);
         if (focused) this.root.querySelector(`[data-control="${focused}"]`)?.focus({ preventScroll: true });
     }
 }
@@ -259,5 +267,54 @@ export class BatchResult {
             done.append(back);
         }
         this.root.replaceChildren(...parts, done);
+    }
+}
+
+/** An export: the ZIP made, what it holds and what was left out; its download starts at once. */
+export class ExportResult extends BatchResult {
+    render({ answer, unknown, refused }) {
+        this.root.classList.remove("waiting");
+        const { job, modal } = this;
+        const names = new Map(job.summaries.map((b) => [b.id, b.label]));
+        const done = el("div", "bl-batch-actions");
+        const back = button("Done", "bl-btn primary");
+        back.addEventListener("click", () => modal.leaveResult());
+        const parts = [];
+        if (unknown || refused) {
+            parts.push(el("div", "bl-batch-title", "Nothing to download"),
+                el("div", refused ? "bl-error" : "bl-warn", refused ? refused.message
+                    : "No answer came back. The export may still be made on the server; export again to download it."));
+            done.append(back);
+            this.root.replaceChildren(...parts, done);
+            return;
+        }
+        const link = el("a", "bl-btn primary bl-export-download");
+        link.href = exportURL(answer.token, answer.file_name);
+        link.download = answer.file_name;
+        link.append(icon("download"), " Download again");
+        parts.push(el("div", "bl-batch-title", "Exported"), el("div", "bl-batch-summary",
+            `${plural(answer.bundles, "bundle")} and ${plural(answer.assets, "file")} · ${formatBytes(answer.bytes)} · `
+            + `${answer.file_name}`), el("div", "bl-hint", "The download starts by itself; the file can be downloaded "
+            + "again for an hour."));
+        if (answer.skipped.length) {
+            const group = el("div", "bl-batch-outcome other");
+            group.dataset.outcome = "skipped";
+            group.append(el("div", "bl-batch-outcome-title", `Left out (${answer.skipped.length})`));
+            for (const s of answer.skipped) {
+                const row = el("div", "bl-batch-outcome-row");
+                row.dataset.id = s.id;
+                row.append(el("span", "bl-list-name", names.get(s.id) ?? s.id), el("span", "bl-dim", s.reason));
+                group.append(row);
+            }
+            parts.push(group);
+        }
+        if (answer.missing.length) {
+            parts.push(el("div", "bl-warn", `${plural(answer.missing.length, "file")} the bundles use ${answer.missing.length === 1
+                ? "is" : "are"} not in the library and ${answer.missing.length === 1 ? "is" : "are"} not in the ZIP: `
+                + `${[...new Set(answer.missing.flatMap((m) => m.bundles))].join(", ")}.`));
+        }
+        done.append(link, back);
+        this.root.replaceChildren(...parts, done);
+        link.click(); // the browser's own download: nothing is held in the page
     }
 }

@@ -235,6 +235,8 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | DELETE | `/bundles/{id}?expected_revision=N` | — | `{"deleted": id, "changed", "warning"?}`. 휴지통으로 보낸다 (`deleted_at`, revision +1). 이미 휴지통에 있으면 `changed: false`. 일괄 `trash`와 같은 코드다 |
 | POST | `/bundles/{id}/duplicate` | `{"mode"?: "values" 또는 "structure", "name"?}` | 201, 새 번들. `mode`를 생략하거나 `null`이면 `values`, 이름을 생략하거나 비우면 `<이름> copy`. 원본의 카테고리에 두고, 배치만 실패하면 `placement_error` |
 | POST | `/bundles/batch` | `{"ids", "action", 작업별 인수}` | 여러 번들에 한 작업 (아래 "여러 번들에 한 번에", 0.0.14부터) |
+| POST | `/export` | `{"ids"}` (필수, 1~1000개) | 201, `{"token", "file_name", "bytes", "bundles", "assets", "skipped", "missing"}`. 고른 번들의 ZIP을 만든다. 아래 "내보내기" (0.0.21부터) |
+| GET | `/export/{token}?name=` | — | 그 ZIP. `Content-Disposition: attachment`(이름은 `name`을 다시 안전하게 고친 것), 1시간 동안 |
 | GET | `/tags` | — | `{"tags": [{"name", "spellings", "active", "trash", "protected"}], "unreadable", "legacy"}`. 아래 "태그" (0.0.19부터) |
 | POST | `/tags/rename` | `{"from", "to"}` (둘 다 필수) | `{"changed", "merged", "excluded", "unknown", "legacy", "warning"?}`. 쓰는 번들과 휴지통의 번들 모두에서 태그 이름을 바꾸고, `to`가 이미 있으면 합친다 |
 | POST | `/tags/delete` | `{"tag"}` (필수) | `{"changed", "excluded", "unknown", "legacy", "warning"?}`. 쓰는 번들과 휴지통의 번들 모두에서 태그를 뗀다 |
@@ -318,6 +320,39 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 - 화면은 요청을 보내기 전에 대상 id와 revision을 정해 두고, 답이 올 때까지 창을 잠근다. 답이 없으면(통신
   오류나 "Stop waiting") 완료 여부를 알 수 없다고 보이고, 서버 작업을 취소한 것으로 보지 않는다.
 
+### 내보내기
+
+(0.0.21부터) 고른 번들을 ZIP 하나로 내보낸다(`bundle_library/exchange.py`). 가져오기(Phase 8b)는 이 형식을 읽는다.
+
+```
+manifest.json
+bundles/<UUID>.json       번들 파일, 저장된 바이트 그대로
+assets/<SHA-256>.<ext>    번들들이 쓰는 파일의 원본 (썸네일은 넣지 않는다)
+```
+
+```json
+{"format": "comfyui-bundle-library/export", "version": 1, "exported_at": "2026-10-17T05:21:20.000Z",
+ "generator": "Bundle Library 0.0.21",
+ "bundles": [{"id": "…", "name": "…", "file": "bundles/….json", "sha256": "그 파일 바이트의 SHA-256",
+              "category": "카테고리 이름 또는 null"}],
+ "assets": [{"sha256": "…", "file": "assets/….png", "kind": "image", "bytes": 1234}]}
+```
+
+- 번들 파일은 다시 직렬화하지 않고 저장된 바이트를 넣는다. 이 버전이 정규화해 읽은 내용이나 API의 표현
+  (`value_text`, 요약)이 아니므로, 안전 범위 밖의 정수, 그 뒤 엄격해진 규칙의 값, 이 버전이 모르는 키도 그대로
+  옮겨진다. 이 버전이 바꿀 수 없는(읽기 전용) 번들도 담는다.
+- 휴지통의 번들, 이 버전이 읽지 못하는 파일(`read_error`, 새 버전·미지원·손상), 없는 번들은 담지 않고
+  `skipped`에 `{"id", "code", "reason"}`으로 알린다. 하나도 담을 수 없으면 409 `nothing_to_export`다.
+- 파일은 번들들이 가리키는 것을 한 번씩 담는다. 라이브러리에 없는 파일은 담지 못하고 `missing`에
+  `{"sha256", "bundles"}`(그 파일을 가리키는 번들 이름)로 알린다. 번들은 그대로 담는다.
+- 카테고리는 이름으로 담는다(id는 라이브러리마다 다르다). 즐겨찾기는 담지 않는다.
+- JSON은 deflate로 압축하고, 이미 압축된 미디어는 그대로 담는다. 큰 ZIP을 위해 ZIP64를 쓴다.
+- ZIP은 라이브러리의 `tmp/exports/`에 만들어 1시간 동안 `GET /export/{token}`으로 내려받을 수 있고, 그 뒤에는
+  지운다(다음 내보내기나 내려받기 때 정리). 토큰은 추측할 수 없는 값이다. 번들은 저장소 잠금 안에서 읽고, 파일은
+  내용 주소라 ZIP을 쓰는 동안 바뀌지 않는다.
+- 내려받는 이름은 번들 하나면 그 이름(`<이름>.zip`), 여럿이면 `bundle-library-<날짜>-<시각>.zip`이다. 글자·숫자와
+  ` -_.()[]`만 남기고 나머지는 `_`로 바꾼다.
+
 ### 태그
 
 (0.0.19부터) 태그는 번들 내용에 있다. 두 태그는 `casefold()`가 같으면 같은 태그다: `Portrait`와
@@ -373,6 +408,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | 409 | `revision_conflict` | `expected_revision`이 현재와 다름. `current_revision`을 함께 준다 |
 | 409 | `in_trash`, `not_in_trash` | 휴지통의 번들을 고치거나 지우거나 복제하려 함 / 쓰는 번들을 되살리거나 영구 삭제하려 함 |
 | 409 | `read_only` | 이 버전이 모르는 데이터가 있어 고칠 수 없는 번들 |
+| 409 | `nothing_to_export` | 내보낼 수 있는 번들이 하나도 없음. `skipped`를 함께 준다 (0.0.21부터) |
 | 409 | `too_many_tags` | 태그를 붙이면 번들의 태그가 20개를 넘음 (일괄 결과의 번들별 `code`, 0.0.19부터) |
 | 409 | `category_conflict` | 같은 이름(대소문자 무시)의 카테고리가 있음 |
 | 409 | `organization_unwritable` | 이 버전이 바꿀 수 없는 정리 파일. `state`를 함께 준다 |

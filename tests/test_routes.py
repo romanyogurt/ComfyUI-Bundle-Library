@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import unittest.mock
 import uuid
+import zipfile
 from pathlib import Path
 
 from aiohttp import FormData, web
@@ -293,6 +294,21 @@ class RoutesTest(AioHTTPTestCase):
         await self.error(await self.client.put(f"{P}/bundles/{bundle['id']}/category", json={"category": "../x"},
                                                headers=WRITE), 400, "invalid_id")
         self.assertEqual((await self.body(await self.client.get(f"{P}/bundles/{bundle['id']}"), 200))["revision"], 1)
+
+    async def test_an_export_is_made_then_downloaded_as_a_zip(self):
+        made = await self.body(await self.client.post(P + "/bundles", json=await self.bundle_data(color="teal"),
+                                                      headers=WRITE), 201)
+        await self.error(await self.client.post(P + "/export", json={}, headers=WRITE), 400, "invalid")
+        answer = await self.body(await self.client.post(P + "/export", json={"ids": [made["id"]]}, headers=WRITE), 201)
+        self.assertEqual((answer["bundles"], answer["assets"], answer["file_name"]), (1, 1, f"{made['name']}.zip"))
+        response = await self.client.get(f"{P}/export/{answer['token']}?name=" + "Teal ünï.zip")
+        self.assertEqual(response.status, 200)
+        self.assertEqual(response.headers["Content-Type"], "application/zip")
+        self.assertEqual(response.headers["Content-Disposition"],
+                         "attachment; filename=\"Teal _n_.zip\"; filename*=UTF-8''Teal%20%C3%BCn%C3%AF.zip")
+        with zipfile.ZipFile(io.BytesIO(await response.read())) as archive:
+            self.assertEqual(json.loads(archive.read("manifest.json"))["bundles"][0]["id"], made["id"])
+        await self.error(await self.client.get(f"{P}/export/{'a' * 22}"), 404, "not_found")
 
     async def test_batch(self):
         made = [await self.body(await self.client.post(P + "/bundles", json=await self.bundle_data(color=color), headers=WRITE),

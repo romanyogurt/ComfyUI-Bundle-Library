@@ -237,6 +237,16 @@ export function uploadAsset(file, kind = "image", { onProgress = null, name = nu
     });
 }
 
+/**
+ * Make a ZIP of bundles to download (data-format.md, "내보내기"): {token, file_name, bytes, bundles, assets,
+ * skipped, missing}. It can be downloaded from exportURL() for an hour.
+ */
+export const exportBundles = (ids) => request("/export", json("POST", { ids }), { changes: false });
+
+export function exportURL(token, name) {
+    return api.apiURL(`${PREFIX}/export/${token}?name=${encodeURIComponent(name)}`);
+}
+
 export function assetURL(sha256) {
     return api.apiURL(`${PREFIX}/assets/${sha256}`);
 }

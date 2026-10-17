@@ -173,10 +173,15 @@ def read_file(path, file_id=None):
             text = f.read()
     except OSError as e:
         return Loaded(CORRUPT, problem=f"could not be read ({e.strerror or type(e).__name__})", io_error=True)
+    return read_checked(text, file_id, getattr(path, "name", path))
+
+
+def read_checked(data, file_id=None, name=None):
+    """read() of a file's bytes, with the last defence of the file boundary."""
     try:
-        return read(text, file_id)
+        return read(data, file_id)
     except Exception as e:  # noqa: BLE001 — the last defence of the file boundary
         # A file must never take down the list of all the others; the cause is
         # logged, since it may be a fault in this code rather than in the file.
-        logging.exception("[Bundle Library] could not check %s", getattr(path, "name", path))
+        logging.exception("[Bundle Library] could not check %s", name or file_id)
         return Loaded(CORRUPT, problem=f"could not be checked ({type(e).__name__})")

@@ -2,10 +2,10 @@
 // the editor on the right. It is a document.body overlay of its own: ComfyUI's
 // dialogs need Vue components, and they would open underneath it.
 import {
-    CHANGED_EVENT, batchBundles, createCategory, deleteCategory, getBundle, listLibrary, listTrash, purgeBundle,
+    CHANGED_EVENT, batchBundles, createCategory, exportBundles, deleteCategory, getBundle, listLibrary, listTrash, purgeBundle,
     renameCategory, searchBundleIds, setCategory, setFavorite, thumbnailURL,
 } from "./api.js";
-import { BatchPanel, BatchResult } from "./batch_panel.js";
+import { BatchPanel, BatchResult, ExportResult } from "./batch_panel.js";
 import { BundleEditor } from "./bundle_editor.js";
 import { Commands } from "./commands.js";
 import { button, closeMenus, code, codeList, el, icon, menu, plural } from "./dom.js";
@@ -940,6 +940,38 @@ class LibraryModal {
             if (action === "trash") void this.refreshTrashCount();
             await this.reload();
             // To its result while that is shown, also after Stop waiting: the user has not left it.
+            if (this.commands.pane.shows(ticket.view)) view.render(outcome);
+        });
+    }
+
+    /**
+     * Export bundles as a ZIP (exchange.py on the server). As with a batch, what
+     * goes is fixed first, the window is held until the answer (or Stop waiting),
+     * and the result stays until the user leaves it; the download starts there.
+     */
+    async runExport(bundles) {
+        if (!bundles.length || !this.allowed()) return;
+        const job = {
+            token: ++this.batchJobs, action: "export", args: {},
+            summaries: bundles.map((b) => ({ id: b.id, label: this.labels?.get(b.id) ?? b.name, revision: b.revision })),
+            describe: { doing: `Exporting ${plural(bundles.length, "bundle")}`, done: "Exported", what: "The export" },
+        };
+        await this.commands.hold({
+            kind: "export", wait: "Wait until the export is made.", stallMs: STALL_MS,
+            onStall: () => {
+                if (this.result?.job === job) this.result.stalled();
+            },
+        }, async (ticket) => {
+            job.ticket = ticket;
+            const view = new ExportResult(this, job, { waiting: true });
+            ticket.view = this.showPane(view.root, { result: view });
+            this.renderList();
+            let outcome;
+            try {
+                outcome = { answer: await exportBundles(job.summaries.map((b) => b.id)) };
+            } catch (error) {
+                outcome = error.status >= 400 && error.status < 500 ? { refused: error } : { unknown: true };
+            }
             if (this.commands.pane.shows(ticket.view)) view.render(outcome);
         });
     }

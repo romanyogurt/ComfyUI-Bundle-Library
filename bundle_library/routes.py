@@ -9,12 +9,13 @@ import functools
 import hashlib
 import json
 import logging
-from urllib.parse import urlsplit
+from urllib.parse import quote, urlsplit
 
 from aiohttp import web
 
 from .assets import MIME_TYPES
 from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
+from .exchange import Exports, file_name
 from .model import LibraryError, check_bundle_id, check_sha256, lone_surrogates
 from .store import present
 
@@ -197,6 +198,29 @@ def register(routes, get_store):
     async def batch(request):
         data = await _read_json(request)
         return web.json_response(await asyncio.to_thread(get_store().batch, data))
+
+    @routes.post(prefix + "/export")
+    @_api
+    @_writes
+    async def export(request):
+        """Makes a ZIP of bundles in the library's temporary folder (exchange.py),
+        to be downloaded within the hour from GET /export/{token}."""
+        data = _require(await _read_json(request), "ids")
+        store = get_store()
+        result = await asyncio.to_thread(Exports(store.tmp_dir).create, store, data["ids"])
+        return web.json_response(result, status=201)
+
+    @routes.get(prefix + "/export/{token}")
+    @_api
+    async def download_export(request):
+        """The ZIP of an export, as a download named by ?name= (made safe again here)."""
+        store = get_store()
+        path = await asyncio.to_thread(Exports(store.tmp_dir).path, request.match_info["token"])
+        name = file_name([request.query.get("name", "")[:120].removesuffix(".zip")])
+        fallback = name.encode("ascii", "replace").decode().replace("?", "_").replace('"', "_")
+        return web.FileResponse(path, headers={
+            "Content-Type": "application/zip", "Cache-Control": "no-store",
+            "Content-Disposition": f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(name)}'})
 
     @routes.get(prefix + "/tags")
     @_api

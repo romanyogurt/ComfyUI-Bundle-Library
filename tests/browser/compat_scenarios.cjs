@@ -135,7 +135,8 @@ function unplace(paths) {
             await page.locator(`.bl-overlay .bl-group.attention .bl-list-item[data-id="${readOnlyId}"]`).click();
             await until(() => document.querySelector(".bl-overlay .bl-editor-notes"));
             editor = await ev(() => {
-                const head = [...document.querySelectorAll(".bl-overlay .bl-editor-head > button:not(.bl-star), .bl-overlay .bl-editor-head .bl-menu-wrap > button")];
+                // The export button stays: an export carries the file as it is stored (Phase 8a).
+                const head = [...document.querySelectorAll(".bl-overlay .bl-editor-head > button:not(.bl-star):not(.bl-export), .bl-overlay .bl-editor-head .bl-menu-wrap > button")];
                 return {
                     notes: document.querySelector(".bl-overlay .bl-editor-notes").textContent,
                     enabled: head.filter((b) => !b.disabled).map((b) => b.textContent),

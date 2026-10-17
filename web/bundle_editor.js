@@ -9,7 +9,7 @@ import {
     MEDIA, assetURL, createBundle, deleteBundle, duplicateBundle, fileProblem, getBundle,
     thumbnailURL, updateBundle, uploadAsset,
 } from "./api.js";
-import { button, el, formatBytes, formatDuration, menu, plural } from "./dom.js";
+import { button, el, formatBytes, formatDuration, icon, menu, plural } from "./dom.js";
 import { EditorModel, MEDIA_TYPES, editable } from "./editor_model.js";
 import { POOL_SIZE } from "./reconcile.js";
 
@@ -167,10 +167,17 @@ export class BundleEditor {
             ["Duplicate structure only", () => void this.duplicate("structure")],
         ]);
         this.duplicateButton = duplicate.opener;
+        this.exportButton = button("", "bl-btn icon bl-export");
+        this.exportButton.setAttribute("aria-label", "Export this bundle as a ZIP");
+        this.exportButton.append(icon("download"));
+        this.exportButton.addEventListener("click", () => {
+            const summary = this.model.summary();
+            if (summary && !this.changed) void this.modal.runExport([summary]); // the bundle as saved
+        });
         this.deleteButton = button("Delete", "bl-btn danger");
         this.deleteButton.addEventListener("click", () => void this.remove());
         head.append(this.starButton, this.nameInput, this.stateMark, this.saveButton, this.revertButton, duplicate.root,
-            this.deleteButton);
+            this.exportButton, this.deleteButton);
         return head;
     }
 
@@ -650,6 +657,8 @@ export class BundleEditor {
         this.revertButton.textContent = this.saved ? "Revert" : "Discard";
         this.duplicateButton.disabled = !this.saved || changed || !!this.readOnly || !!this.busy;
         this.duplicateButton.title = this.readOnly ? blocker : changed ? "Save or revert your changes first" : "";
+        this.exportButton.disabled = !this.saved || changed || !!this.busy;
+        this.exportButton.title = changed && this.saved ? "Save or revert your changes first" : "Export this bundle as a ZIP";
         this.deleteButton.disabled = !this.saved || !!this.readOnly || !!this.busy;
         this.deleteButton.title = this.readOnly ? blocker : "";
         this.modal.editorChanged();

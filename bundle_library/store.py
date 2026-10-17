@@ -756,6 +756,33 @@ class BundleStore:
                     results.append(_io_failure(bundle_id, e))
         return results
 
+    # -- exports (exchange.py) ---------------------------------------------------
+
+    def files_for_export(self, ids):
+        """Each bundle of `ids` as its file is stored now, for an export: (id,
+        the file's bytes, how this version reads them (schema.Loaded), the name
+        of its category or None); bytes and the rest are None when there is no
+        such file. Read under the lock, so a bundle being saved is read either
+        before or after the save."""
+        with self._lock:
+            org = self._organization()
+            names = {c["id"]: c["name"] for c in self._categories_of(org)}
+            found = []
+            for bundle_id in ids:
+                if not self._exists(bundle_id):
+                    found.append((bundle_id, None, None, None))
+                    continue
+                path = self._path(bundle_id)
+                try:
+                    data = path.read_bytes()
+                except OSError as e:
+                    found.append((bundle_id, b"", schema.Loaded(schema.CORRUPT, problem=f"could not be read ({_reason(e)})",
+                                                               io_error=True), None))
+                    continue
+                found.append((bundle_id, data, schema.read_checked(data, bundle_id, path.name),
+                              names.get(self._category_of(org, bundle_id))))
+        return found
+
     # -- tags across the library -------------------------------------------------
 
     def tags(self):
