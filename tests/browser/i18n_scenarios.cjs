@@ -112,7 +112,7 @@ const MODULE = "/extensions/ComfyUI-Bundle-Library";
         "왼쪽에서 번들을 고르거나, + 새 번들로 만드세요.", "새 카테고리", "ZIP에서 번들 가져오기", "휴지통"]);
     await row(ids.A).click();
     await until(() => document.querySelector(".bl-overlay .bl-name-input")?.value.endsWith(" A"));
-    await korean("the editor", ".bl-overlay", ["저장", "되돌리기", "복제 ▾", "삭제", "저장됨", "카테고리", "+ 태그", "메모 (선택)",
+    await korean("the editor", ".bl-overlay", ["저장", "되돌리기", "복제", "삭제", "저장됨", "카테고리", "+ 태그", "메모 (선택)",
         "+ 필드 추가 ▾", "이미지", "텍스트"]);
     await page.locator(".bl-overlay .bl-note-input").fill("changed");
     await korean("an editor with changes", ".bl-overlay", ["● 저장하지 않은 변경", "먼저 변경을 저장하거나 버리세요."]);

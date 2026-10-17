@@ -1443,3 +1443,14 @@
     margin-left: 22px;
     max-width: 320px;
 }
+
+/* The editor's head shows icons (0.0.26): Delete stands a little apart from the rest. */
+.bl-editor-head .bl-delete {
+    margin-left: 10px;
+}
+
+.bl-icon-menu {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}

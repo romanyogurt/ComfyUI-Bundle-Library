@@ -9,7 +9,7 @@ import {
     MEDIA, assetURL, createBundle, deleteBundle, duplicateBundle, fileProblem, getBundle,
     thumbnailURL, updateBundle, uploadAsset,
 } from "./api.js";
-import { button, el, formatBytes, formatDuration, icon, menu } from "./dom.js";
+import { button, el, formatBytes, formatDuration, icon, iconButton, menu } from "./dom.js";
 import { EditorModel, MEDIA_TYPES, editable } from "./editor_model.js";
 import { msg, said, t, tn } from "./i18n.js";
 import { POOL_SIZE } from "./reconcile.js";
@@ -171,14 +171,18 @@ export class BundleEditor {
             this.refreshState();
         });
         this.stateMark = el("span", "bl-state");
-        this.saveButton = button(t("Save"), "bl-btn primary", t("Save (Ctrl+S)"));
+        // Icons in the head (0.0.26): less to read. The words stay as the buttons' names and tooltips.
+        this.saveButton = iconButton("save", t("Save"), "primary bl-save");
+        this.saveButton.title = t("Save (Ctrl+S)");
         this.saveButton.addEventListener("click", () => void this.save());
-        this.revertButton = button(t("Revert"), "bl-btn");
+        this.revertButton = iconButton("undo", t("Revert"), "bl-revert");
         this.revertButton.addEventListener("click", () => this.revert());
-        const duplicate = menu(t("Duplicate ▾"), [
+        const face = el("span", "bl-icon-menu");
+        face.append(icon("copy"), " ▾");
+        const duplicate = menu(face, [
             [t("Duplicate with values"), () => void this.duplicate("values")],
             [t("Duplicate structure only"), () => void this.duplicate("structure")],
-        ]);
+        ], { className: "bl-btn icon bl-duplicate", title: t("Duplicate"), label: t("Duplicate") });
         this.duplicateButton = duplicate.opener;
         this.exportButton = button("", "bl-btn icon bl-export");
         this.exportButton.setAttribute("aria-label", t("Export this bundle as a ZIP"));
@@ -187,7 +191,7 @@ export class BundleEditor {
             const summary = this.model.summary();
             if (summary && !this.changed) void this.modal.runExport([summary]); // the bundle as saved
         });
-        this.deleteButton = button(t("Delete"), "bl-btn danger");
+        this.deleteButton = iconButton("trash", t("Delete"), "danger bl-delete");
         this.deleteButton.addEventListener("click", () => void this.remove());
         head.append(this.starButton, this.nameInput, this.stateMark, this.saveButton, this.revertButton, duplicate.root,
             this.exportButton, this.deleteButton);
@@ -673,13 +677,18 @@ export class BundleEditor {
         this.saveButton.disabled = !dirty || !!blocker || !!this.busy;
         this.saveButton.title = blocker ?? t("Save (Ctrl+S)");
         this.revertButton.disabled = !changed || !!this.busy;
-        this.revertButton.textContent = this.saved ? t("Revert") : t("Discard");
+        const revert = this.saved ? t("Revert") : t("Discard");
+        if (this.revertButton.getAttribute("aria-label") !== revert) {
+            this.revertButton.replaceChildren(icon(this.saved ? "undo" : "times"));
+            this.revertButton.setAttribute("aria-label", revert);
+        }
+        this.revertButton.title = revert;
         this.duplicateButton.disabled = !this.saved || changed || !!this.readOnly || !!this.busy;
-        this.duplicateButton.title = this.readOnly ? blocker : changed ? t("Save or revert your changes first") : "";
+        this.duplicateButton.title = this.readOnly ? blocker : changed ? t("Save or revert your changes first") : t("Duplicate");
         this.exportButton.disabled = !this.saved || changed || !!this.busy;
         this.exportButton.title = changed && this.saved ? t("Save or revert your changes first") : t("Export this bundle as a ZIP");
         this.deleteButton.disabled = !this.saved || !!this.readOnly || !!this.busy;
-        this.deleteButton.title = this.readOnly ? blocker : "";
+        this.deleteButton.title = this.readOnly ? blocker : t("Delete");
         this.modal.editorChanged();
     }
 

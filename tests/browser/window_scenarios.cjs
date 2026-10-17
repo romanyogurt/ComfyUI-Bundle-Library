@@ -69,7 +69,8 @@ async function settle(predicate, timeout = 5000) {
 
 const WINDOW_HELPERS = () => {
     const $ = (selector, root = document) => root.querySelector(selector);
-    const named = (root, text) => [...(root?.querySelectorAll("button") ?? [])].find((b) => b.textContent === text) ?? null;
+    const named = (root, text) => [...(root?.querySelectorAll("button") ?? [])]
+        .find((b) => (b.getAttribute("aria-label") ?? b.textContent) === text) ?? null; // icons are named by their label
     window.__win = {
         status: () => $(".bl-overlay .bl-status")?.textContent ?? "",
         layer() {
@@ -93,7 +94,7 @@ const WINDOW_HELPERS = () => {
                 name: $(".bl-name-input", editor).value,
                 state: $(".bl-state", editor).textContent,
                 inert: editor.inert,
-                save: state("Save"), revert: state("Revert") ?? state("Discard"), duplicate: state("Duplicate ▾"),
+                save: state("Save"), revert: state("Revert") ?? state("Discard"), duplicate: state("Duplicate"),
                 note: $(".bl-note-input", editor).value,
                 category: $(".bl-category-select", editor).selectedOptions[0]?.textContent ?? null,
                 fields: [...editor.querySelectorAll(".bl-field")].map((card) => ({
@@ -349,7 +350,7 @@ const WINDOW_HELPERS = () => {
     await opened(`${PREFIX} P`);
     const isDuplicate = (url, method) => url.pathname.endsWith("/duplicate") && method === "POST";
     const duplicating = await holdAnswers(page, isDuplicate);
-    await button("Duplicate ▾").click();
+    await button("Duplicate").click();
     await menuItem("Duplicate with values").click();
     await settle(() => duplicating.held.length === 1);
     await row(ids.Q).click();
@@ -363,7 +364,7 @@ const WINDOW_HELPERS = () => {
     check("then the copy opens", copyOpened, (await editor())?.name);
     const misplaced = await holdAnswers(page, isDuplicate,
         { change: (copy) => ({ ...copy, placement_error: "organization.json could not be written: test." }) });
-    await button("Duplicate ▾").click();
+    await button("Duplicate").click();
     await menuItem("Duplicate with values").click();
     await misplaced.release();
     await opened(`${PREFIX} P copy copy`);
@@ -645,7 +646,7 @@ const WINDOW_HELPERS = () => {
     await row(many[0]).click();
     await opened(`${PREFIX} scroll 00`);
     await w(() => { const list = document.querySelector(".bl-overlay .bl-modal-list"); list.scrollTop = list.scrollHeight; });
-    await button("Duplicate ▾").click();
+    await button("Duplicate").click();
     await menuItem("Duplicate with values").click();
     await opened(`${PREFIX} scroll 00 copy`);
     const copy = await w(() => document.querySelector(".bl-overlay .bl-list-item.selected")?.dataset.id);

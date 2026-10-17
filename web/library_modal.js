@@ -47,9 +47,11 @@ function draggedIds(data) {
 // without storage every group starts expanded and the list sorted by name.
 const COLLAPSED_KEY = "bundle-library.collapsed-groups";
 const SORT_KEY = "bundle-library.sort";
-// [value, menu text, icon, button label]
-const SORTS = [["name", msg("By name"), "sort-alpha-down", msg("Sort: by name")],
-    ["updated", msg("Recently updated"), "clock", msg("Sort: recently updated")]];
+// [value, menu text, icon, button label]. "name" and "updated" are the values kept from before 0.0.26.
+const SORTS = [["name", msg("Name A→Z"), "sort-alpha-down", msg("Sort: name A→Z")],
+    ["name_desc", msg("Name Z→A"), "sort-alpha-up", msg("Sort: name Z→A")],
+    ["updated", msg("Newest first"), "sort-amount-down", msg("Sort: newest first")],
+    ["updated_asc", msg("Oldest first"), "sort-amount-up", msg("Sort: oldest first")]];
 
 function remembered(key, fallback) {
     try {
@@ -476,8 +478,12 @@ class LibraryModal {
         if (this.matches) items = items.filter((b) => this.matches.has(b.id));
         if (this.tag) items = items.filter((b) => b.tags.some((t) => sameTag(t, this.tag)));
         // Names may repeat: the id keeps the order still.
-        items = [...items].sort((a, b) => compareText(a.name, b.name) || compareText(a.id, b.id));
-        if (this.sortMode === "updated") items.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+        const byName = (a, b) => compareText(a.name, b.name) || compareText(a.id, b.id);
+        const byTime = (a, b) => (a.updated_at < b.updated_at ? -1 : a.updated_at > b.updated_at ? 1 : 0);
+        items = [...items].sort(byName); // ties of time stay in name order
+        if (this.sortMode === "name_desc") items.sort((a, b) => byName(b, a));
+        else if (this.sortMode === "updated") items.sort((a, b) => byTime(b, a));
+        else if (this.sortMode === "updated_asc") items.sort(byTime);
         return items;
     }
 
@@ -517,7 +523,7 @@ class LibraryModal {
         toggle.setAttribute("aria-expanded", String(!collapsed));
         toggle.append(el("span", "bl-group-sign", filtering ? "" : collapsed ? "+" : "−"),
             el("span", "bl-group-name", groupLabel(group)),
-            el("span", "bl-group-count", String(group.bundles.length + group.errors.length)));
+            el("span", "bl-group-count", `(${group.bundles.length + group.errors.length})`));
         toggle.addEventListener("click", () => {
             if (this.collapsed.has(group.key)) this.collapsed.delete(group.key);
             else this.collapsed.add(group.key);

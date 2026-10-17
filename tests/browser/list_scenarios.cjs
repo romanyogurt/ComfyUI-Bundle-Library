@@ -251,11 +251,11 @@ const LIST_HELPERS = () => {
     await page.keyboard.press("Enter");
     const sorted = await list(() => ({ focused: window.__list.focused(), open: !!window.__list.openMenu() }));
     check("the sort menu opens on ↓ at the current choice; ↓ and Enter choose, and the focus goes back to its button",
-        focused.text.includes("By name") && !sorted.open && sorted.focused.label === "Sort: recently updated", { focused, sorted });
+        focused.text.includes("Name A→Z") && !sorted.open && sorted.focused.label === "Sort: name Z→A", { focused, sorted });
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Home");
     await page.keyboard.press("Enter");
-    check("Home goes to the first choice", (await list(() => window.__list.focused())).label === "Sort: by name");
+    check("Home goes to the first choice", (await list(() => window.__list.focused())).label === "Sort: name A→Z");
 
     await page.locator(".bl-overlay .bl-tag-button").focus();
     await page.keyboard.press("Enter");

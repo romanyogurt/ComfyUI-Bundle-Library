@@ -29,6 +29,14 @@ export function icon(name) {
     return element;
 }
 
+/** A button that shows an icon only: `label` names it, for screen readers and as its tooltip. */
+export function iconButton(name, label, className = "") {
+    const element = button("", `bl-btn icon ${className}`.trim(), label);
+    element.setAttribute("aria-label", label);
+    element.append(icon(name));
+    return element;
+}
+
 /** A name (of an output or a field) set apart from the sentence around it. */
 export function code(text) {
     return el("code", "bl-code", text);

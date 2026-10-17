@@ -24,8 +24,9 @@ const LIB_HELPERS = () => {
             return {
                 name: $(".bl-name-input", editor).value,
                 state: $(".bl-state", editor).textContent,
-                buttons: Object.fromEntries(head.map((b) => [b.textContent, !b.disabled])),
-                saveTitle: head.find((b) => b.textContent === "Save").title,
+                // the head's buttons are icons (0.0.26), named by their label
+                buttons: Object.fromEntries(head.map((b) => [b.getAttribute("aria-label") ?? b.textContent, !b.disabled])),
+                saveTitle: head.find((b) => b.getAttribute("aria-label") === "Save").title,
                 tags: [...editor.querySelectorAll(".bl-chip")].map((chip) => chip.firstChild.textContent),
                 note: $(".bl-note-input", editor).value,
                 fields: [...editor.querySelectorAll(".bl-field")].map((card) => ({
@@ -183,7 +184,7 @@ const LIB_HELPERS = () => {
     let st = await state();
     check("+ New bundle: a draft 'New bundle', not saved yet; Save/Discard on, Duplicate/Delete off",
         st && /^New bundle( \d+)?$/.test(st.name) && st.state === "● New, not saved yet"
-        && st.buttons.Save && st.buttons.Discard && !st.buttons["Duplicate ▾"] && !st.buttons.Delete, st);
+        && st.buttons.Save && st.buttons.Discard && !st.buttons.Duplicate && !st.buttons.Delete, st);
     await page.keyboard.type(UI_NAME); // the name is selected, so typing replaces it
     await page.locator(".bl-overlay .bl-tag-input").fill("ui");
     await page.keyboard.press("Enter");
@@ -307,7 +308,7 @@ const LIB_HELPERS = () => {
     st = await state();
     const uiId = await lib(() => window.__lib.selected());
     check("Ctrl+S saves the new bundle and selects it in the list",
-        saved && st.buttons.Revert === false && st.buttons["Duplicate ▾"] && st.buttons.Delete && !!uiId, { state: st.state, uiId });
+        saved && st.buttons.Revert === false && st.buttons.Duplicate && st.buttons.Delete && !!uiId, { state: st.state, uiId });
     check("after the save re-rendered the editor the focus is still in the modal", await lib(() => window.__lib.focusInside()));
     const head = () => lib(() => {
         const editor = document.querySelector(".bl-overlay .bl-editor");
@@ -380,14 +381,23 @@ const LIB_HELPERS = () => {
     check("tag options list 'test' and 'Test' once", tagOptions.filter((t) => t.toLowerCase() === "test").length === 1, tagOptions);
     await page.getByRole("menuitemradio", { name: "All tags" }).click();
     await page.locator(".bl-overlay .bl-sort-button").click();
-    await page.getByRole("menuitemradio", { name: "Recently updated" }).click();
+    await page.getByRole("menuitemradio", { name: "Newest first" }).click();
     shownIds = await visible();
-    check("sort 'Recently updated' puts the newest bundle first", shownIds[0] === uiId, shownIds.slice(0, 3));
+    check("sort 'Newest first' puts the newest bundle first", shownIds[0] === uiId, shownIds.slice(0, 3));
     await page.locator(".bl-overlay .bl-sort-button").click();
-    await page.getByRole("menuitemradio", { name: "By name" }).click();
-    const names = await lib(() => window.__lib.items().map((i) => i.name));
+    await page.getByRole("menuitemradio", { name: "Oldest first" }).click();
+    shownIds = await visible();
+    check("sort 'Oldest first' puts it last (0.0.26)", shownIds.at(-1) === uiId, shownIds.slice(-3));
     const byName = all.map((b) => b.name).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
-    check("sort 'By name' is alphabetical", JSON.stringify(names) === JSON.stringify(byName), names);
+    await page.locator(".bl-overlay .bl-sort-button").click();
+    await page.getByRole("menuitemradio", { name: "Name Z→A" }).click();
+    let names = await lib(() => window.__lib.items().map((i) => i.name));
+    check("sort 'Name Z→A' is alphabetical backwards (0.0.26)", JSON.stringify(names) === JSON.stringify([...byName].reverse()),
+        names);
+    await page.locator(".bl-overlay .bl-sort-button").click();
+    await page.getByRole("menuitemradio", { name: "Name A→Z" }).click();
+    names = await lib(() => window.__lib.items().map((i) => i.name));
+    check("sort 'Name A→Z' is alphabetical", JSON.stringify(names) === JSON.stringify(byName), names);
 
     // ---- editing a saved bundle ------------------------------------------------
     await item(uiId).click();
@@ -532,7 +542,7 @@ const LIB_HELPERS = () => {
         overwritten.note === "the editor wins" && overwritten.revision === other.revision + 1, { note: overwritten.note, revision: overwritten.revision });
 
     // ---- duplicate and delete --------------------------------------------------
-    await button("Duplicate ▾", editor).click();
+    await button("Duplicate", editor).click();
     await menuItem("Duplicate with values").click();
     await editing(`${UI_NAME} copy`);
     const copyId = await lib(() => window.__lib.selected());
@@ -542,7 +552,7 @@ const LIB_HELPERS = () => {
         && JSON.stringify(copy.tags) === JSON.stringify(overwritten.tags), { copyId, name: copy.name });
     await item(uiId).click();
     await editing(UI_NAME);
-    await button("Duplicate ▾", editor).click();
+    await button("Duplicate", editor).click();
     await menuItem("Duplicate structure only").click();
     await editing(`${UI_NAME} copy`);
     await until((id) => window.__lib.selected() !== id, copyId);

@@ -19,7 +19,7 @@ const CAT_HELPERS = () => {
         groups: () => [...document.querySelectorAll(".bl-overlay .bl-group")].map((g) => ({
             key: g.dataset.group,
             name: $(".bl-group-name", g).textContent,
-            count: $(".bl-group-count", g).textContent,
+            count: $(".bl-group-count", g).textContent.replace(/^\((\d+)\)$/, "$1"), // "(3)" (0.0.26)
             sign: $(".bl-group-sign", g).textContent,
             collapsed: $(".bl-group-rows", g).hidden,
             toggle: !$(".bl-group-toggle", g).disabled,

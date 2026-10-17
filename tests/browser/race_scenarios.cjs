@@ -17,7 +17,7 @@ const RACE_HELPERS = () => {
         state() {
             const editor = $(".bl-overlay .bl-editor");
             if (!editor) return null;
-            const save = [...editor.querySelectorAll(".bl-editor-head > button")].find((b) => b.textContent === "Save");
+            const save = [...editor.querySelectorAll(".bl-editor-head > button")].find((b) => (b.getAttribute("aria-label") ?? b.textContent) === "Save");
             return {
                 name: $(".bl-name-input", editor).value,
                 state: $(".bl-state", editor).textContent,
