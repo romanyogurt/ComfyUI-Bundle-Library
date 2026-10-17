@@ -1480,6 +1480,14 @@
     "en": "No bundles yet. Create one with + New bundle.",
     "text": "아직 번들이 없습니다. + 새 번들로 만드세요."
   },
+  "library.examples_failed": {
+    "en": "Could not get the example bundles: {reason}",
+    "text": "예제 번들을 가져올 수 없습니다: {reason}"
+  },
+  "library.examples_hint": {
+    "en": "Bundles to try with the z-image-turbo workflow among ComfyUI's templates.",
+    "text": "ComfyUI 템플릿 가운데 z-image-turbo 워크플로와 함께 써 볼 번들입니다."
+  },
   "library.expand": {
     "en": "Expand",
     "text": "펼치기"
@@ -1523,6 +1531,10 @@
   "library.import_asking": {
     "en": "Asking the server for the import's answer",
     "text": "서버에 가져오기의 답을 묻는 중"
+  },
+  "library.import_examples": {
+    "en": "Import the examples",
+    "text": "예제 가져오기"
   },
   "library.import_title": {
     "en": "Import bundles from a ZIP",

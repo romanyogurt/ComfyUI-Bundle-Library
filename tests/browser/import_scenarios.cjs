@@ -5,8 +5,10 @@
 // upload either way); the three choices for bundles here already (skip,
 // overwrite with one back from the trash, copy) and the category modes (as in
 // the file, one category); and files the import refuses (not a ZIP, a bundle
-// whose bytes are not what the manifest says, a newer format). When the test
-// server's container is known (BL_TEST_CONTAINER, BL_TEST_LIBRARY), it also
+// whose bytes are not what the manifest says, a newer format). Last, the
+// pack's examples (0.0.33): an empty library offers them through the same
+// preview, and the template workflow loads with every link of its Load Bundle,
+// for each example bundle. When the test server's container is known (BL_TEST_CONTAINER, BL_TEST_LIBRARY), it also
 // checks that a left preview's upload is gone from the server.
 // Set-up and safety notes are in harness.cjs.
 const { execFileSync } = require("child_process");
@@ -345,8 +347,71 @@ function held(token) {
     await button("Cancel").click();
     await until(() => !document.querySelector(".bl-overlay .bl-import"));
 
+    // ---- the examples of the pack (0.0.33) -----------------------------------------------------------------
+    const EXAMPLE = "4f3c7258-b334-4aa8-90f8-3c60b45d5a36";
+    const BLACK_ROSE = "f77ab631-cc3c-4772-bca7-60397b579671";
     await page.keyboard.press("Escape");
-    await finish({ expectRemoved: 9 }); // the three, and two rounds of copies
+    await overlay.waitFor({ state: "detached" });
+    // The list answers empty, as a new library's does (the test library may hold other bundles).
+    await page.route("**/api/bundle-library/v1/bundles", async (route) => {
+        if (route.request().method() !== "GET") return route.fallback();
+        const response = await route.fetch();
+        return route.fulfill({ response, json: { ...(await response.json()), bundles: [], errors: [] } });
+    });
+    await command("BundleLibrary.Open");
+    await overlay.waitFor();
+    const offered = await until(() => document.querySelector(".bl-overlay .bl-empty-state .bl-import-examples"));
+    const empty = await ev(() => document.querySelector(".bl-overlay .bl-empty-state")?.textContent);
+    check("an empty library offers the example bundles", offered
+        && empty === "No bundles yet. Create one with + New bundle.Import the examplesBundles to try with the z-image-turbo "
+            + "workflow among ComfyUI's templates.", empty);
+    const sent = page.waitForResponse((r) => r.request().method() === "POST"
+        && new URL(r.url()).pathname === "/api/bundle-library/v1/import", { timeout: 30000 });
+    await button("Import the examples").click();
+    const answer = await sent;
+    await until(() => document.querySelector(".bl-overlay .bl-import .bl-import-go"));
+    shown = await pane();
+    await page.unroute("**/api/bundle-library/v1/bundles");
+    check("it shows the import preview of the pack's ZIP; nothing changes before Import",
+        answer.ok() && (await answer.json()).file_name === "example-bundles.zip" && Object.keys(shown?.rows ?? {}).length === 4
+        && shown.rows[EXAMPLE] && shown.go?.text === "Import 4 bundles", shown && { rows: Object.keys(shown.rows), go: shown.go });
+    let examples = await runImport();
+    check("the four come in, in their category",
+        examples?.groups.new?.length === 4 && (await api("GET", `/bundles/${BLACK_ROSE}`)).name === "Black Rose"
+        && (await api("GET", "/categories")).categories.some((c) => c.name === "My Resources"), examples);
+    await button("Done").click();
+    await page.keyboard.press("Escape");
+
+    // The template, as ComfyUI's template browser loads it
+    const templates = await ev(async () => (await fetch("/api/workflow_templates")).json());
+    const pack = Object.keys(templates).find((name) => templates[name].includes("z-image-turbo"));
+    check("ComfyUI lists the pack's template, with its thumbnail", pack && await ev(async (m) =>
+        (await fetch(`/api/workflow_templates/${m}/z-image-turbo.jpg`)).ok, pack), templates);
+    await ev(async (m) => window.__bl.app.loadGraphData(await (await fetch(`/api/workflow_templates/${m}/z-image-turbo.json`)).json()),
+        pack);
+    const outputs = () => ev(() => {
+        window.__node = window.__bl.app.graph.nodes.find((n) => n.type === "BundleLibraryLoad");
+        const node = window.__node;
+        return { bundle: node.widgets.find((w) => w.name === "bundle_id").value, notice: !node.bundlePanel.notice.hidden,
+            outputs: node.outputs.map((o) => `${o.label ?? o.name}:${o.type}:${(o.links ?? []).length}`).join(" ") };
+    });
+    await until(() => window.__bl.app.graph.nodes.find((n) => n.type === "BundleLibraryLoad")?.bundlePanel.root.querySelector(".bl-tile"));
+    const WANTED = "image:IMAGE:1 text:STRING:1 steps:INT:1 denoise:FLOAT:1 i2i:BOOLEAN:1";
+    let node = await outputs();
+    check("the template's Load Bundle has Example and its five fields, each linked; nothing to update",
+        node.bundle === EXAMPLE && node.outputs === WANTED && !node.notice, node);
+    const prompt = await ev(async () => (await window.__bl.app.graphToPrompt()).output);
+    const loader = Object.keys(prompt).find((id) => prompt[id].class_type === "BundleLibraryLoad");
+    const used = new Set(Object.values(prompt).flatMap((n) => Object.values(n.inputs))
+        .filter((v) => Array.isArray(v) && v[0] === loader).map((v) => v[1]));
+    check("its prompt feeds all five into the subgraph, i2i too", [0, 1, 2, 3, 4].every((i) => used.has(i))
+        && prompt[loader].inputs.bundle_id === EXAMPLE, { used: [...used], inputs: prompt[loader]?.inputs });
+    await ev((id) => window.__bl.pick(window.__node, id), BLACK_ROSE);
+    node = await outputs();
+    check("another example keeps every link", node.bundle === BLACK_ROSE && node.outputs === WANTED && !node.notice, node);
+    await ev(() => window.__bl.app.graph.clear());
+
+    await finish({ expectRemoved: 13 }); // the three, two rounds of copies, and the four examples
 })().catch((e) => {
     console.error(e);
     process.exit(1);

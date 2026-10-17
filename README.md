@@ -6,7 +6,7 @@
 
 ## 현재 구현과 문서
 
-이 문서는 노드 0.0.31의 소스를 기준으로 한다.
+이 문서는 노드 0.0.33의 소스를 기준으로 한다.
 
 - 번들과 미디어는 ComfyUI 사용자 디렉토리의 `bundle_library/`에 저장한다. 번들은 UUID로 구분하고,
   이름은 같아도 된다. 라이브러리 창에서 만들기·편집·복제·삭제를 지원한다.
@@ -22,6 +22,19 @@
 이 README는 사용법과 테스트 실행 방법을 다룬다. 개발 노트(설계 개요, 데이터 형식과 API, Phase 0 호환성
 검증 기록)와 운영 문서·계획·기록은 개발 환경(comfy-docker 저장소)의 `docs/bundle-library/`에 있다(2026-10-17에
 이 저장소에서 옮겼다).
+
+## 예제
+
+(0.0.33부터)
+
+- 템플릿 `z-image-turbo`(ComfyUI의 템플릿 목록, 이 팩의 `workflows/z-image-turbo.json`): Load Bundle 하나가 Z-Image
+  Turbo 하위 그래프에 프롬프트(`text`), 시작 그림(`image`), `steps`, `denoise`, 그림에서 시작할지(`i2i`)를 넣는다.
+  모델 링크는 워크플로의 메모에 있다.
+- 예제 번들 넷(`web/examples/example-bundles.zip`): Black Rose·Hamster·Santorini는 프롬프트로 그리고(`i2i` 꺼짐),
+  Example은 ComfyUI의 예제 그림에서 시작한다. 모두 같은 다섯 필드라서 노드에서 번들만 바꿔도 연결이 그대로다.
+- 라이브러리가 비어 있으면 목록에 "Import the examples" 단추가 보인다. 누르면 그 ZIP의 가져오기 미리 보기가
+  열리고, Import를 눌러야 들어온다. 번들이 있는 라이브러리에서는 가져오기 단추로 그 ZIP을 고르면 된다.
+- 남의 것에서 온 부분(ComfyUI의 예제 그림, Comfy-Org 템플릿)의 라이선스는 `THIRD-PARTY-NOTICES.md`에 있다.
 
 ## 라이브러리 열기
 
@@ -248,15 +261,15 @@ scripts/bundle-library-test-server.sh stop
 
 | 테스트 | 확인하는 것 |
 | --- | --- |
-| `tests/test_*.py` (`python -m unittest discover -s tests -t .`) | 저장소, 모델, API, 변환, 미디어 검사. `test_compat.py`는 `tests/fixtures/compat/`의 출시 표본으로 호환성 계약을, `test_versions.py`는 버전 번호와 JS 상수 사본을 확인한다 |
-| `tests/js/*.test.mjs` (호스트의 `node --test`) | 슬롯 조정, 이름 표시, 목록 묶음의 순수 함수, 메시지 목록(코드가 쓰는 id가 영어 목록에 있고 쓰이지 않는 항목이 없는지, 번역의 꼴·자리표시가 영어와 맞는지, 한국어에 빠지거나 오래된 번역이 없는지) |
+| `tests/test_*.py` (`python -m unittest discover -s tests -t .`) | 저장소, 모델, API, 변환, 미디어 검사. `test_compat.py`는 `tests/fixtures/compat/`의 출시 표본으로 호환성 계약을, `test_versions.py`는 버전 번호와 JS 상수 사본을, `test_examples.py`는 팩의 예제 ZIP이 그대로 들어오고 `workflows/`의 템플릿이 어느 예제 번들로도 연결을 지키는지를 확인한다 |
+| `tests/js/*.test.mjs` (호스트의 `node --test`) | 슬롯 조정, 이름 표시, 목록 묶음의 순수 함수, 메시지 목록(코드가 쓰는 id가 영어 목록에 있고 쓰이지 않는 항목이 없는지, 번역의 꼴·자리표시가 영어와 맞는지, 한국어에 빠지거나 오래된 번역이 없는지), 받지 못한 메시지 목록을 다시 받는 간격과 늦은 도착의 알림(`messages.test.mjs`) |
 | `tests/e2e/compare_load_image.py`, `compare_media.py` | 변환 결과가 core LoadImage·LoadVideo·LoadAudio와 같은지 |
 | `tests/e2e/api_smoke.py` | 테스트 번들 두 개를 만들어 API로 확인한다 |
 | `tests/e2e/node_smoke.py` | Load Bundle을 실행해 출력, 캐시, 오류를 확인한다 |
 | `tests/e2e/cache_race.py` | ComfyUI의 실행기를 프로세스 안에서 돌려 캐시를 확인한다: 캐시 키를 정한 뒤 바뀐 번들, 빈 미디어 필드의 캐시, 나중에 연결한 문제 슬롯 |
 | `tests/e2e/media_smoke.py` | 비디오·오디오 필드로 Load Bundle을 실행해 VIDEO·AUDIO 출력을 확인한다 |
 | `tests/e2e/security_smoke.py` | 쓰기 보호와 제한값 (거부되는 요청만 보낸다) |
-| `tests/browser/*_scenarios.cjs` | 헤드리스 Chromium으로 노드, 라이브러리, 비디오·오디오 화면을 조작한다. `race_scenarios.cjs`는 응답을 늦추거나 순서를 뒤집어 열기·검색·저장·업로드를, `trash_scenarios.cjs`는 휴지통과 파일 정리를, `compat_scenarios.cjs`는 옛 워크플로·큰 정수·읽지 못하는 파일·버전 불일치를, `category_scenarios.cjs`는 카테고리·즐겨찾기·끌어다 놓기·묶인 목록을, `list_scenarios.cjs`는 목록 도구줄·메뉴의 키보드 조작·빈 묶음·끌기 뒤의 정리·코드 글꼴 이름을, `batch_scenarios.cjs`는 여러 번들 선택·일괄 작업과 결과·느리거나 답이 없는 요청·편집 중 잠금을, `window_scenarios.cjs`는 취소한 질문의 늦은 답·질문 뒤의 창·일괄 화면의 선택 유지·목록 읽기 실패·다시 그린 뒤의 숫자 입력과 초점·복제와 삭제의 대기·고르기가 넘기는 번들·휴지통의 읽기 전용 번들·노드 소리의 정리·창이 고른 번들로의 목록 스크롤을, `tags_scenarios.cjs`는 일괄 화면의 태그·Tags 칸의 이름 바꾸기·합치기·지우기·태그 필터·다른 곳에서 저장된 번들의 편집기·대소문자만 다른 태그를, `export_scenarios.cjs`는 일괄 화면과 편집기의 내보내기·내려받은 ZIP의 내용·빠진 번들의 이유·닫힌 창의 늦은 답을, `import_scenarios.cjs`는 가져오기의 올리기와 취소·미리 보기·건너뛰기·덮어쓰기·복사·카테고리 선택·떠난 미리 보기의 정리·잃어버린 답과 Check again·동기화 경고·받지 않는 ZIP을, `i18n_scenarios.cjs`는 ComfyUI를 한국어로 열어 노드·사이드바·창·편집기·일괄·내보내기·가져오기·태그·휴지통·질문창에 영어 목록의 문장이 남지 않았는지, 서버의 거절과 번들별 이유가 한국어인지, ComfyUI가 노드 이름을 한국어로 바꾸는지를 확인한다 |
+| `tests/browser/*_scenarios.cjs` | 헤드리스 Chromium으로 노드, 라이브러리, 비디오·오디오 화면을 조작한다. `race_scenarios.cjs`는 응답을 늦추거나 순서를 뒤집어 열기·검색·저장·업로드를, `trash_scenarios.cjs`는 휴지통과 파일 정리를, `compat_scenarios.cjs`는 옛 워크플로·큰 정수·읽지 못하는 파일·버전 불일치를, `category_scenarios.cjs`는 카테고리·즐겨찾기·끌어다 놓기·묶인 목록을, `list_scenarios.cjs`는 목록 도구줄·메뉴의 키보드 조작·빈 묶음·끌기 뒤의 정리·코드 글꼴 이름을, `batch_scenarios.cjs`는 여러 번들 선택·일괄 작업과 결과·느리거나 답이 없는 요청·편집 중 잠금을, `window_scenarios.cjs`는 취소한 질문의 늦은 답·질문 뒤의 창·일괄 화면의 선택 유지·목록 읽기 실패·다시 그린 뒤의 숫자 입력과 초점·복제와 삭제의 대기·고르기가 넘기는 번들·휴지통의 읽기 전용 번들·노드 소리의 정리·창이 고른 번들로의 목록 스크롤을, `tags_scenarios.cjs`는 일괄 화면의 태그·Tags 칸의 이름 바꾸기·합치기·지우기·태그 필터·다른 곳에서 저장된 번들의 편집기·대소문자만 다른 태그를, `export_scenarios.cjs`는 일괄 화면과 편집기의 내보내기·내려받은 ZIP의 내용·빠진 번들의 이유·닫힌 창의 늦은 답을, `import_scenarios.cjs`는 가져오기의 올리기와 취소·미리 보기·건너뛰기·덮어쓰기·복사·카테고리 선택·떠난 미리 보기의 정리·잃어버린 답과 Check again·동기화 경고·받지 않는 ZIP·팩의 예제(빈 라이브러리의 단추, 템플릿의 연결)를, `i18n_scenarios.cjs`는 ComfyUI를 한국어로 열어 노드·사이드바·창·편집기·일괄·내보내기·가져오기·태그·휴지통·질문창에 영어 목록의 문장이 남지 않았는지, 서버의 거절과 번들별 이유가 한국어인지, ComfyUI가 노드 이름을 한국어로 바꾸는지, 메시지 목록을 받지 못한 시작과 새로고침 없는 복구를 확인한다 |
 | `tests/e2e/bench_store.py --count 100 --count 1000` | 번들 수에 따른 저장소 속도 (임시 폴더, `run`에는 없음) |
 
 - e2e 스크립트와 브라우저 시나리오의 기본 주소는 테스트 서버다. 다른 서버는 Python 스크립트의

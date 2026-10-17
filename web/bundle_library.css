@@ -669,6 +669,10 @@
     color: var(--descrip-text, #999);
 }
 
+.bl-empty-state .bl-import-examples {
+    margin: 14px 0 8px;
+}
+
 .bl-btn {
     background: var(--comfy-input-bg, #222);
     color: var(--input-text, #ddd);

@@ -170,8 +170,9 @@ const LIB_HELPERS = () => {
     await opened();
     await until(() => window.__lib.empty() !== null);
     const empty = await lib(() => ({ list: window.__lib.empty(), pane: window.__lib.pane() }));
-    check("empty library: the list and the editor pane say how to start",
-        empty.list === "No bundles yet. Create one with + New bundle."
+    check("empty library: the list and the editor pane say how to start; the list offers the examples (0.0.33)",
+        empty.list === "No bundles yet. Create one with + New bundle." + "Import the examples"
+            + "Bundles to try with the z-image-turbo workflow among ComfyUI's templates."
         && empty.pane === "Select a bundle on the left, or create one with + New bundle.", empty);
     await page.keyboard.press("Escape");
     await closed();

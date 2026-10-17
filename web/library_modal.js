@@ -20,6 +20,10 @@ import { TrashPanel } from "./trash_panel.js";
 
 let current = null;
 
+// The bundles of the pack's example workflow (workflows/z-image-turbo.json): an export ZIP that an empty
+// library offers to import, through the same preview as any other ZIP (0.0.33).
+const EXAMPLES = new URL("./examples/example-bundles.zip", import.meta.url);
+
 // Caught on window while the modal is open; see build().
 const STRAY_EVENTS = ["keydown", "keyup", "keypress", "paste", "copy", "cut"];
 
@@ -502,14 +506,35 @@ class LibraryModal {
         // Favorites always shows; when there is nothing at all to list, one line says so below it.
         const nothing = !visible.length && !groups.some((g) => g.errors.length);
         const parts = groups.map((group) => this.renderGroup(group, filtering, nothing));
-        if (nothing) {
-            parts.push(el("div", "bl-empty-state", filtering ? t("library.no_match")
-                : t("library.empty_library")));
-        }
+        if (nothing) parts.push(filtering ? el("div", "bl-empty-state", t("library.no_match")) : this.emptyLibrary());
         this.list.replaceChildren(...parts);
         this.restoreFocus(focus);
         this.keepFocus();
         this.editorChanged();
+    }
+
+    /** What an empty library says: how to make a bundle, and the example bundles to try (0.0.33). */
+    emptyLibrary() {
+        const box = el("div", "bl-empty-state");
+        const examples = button(t("library.import_examples"), "bl-btn bl-import-examples");
+        examples.addEventListener("click", () => void this.importExamples());
+        box.append(el("div", "", t("library.empty_library")), examples, el("div", "bl-hint", t("library.examples_hint")));
+        return box;
+    }
+
+    /** The example bundles of the pack, through the import preview: nothing changes until Import. */
+    async importExamples() {
+        if (!this.allowed()) return;
+        let file;
+        try {
+            const response = await fetch(EXAMPLES);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            file = new File([await response.blob()], "example-bundles.zip", { type: "application/zip" });
+        } catch (error) {
+            this.status(t("library.examples_failed", { reason: error.message }), "error");
+            return;
+        }
+        await this.showImport(file);
     }
 
     /** A group: its heading (collapse, count, the menu of a category) and its rows. */
