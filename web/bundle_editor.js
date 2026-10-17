@@ -2,13 +2,15 @@
 // EditorModel (editor_model.js): the stored bundle, the draft, the number
 // boxes' text and the uploads. This draws it, card by card: a change to one
 // field draws that card again, so the focus stays where it is. It talks to
-// the API only on Save, Duplicate and Delete (and file uploads), each as a
-// command that holds the window until its answer is in. Its category and
-// star are not part of the draft: the modal saves them at once.
+// the API on Save, Duplicate and Delete, each as a command that holds the
+// window until its answer is in, and for a field's file: an upload, or a file
+// taken from the library. Its category and star are not part of the draft:
+// the modal saves them at once.
 import {
     MEDIA, assetURL, createBundle, deleteBundle, duplicateBundle, fileProblem, getBundle,
     thumbnailURL, updateBundle, uploadAsset,
 } from "./api.js";
+import { pickStoredAsset } from "./asset_picker.js";
 import { button, el, formatBytes, formatDuration, icon, iconButton, menu } from "./dom.js";
 import { EditorModel, MEDIA_TYPES, editable } from "./editor_model.js";
 import { msg, said, t } from "./i18n.js";
@@ -454,6 +456,8 @@ export class BundleEditor {
         });
         const choose = button(field.asset ? t("editor.replace") : t(MEDIA_TEXT[kind].choose));
         choose.addEventListener("click", () => picker.click());
+        const stored = button(t("editor.from_library"), "bl-btn bl-from-library");
+        stored.addEventListener("click", () => void this.pickStored(field));
         const upload = this.uploadStatus(card);
         if (field.asset) {
             const meta = el("div", "bl-media-meta");
@@ -466,14 +470,14 @@ export class BundleEditor {
                 this.refreshState();
             });
             const actions = el("div", "bl-row-buttons");
-            actions.append(choose, clear);
+            actions.append(choose, stored, clear);
             meta.append(actions, upload ?? el("div", "bl-hint", t(MEDIA_TEXT[kind].replace)));
             box.append(this.mediaPreview(field), meta);
         } else if (upload) {
             box.append(upload);
         } else {
             const drop = el("div", "bl-drop", t(MEDIA_TEXT[kind].drop));
-            drop.append(choose);
+            drop.append(choose, " ", stored);
             box.append(drop);
         }
         box.append(picker);
@@ -652,6 +656,16 @@ export class BundleEditor {
         this.refreshState();
         if (error) this.modal.status(error, "error");
         else this.modal.status(asset.original_name ? t("editor.uploaded_name", { name: asset.original_name }) : t(MEDIA_TEXT[kind].uploaded));
+    }
+
+    /** Take a file the library already keeps for `field` (0.0.29): chosen among the stored files of its kind. */
+    async pickStored(field) {
+        const asset = await pickStoredAsset(this.modal, field.type, field.asset?.sha256 ?? null);
+        if (!asset || !this.draft.fields.includes(field)) return; // none chosen, or another draft by now
+        this.model.takeAsset(field, asset);
+        this.refreshField(field);
+        this.refreshState();
+        this.modal.status(t("editor.took_stored", { name: asset.original_name ?? `${asset.sha256.slice(0, 12)}…` }));
     }
 
     cancelUpload(field) {

@@ -994,6 +994,55 @@ class BundleStore:
         except OSError:
             pass
 
+    # -- stored files a media field can take (0.0.29) -------------------------------
+
+    def stored_assets(self, kind):
+        """The stored files of `kind` (image, video or audio), most recently
+        stored (or uploaded again) first, each with its metadata (as an upload
+        answers), the names bundles gave it (the most used first) and the
+        bundles that use it: in use first, then in the trash, by name. Files
+        no bundle uses are listed too. A bundle file this version cannot read
+        is left out, and so are the uses it may hold."""
+        if kind not in MEDIA_TYPES:
+            raise LibraryError(400, "invalid", Text("request.kind_invalid"))
+        with self._lock:
+            self._scan()
+            uses = {}
+            for _, loaded in self._files():
+                if not loaded.readable:
+                    continue
+                for field in loaded.bundle["fields"]:
+                    asset = field.get("asset") if field["type"] in MEDIA_TYPES else None
+                    if asset:
+                        uses.setdefault(asset["sha256"], []).append((bool(loaded.deleted), loaded.bundle, field))
+            stored = [(sha256, path) for sha256, path in self.assets.stored() if KINDS[path.suffix[1:]] == kind]
+        listed = []
+        for sha256, path in stored:
+            try:
+                stored_at = path.stat().st_mtime
+                info = self.assets.info(sha256)  # read from the file once, then remembered
+            except FileNotFoundError:
+                continue  # removed meanwhile
+            except Exception as e:  # a file damaged since it was stored: the rest is still listed
+                logging.warning("[Bundle Library] cannot read stored file %s: %s", sha256, e)
+                continue
+            if info is None:
+                continue
+            found = sorted(uses.get(sha256, []), key=lambda use: (use[0], name_key(use[1]["name"]), use[1]["id"], use[2]["name"]))
+            names = Counter(field["asset"]["original_name"] for _, _, field in found if field["asset"].get("original_name"))
+            listed.append({**info, "stored_at": _file_time(stored_at), "names": [name for name, _ in names.most_common()],
+                           "used_by": [{"id": bundle["id"], "name": bundle["name"], "field": field["name"], "deleted": deleted}
+                                       for deleted, bundle, field in found]})
+        listed.sort(key=lambda asset: (asset["stored_at"], asset["sha256"]), reverse=True)
+        return {"assets": listed}
+
+    def keep_asset(self, sha256):
+        """A draft takes a stored file: a cleanup waits the grace time anew, as after an upload of it. Its metadata."""
+        info = self.assets.keep(check_sha256(sha256))
+        if info is None:
+            raise LibraryError(404, "not_found", Text("request.file_not_found"))
+        return info
+
     # -- unused files ------------------------------------------------------------
 
     def _used_assets(self):

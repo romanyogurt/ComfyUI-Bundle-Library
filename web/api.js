@@ -274,6 +274,12 @@ export function exportURL(token, name) {
     return api.apiURL(`${PREFIX}/export/${token}?name=${encodeURIComponent(name)}`);
 }
 
+/** The stored files of `kind`, most recent first, with the names bundles gave them and the bundles that use them (0.0.29). */
+export const listStoredAssets = (kind) => request(`/assets?kind=${encodeURIComponent(kind)}`);
+
+/** A draft takes a stored file: the server keeps it through a cleanup's grace time again. Resolves to {asset}. */
+export const takeStoredAsset = (sha256) => request(`/assets/${sha256}/use`, { method: "POST" }, { changes: false });
+
 export function assetURL(sha256) {
     return api.apiURL(`${PREFIX}/assets/${sha256}`);
 }

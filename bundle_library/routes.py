@@ -448,6 +448,19 @@ def register(routes, get_store):
             temp.unlink(missing_ok=True)
         return _json({"asset": info}, status=201 if created else 200)
 
+    @routes.get(prefix + "/assets")
+    @_api
+    async def list_assets(request):
+        """The stored files of one kind (?kind=image, video or audio), for a media field to take (0.0.29)."""
+        return _json(await asyncio.to_thread(get_store().stored_assets, request.query.get("kind", "")))
+
+    @routes.post(prefix + "/assets/{sha256}/use")
+    @_api
+    @_writes
+    async def use_asset(request):
+        """A draft takes a stored file: a cleanup waits the grace time anew, as after an upload of the same content."""
+        return _json({"asset": await asyncio.to_thread(get_store().keep_asset, request.match_info["sha256"])})
+
     @routes.get(prefix + "/assets/{sha256}")
     @_api
     async def get_asset(request):

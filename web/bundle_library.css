@@ -1137,6 +1137,100 @@
     width: 100%;
 }
 
+/* Choosing a stored file for a media field (0.0.29): a grid that scrolls inside the question. */
+.bl-confirm.bl-picker {
+    width: 92%;
+    max-width: 760px;
+    max-height: 88%;
+}
+
+.bl-picker-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 2px;
+}
+
+.bl-picker-tile {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+    padding: 6px;
+    text-align: left;
+    color: var(--input-text, #ddd);
+    font: inherit;
+    background: var(--comfy-input-bg, #222);
+    border: 1px solid var(--border-color, #4e4e4e);
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.bl-picker-tile:hover,
+.bl-picker-tile:focus-visible {
+    border-color: #2563eb;
+    outline: none;
+}
+
+.bl-picker-tile.current {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 1px #2563eb;
+}
+
+.bl-picker-preview {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 1;
+    overflow: hidden;
+    font-size: 28px;
+    color: var(--descrip-text, #999);
+    background: #111;
+    border-radius: 4px;
+}
+
+.bl-picker-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.bl-picker-duration,
+.bl-picker-current {
+    position: absolute;
+    bottom: 4px;
+    padding: 1px 5px;
+    font-size: 10px;
+    color: #fff;
+    background: rgb(0 0 0 / 0.7);
+    border-radius: 4px;
+}
+
+.bl-picker-duration {
+    right: 4px;
+}
+
+.bl-picker-current {
+    left: 4px;
+    background: #2563eb;
+}
+
+.bl-picker-name {
+    overflow: hidden;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.bl-picker-use {
+    font-size: 11px;
+    color: var(--descrip-text, #999);
+}
+
 .bl-confirm-title {
     font-size: 14px;
     font-weight: 600;

@@ -211,6 +211,17 @@ class AssetStore:
                     removed += 1
         return removed
 
+    def keep(self, sha256):
+        """A draft takes this stored file (picked from the library, 0.0.29): as
+        after an upload of the same content, a cleanup waits the grace time
+        anew. Its metadata (as info()), or None when it is not stored."""
+        with self._lock:  # a cleanup removing it meanwhile either sees the new time or has removed it
+            path = self.path(sha256)
+            if path is None:
+                return None
+            _touch(path)
+        return self._info(sha256, path)
+
     def kind(self, sha256):
         """"image", "video" or "audio" for a stored file, or None."""
         path = self.path(sha256)

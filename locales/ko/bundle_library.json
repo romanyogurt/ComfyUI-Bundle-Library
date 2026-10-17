@@ -667,6 +667,10 @@
     "en": "Fix the marked values first.",
     "text": "표시된 값을 먼저 고치세요."
   },
+  "editor.from_library": {
+    "en": "Choose from the library…",
+    "text": "라이브러리에서 고르기…"
+  },
   "editor.int_range": {
     "en": "Whole numbers must be within ±{max}.",
     "text": "정수는 ±{max} 안이어야 합니다."
@@ -817,6 +821,10 @@
   "editor.tag_add": {
     "en": "+ tag",
     "text": "+ 태그"
+  },
+  "editor.took_stored": {
+    "en": "Chose {name} from the library.",
+    "text": "라이브러리의 {name}을(를) 골랐습니다."
   },
   "editor.type_audio": {
     "en": "Audio",
@@ -1919,6 +1927,61 @@
   "node.update_outputs_title": {
     "en": "Add new fields, drop unconnected outputs that left the bundle, retype unconnected outputs",
     "text": "새 필드를 더하고, 번들에서 빠진 연결 안 된 출력을 빼고, 연결 안 된 출력의 타입을 바꿉니다"
+  },
+  "picker.current": {
+    "en": "Current",
+    "text": "지금 파일"
+  },
+  "picker.empty": {
+    "en": "No file of this kind is stored yet.",
+    "text": "아직 저장된 파일이 없습니다."
+  },
+  "picker.failed": {
+    "en": "Could not list the stored files: {reason}",
+    "text": "저장된 파일을 읽을 수 없습니다: {reason}"
+  },
+  "picker.filter": {
+    "en": "Filter by file or bundle name",
+    "text": "파일·번들 이름으로 거르기"
+  },
+  "picker.in_trash": {
+    "en": "in the trash",
+    "text": "휴지통"
+  },
+  "picker.no_match": {
+    "en": "No file matches.",
+    "text": "맞는 파일이 없습니다."
+  },
+  "picker.stored_at": {
+    "en": "Stored {time}",
+    "text": "{time} 저장"
+  },
+  "picker.title_audio": {
+    "en": "Choose an audio file from the library",
+    "text": "라이브러리에서 오디오 파일 고르기"
+  },
+  "picker.title_image": {
+    "en": "Choose an image from the library",
+    "text": "라이브러리에서 이미지 고르기"
+  },
+  "picker.title_video": {
+    "en": "Choose a video from the library",
+    "text": "라이브러리에서 동영상 고르기"
+  },
+  "picker.trash_only": {
+    "en": "Only in the trash",
+    "text": "휴지통에만 있음"
+  },
+  "picker.unused": {
+    "en": "Not used by a bundle",
+    "text": "쓰는 번들 없음"
+  },
+  "picker.used_by": {
+    "en": {
+      "one": "In {count} bundle",
+      "other": "In {count} bundles"
+    },
+    "text": "번들 {count}개에서 사용"
   },
   "request.file_empty": {
     "en": "The file is empty.",

@@ -225,6 +225,13 @@ export class EditorModel {
         this.draft.tags.splice(index, 1);
     }
 
+    /** Take a file the library already keeps (picked from it, 0.0.29); an upload running for the field stops. */
+    takeAsset(field, asset) {
+        this.stopUpload(field);
+        field.asset = asset;
+        field.fileError = null;
+    }
+
     clearAsset(field) {
         field.asset = null;
         field.fileError = null;

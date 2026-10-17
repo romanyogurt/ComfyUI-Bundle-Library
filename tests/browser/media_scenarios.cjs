@@ -35,8 +35,9 @@ const NAME = "[test] Media UI";
         await page.keyboard.type(name);
     }
     const empty = await ev(() => [...document.querySelectorAll(".bl-overlay .bl-field .bl-drop")].map((d) => d.textContent));
-    check("new video and audio fields ask for a file", JSON.stringify(empty) === JSON.stringify([
-        "Drop a video here, or Choose a video…", "Drop an audio file here, or Choose an audio file…"]), empty);
+    check("new video and audio fields ask for a file of one's own or one the library keeps", JSON.stringify(empty) === JSON.stringify([
+        "Drop a video here, or Choose a video… Choose from the library…",
+        "Drop an audio file here, or Choose an audio file… Choose from the library…"]), empty);
 
     await ev(async () => {
         const card = document.querySelectorAll(".bl-overlay .bl-field")[0];
@@ -90,6 +91,18 @@ const NAME = "[test] Media UI";
     const [clip, bgm] = bundle.fields.map((f) => f.asset);
     check("saved with the metadata read from the files", saved && clip.ext === "mp4" && clip.has_audio === true
         && clip.fps === 24 && bgm.ext === "mp3" && bgm.sample_rate === 44100, { clip, bgm });
+    await button("Choose from the library…", fields.nth(1)).click();
+    await until(() => document.querySelector(".bl-overlay .bl-picker-tile"));
+    const audioTiles = await ev(() => [...document.querySelectorAll(".bl-overlay .bl-picker-tile")].map((tile) => ({
+        sha: tile.dataset.sha256, img: !!tile.querySelector("img"), mark: !!tile.querySelector(".pi-volume-up"),
+        length: tile.querySelector(".bl-picker-duration")?.textContent ?? null, current: tile.classList.contains("current") })));
+    const storedAudio = (await api("GET", "/assets?kind=audio")).assets;
+    check("an audio field's picker lists the stored audio only: a sound mark and the length, its own file marked (0.0.29)",
+        JSON.stringify(audioTiles.map((t) => t.sha)) === JSON.stringify(storedAudio.map((a) => a.sha256))
+        && audioTiles.every((t) => !t.img && t.mark && /^\d+:\d\d$/.test(t.length ?? ""))
+        && audioTiles.find((t) => t.sha === bgm.sha256)?.current, audioTiles);
+    await page.keyboard.press("Escape"); // the picker first
+    await page.locator(".bl-overlay .bl-picker").waitFor({ state: "detached" });
     await page.keyboard.press("Escape");
     await overlay.waitFor({ state: "detached" });
 

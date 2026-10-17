@@ -781,7 +781,89 @@ const LIB_HELPERS = () => {
     await page.keyboard.press("Escape");
     await closed();
 
-    await finish({ expectRemoved: 8 }); // A–E, the UI-made bundle, its copy and the dragged one
+    // ---- choosing a stored file for a media field (0.0.29) ------------------------------------
+    const imageOf = async (id, name) => (await api("GET", `/bundles/${id}`)).fields.find((f) => f.name === name).asset;
+    const [aRef, bRef] = [await imageOf(ids.A, "ref_1"), await imageOf(ids.B, "ref_1")];
+    const loose = (await ev(() => window.__bl.image("loose", "#ca8a04", "Loose"))).asset; // stored; no bundle uses it
+    const pickId = (await api("POST", "/bundles", { name: "[test] Pick", tags: ["test"], fields: [
+        { name: "ref", type: "image", asset: { sha256: aRef.sha256, original_name: "A ref_1.png" } },
+        { name: "empty", type: "image", asset: null }] })).id;
+    await ev(async ([module, id]) => (await import(`${module}/library_modal.js`)).openLibrary({ selected: id }),
+        ["/extensions/ComfyUI-Bundle-Library", pickId]);
+    await opened();
+    await editing("[test] Pick");
+    const uploadsBeforePick = uploadRequests;
+    const picker = page.locator(".bl-overlay .bl-picker");
+    const tileFor = (sha) => page.locator(`.bl-overlay .bl-picker-tile[data-sha256="${sha}"]`);
+    const tiles = () => lib(() => [...document.querySelectorAll(".bl-overlay .bl-picker-tile")].map((tile) => ({
+        sha: tile.dataset.sha256, name: tile.querySelector(".bl-picker-name").textContent,
+        use: tile.querySelector(".bl-picker-use").textContent, current: tile.classList.contains("current"),
+        badge: tile.querySelector(".bl-picker-current")?.textContent ?? null })));
+    const openPicker = async (card) => {
+        await button("Choose from the library…", fields.nth(card)).click();
+        await picker.waitFor({ timeout: 5000 });
+        return until(() => document.querySelectorAll(".bl-overlay .bl-picker-tile").length > 0);
+    };
+    const offered = await lib(() => [...window.__lib.card(1).querySelectorAll(".bl-drop button")].map((b) => b.textContent));
+    check("an empty image field offers a file of one's own or one the library keeps",
+        JSON.stringify(offered) === JSON.stringify(["Choose an image…", "Choose from the library…"]), offered);
+    await openPicker(0);
+    await page.waitForTimeout(300); // the thumbnails, for the picture
+    await shot("library-stored-picker.png");
+    let shown = await tiles();
+    const stored = (await api("GET", "/assets?kind=image")).assets;
+    const tileOf = (sha) => shown.find((tile) => tile.sha === sha);
+    const usersOf = (sha) => new Set(stored.find((a) => a.sha256 === sha).used_by.filter((u) => !u.deleted).map((u) => u.id)).size;
+    check("the picker shows the stored images as the server lists them: most recent first",
+        JSON.stringify(shown.map((tile) => tile.sha)) === JSON.stringify(stored.map((a) => a.sha256))
+        && await picker.locator(".bl-confirm-title").textContent() === "Choose an image from the library"
+        && stored.every((a) => a.ext && a.width && a.stored_at), shown.length);
+    check("a tile names the file as bundles do and says how many use it; the field's own file is marked",
+        tileOf(aRef.sha256)?.name === "A ref_1.png" && usersOf(aRef.sha256) >= 2
+        && tileOf(aRef.sha256)?.use === `In ${usersOf(aRef.sha256)} bundles` && tileOf(aRef.sha256)?.current
+        && tileOf(aRef.sha256)?.badge === "Current" && tileOf(bRef.sha256)?.name === "B ref_1.png" && !tileOf(bRef.sha256)?.current
+        && tileOf(loose.sha256)?.use === "Not used by a bundle" && /^PNG · \d/.test(tileOf(loose.sha256)?.name ?? "")
+        && shown.filter((tile) => tile.current).length === 1, { a: tileOf(aRef.sha256), b: tileOf(bRef.sha256), loose: tileOf(loose.sha256) });
+    await tileFor(aRef.sha256).click();
+    await picker.waitFor({ state: "detached", timeout: 5000 });
+    st = await state();
+    check("choosing the file the field has closes the picker and changes nothing",
+        st.state === "Saved" && st.fields[0].thumb.includes(aRef.sha256), st.state);
+    await openPicker(0);
+    await page.locator(".bl-overlay .bl-picker-filter").fill("[test] B");
+    shown = await tiles();
+    check("the filter keeps the files whose names or bundles match",
+        shown.some((tile) => tile.sha === bRef.sha256) && !tileOf(loose.sha256) && !tileOf(aRef.sha256), shown.map((t) => t.name));
+    await page.locator(".bl-overlay .bl-picker-filter").fill("no such file anywhere");
+    check("…and says so when none does", (await tiles()).length === 0
+        && await picker.locator(".bl-picker-note").textContent() === "No file matches.");
+    await page.keyboard.press("Escape");
+    await picker.waitFor({ state: "detached", timeout: 5000 });
+    check("Escape closes the picker; the field keeps its file", (await state()).state === "Saved");
+    await openPicker(0);
+    await tileFor(bRef.sha256).click();
+    await picker.waitFor({ state: "detached", timeout: 5000 });
+    st = await state();
+    check("a tile chosen is the field's file at once, taken without an upload; not saved yet",
+        st.fields[0].thumb.includes(bRef.sha256) && st.state === "● Unsaved changes" && uploadRequests === uploadsBeforePick
+        && (await lib(() => window.__lib.status())).text === "Chose B ref_1.png from the library.", { state: st.state });
+    await openPicker(1);
+    await tileFor(loose.sha256).click();
+    await picker.waitFor({ state: "detached", timeout: 5000 });
+    check("a file no bundle named is chosen by its digest",
+        (await lib(() => window.__lib.status())).text === `Chose ${loose.sha256.slice(0, 12)}… from the library.`
+        && (await state()).fields[1].thumb?.includes(loose.sha256), (await lib(() => window.__lib.status())).text);
+    await page.keyboard.press("Control+s");
+    await savedState();
+    const picked = await api("GET", `/bundles/${pickId}`);
+    check("saved: the fields keep the chosen files, with the name bundles gave the first",
+        picked.fields[0].asset.sha256 === bRef.sha256 && picked.fields[0].asset.original_name === "B ref_1.png"
+        && picked.fields[1].asset.sha256 === loose.sha256 && !picked.fields[1].asset.original_name
+        && picked.fields[1].asset.width === 512 && uploadRequests === uploadsBeforePick, picked.fields.map((f) => f.asset));
+    await page.keyboard.press("Escape");
+    await closed();
+
+    await finish({ expectRemoved: 9 }); // A–E, the UI-made bundle, its copy, the dragged one and the picked one
 })().catch((e) => {
     console.error(e);
     process.exit(1);

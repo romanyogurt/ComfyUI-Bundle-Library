@@ -128,6 +128,11 @@ const MODULE = "/extensions/ComfyUI-Bundle-Library";
     await button("+ 필드 추가 ▾").click();
     await korean("the menu of field types", ".bl-overlay", ["텍스트", "정수", "불리언 (참/거짓)"]);
     await page.keyboard.press("Escape");
+    await button("라이브러리에서 고르기…", page.locator(".bl-overlay .bl-field").nth(0)).click();
+    await until(() => document.querySelector(".bl-overlay .bl-picker-tile"));
+    await korean("the picker of stored files", ".bl-overlay .bl-picker", ["라이브러리에서 이미지 고르기", "지금 파일",
+        "파일·번들 이름으로 거르기"]);
+    await page.keyboard.press("Escape");
 
     // ---- several bundles, and the export --------------------------------------------------------------------
     await row(ids.B).click({ modifiers: ["Control"] });

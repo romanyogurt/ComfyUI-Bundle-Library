@@ -106,6 +106,17 @@ class RoutesTest(AioHTTPTestCase):
         answer = await self.body(await self.client.get(P + "/messages"), 200)
         self.assertEqual(sorted(answer["messages"]), ["en"])
 
+    async def test_a_field_takes_a_stored_file_without_uploading_it(self):
+        # 0.0.29: the stored files of a kind, and taking one (its grace time starts again)
+        sha = (await self.body(await self.upload(helpers.png("olive")), 201))["asset"]["sha256"]
+        listing = await self.body(await self.client.get(P + "/assets?kind=image"), 200)
+        self.assertEqual([(a["sha256"], a["names"], a["used_by"]) for a in listing["assets"]], [(sha, [], [])])
+        self.assertEqual((await self.body(await self.client.get(P + "/assets?kind=video"), 200))["assets"], [])
+        await self.error(await self.client.get(P + "/assets"), 400, "invalid")
+        taken = await self.body(await self.client.post(f"{P}/assets/{sha}/use", headers=WRITE), 200)
+        self.assertEqual((taken["asset"]["sha256"], taken["asset"]["width"]), (sha, 64))
+        await self.error(await self.client.post(f"{P}/assets/{'0' * 64}/use", headers=WRITE), 404, "not_found")
+
     async def test_every_write_route_is_guarded(self):
         bundle = await self.body(await self.client.post(P + "/bundles", json=await self.bundle_data(), headers=WRITE), 201)
         path = f"{P}/bundles/{bundle['id']}"
@@ -118,6 +129,7 @@ class RoutesTest(AioHTTPTestCase):
             "delete for good": lambda headers: self.client.delete(f"{P}/trash/{SOME_ID}", headers=headers),
             "empty trash": lambda headers: self.client.delete(P + "/trash", headers=headers),
             "cleanup": lambda headers: self.client.post(P + "/cleanup", json={"sha256": []}, headers=headers),
+            "use a stored file": lambda headers: self.client.post(f"{P}/assets/{'0' * 64}/use", headers=headers),
             "new category": lambda headers: self.client.post(P + "/categories", json={"name": "x"}, headers=headers),
             "rename category": lambda headers: self.client.patch(f"{P}/categories/{SOME_ID}", json={"name": "y"},
                                                                  headers=headers),

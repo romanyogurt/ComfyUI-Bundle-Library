@@ -17,7 +17,8 @@ OLD = time.time() - ASSET_GRACE_SECONDS - 3600  # stored before the grace time b
 
 
 class TrashTest(unittest.TestCase):
-    """The trash (restore, delete for good) and the cleanup of unused files."""
+    """The trash (restore, delete for good), the cleanup of unused files, and the
+    stored files a media field can take (0.0.29)."""
 
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -112,6 +113,58 @@ class TrashTest(unittest.TestCase):
         self.store.purge(broken, unreadable=True)
         self.assertFalse((self.root / "bundles" / f"{broken}.json").exists())
         self.assertTrue((self.root / "bundles" / "notes.txt").exists())
+
+    # ---- stored files a media field can take (0.0.29) -----------------------------
+
+    def named(self, name, *uses, deleted=False):
+        """A bundle whose image fields use (sha256, original name) pairs."""
+        fields = [{"name": f"ref_{i}", "type": "image", "asset": {"sha256": sha, "original_name": original}}
+                  for i, (sha, original) in enumerate(uses, 1)]
+        bundle = self.store.create({"name": name, "tags": [], "fields": fields})
+        if deleted:
+            self.store.delete(bundle["id"], 1)
+        return bundle
+
+    def test_stored_files_of_a_kind_newest_first_with_their_names_and_uses(self):
+        red, blue, green = (self.upload(helpers.png(c)) for c in ("red", "blue", "green"))
+        video = self.upload(helpers.video("mp4", "libx264"), "video")
+        for i, sha in enumerate((red, blue, green)):  # stored one after another
+            os.utime(self.store.assets.path(sha), (OLD + i * 60, OLD + i * 60))
+        zed = self.named("Zed", (red, "red.png"))
+        abe = self.named("Abe", (red, "red.png"), (blue, "sky.png"), (red, "r.png"))
+        old = self.named("Old", (blue, "blue.png"), deleted=True)
+        listing = self.store.stored_assets("image")["assets"]
+        self.assertEqual([a["sha256"] for a in listing], [green, blue, red])
+        newest, middle, oldest = listing
+        self.assertEqual((newest["names"], newest["used_by"]), ([], []))  # stored, used by no bundle
+        self.assertEqual((newest["ext"], newest["mime"], newest["width"], newest["height"]), ("png", "image/png", 64, 48))
+        self.assertEqual(newest["bytes"], self.store.assets.path(green).stat().st_size)
+        self.assertRegex(newest["stored_at"], r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")  # as the cleanup lists it
+        self.assertEqual(middle["used_by"], [{"id": abe["id"], "name": "Abe", "field": "ref_2", "deleted": False},
+                                             {"id": old["id"], "name": "Old", "field": "ref_1", "deleted": True}])
+        self.assertEqual(middle["names"], ["sky.png", "blue.png"])
+        self.assertEqual(oldest["names"], ["red.png", "r.png"])  # the name given most first
+        self.assertEqual([(u["name"], u["field"]) for u in oldest["used_by"]], [("Abe", "ref_1"), ("Abe", "ref_3"), ("Zed", "ref_1")])
+        [clip] = self.store.stored_assets("video")["assets"]
+        self.assertEqual((clip["sha256"], clip["ext"], clip["used_by"]), (video, "mp4", []))
+        self.assertIn("duration", clip)
+        self.assertEqual(self.store.stored_assets("audio")["assets"], [])
+        self.assertEqual(zed["fields"][0]["asset"]["sha256"], red)
+        self.refused(lambda: self.store.stored_assets("text"), 400, "invalid")
+        self.refused(lambda: self.store.stored_assets(""), 400, "invalid")
+
+    def test_taking_a_stored_file_restarts_its_grace_time(self):
+        sha = self.upload(helpers.png("teal"))
+        self.age(sha)
+        self.assertEqual([a["sha256"] for a in self.store.unused_assets()["assets"]], [sha])
+        info = self.store.keep_asset(sha)  # a draft takes it from the library
+        self.assertEqual((info["sha256"], info["ext"], info["width"]), (sha, "png", 64))
+        listing = self.store.unused_assets()
+        self.assertEqual((listing["assets"], listing["recent"]), ([], 1))
+        self.assertEqual(self.store.delete_unused_assets([sha])["deleted"], 0)
+        self.assertIsNotNone(self.store.assets.path(sha))
+        self.refused(lambda: self.store.keep_asset("0" * 64), 404, "not_found")
+        self.refused(lambda: self.store.keep_asset("not-a-digest"), 400, "invalid_id")
 
     # ---- unused files ----------------------------------------------------------
 

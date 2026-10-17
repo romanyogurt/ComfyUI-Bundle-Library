@@ -252,6 +252,8 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | DELETE | `/categories/{id}` | — | `{"deleted": id, "uncategorized": 개수}`. 그 번들(휴지통의 것 포함)은 Uncategorized가 된다 |
 | POST | `/bundles/{id}/restore` | — | 되살린 번들 (같은 id와 이름, revision +1) |
 | POST | `/assets` | multipart의 `kind` 필드(`image`·`video`·`audio`, 없으면 `image`)와 그 뒤의 `file` 필드 | `{"asset": {"sha256", "ext", "mime", "bytes", 파일 정보…, "original_name"}}`. 새 파일이면 201, 이미 있으면 200. 크기 제한은 `kind`의 것을 쓴다 |
+| GET | `/assets?kind=` | — | `{"assets": [{"sha256", "ext", "mime", "bytes", 파일 정보…, "stored_at", "names", "used_by": [{"id", "name", "field", "deleted"}]}]}`. `kind`(`image`·`video`·`audio`, 필수)의 저장된 파일 전부, 최근에 저장된(다시 올리거나 고른) 것부터. `names`는 번들이 그 파일에 붙인 이름(많이 쓰인 것부터), `used_by`는 쓰는 번들(쓰는 것 먼저, 그다음 휴지통, 이름 순)이다. 쓰는 번들이 없는 파일도 있고, 이 버전이 읽지 못하는 번들 파일의 쓰임은 빠진다 (0.0.29부터) |
+| POST | `/assets/{sha256}/use` | — | `{"asset": {"sha256", "ext", "mime", "bytes", 파일 정보…}}`. 초안이 저장된 파일을 쓴다: 같은 내용을 다시 올린 것처럼 정리의 유예 시간이 새로 시작된다. 없으면 404 `not_found` (0.0.29부터) |
 | GET | `/assets/{sha256}` | — | 원본. Range 요청을 받는다. `Cache-Control: immutable`, `X-Content-Type-Options: nosniff` |
 | GET | `/assets/{sha256}/thumb?size=256` | — | WebP 썸네일 (이미지, 비디오 포스터) |
 | GET | `/trash` | — | `{"trash": [요약과 "deleted_at"], "errors": [{"file", "id", "code", "error"}]}`. 요약의 `category`는 되살아날 카테고리다. 마지막에 지운 것부터. `errors`는 이 버전이 쓸 수 없는 파일과 옮기지 못한 옛 휴지통 파일이다 |
