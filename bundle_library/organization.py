@@ -1,7 +1,7 @@
 """How the library list is organized: categories, which category each bundle
 sits in, and favorites. Kept in organization.json beside bundles/, not in the
 bundles, so moving or starring a bundle changes neither its file, its
-revision nor the cache of a node that loads it (docs/data-format.md).
+revision nor the cache of a node that loads it.
 
 The file follows the same rules as bundle files (schema.py): a missing file
 is an empty organization; a file this version does not fully understand is

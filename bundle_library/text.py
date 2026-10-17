@@ -1,9 +1,9 @@
 """Messages a page can say in its own language (Phase 9b; by id since 0.0.27).
 
 Every message has an id, such as "store.bundle_not_found", and each language a
-catalog of them: locales/<language>/bundle_library.json, English included
-(docs/data-format.md). A Text is a message by its id and values: as a str it
-is the English, its {places} filled from the values, so anyone else reads it
+catalog of them: locales/<language>/bundle_library.json, English included.
+A Text is a message by its id and values: as a str it is the English, its
+{places} filled from the values, so anyone else reads it
 as before; info() gives the id and values, which said() puts beside it in an
 answer as "<key>_i18n" (a list of them beside a list of Texts), so the page
 says it in its own language (web/i18n.js).

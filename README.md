@@ -6,7 +6,7 @@
 
 ## 현재 구현과 문서
 
-이 문서와 [설계 개요](docs/design.md)는 노드 0.0.31의 소스를 기준으로 한다.
+이 문서는 노드 0.0.31의 소스를 기준으로 한다.
 
 - 번들과 미디어는 ComfyUI 사용자 디렉토리의 `bundle_library/`에 저장한다. 번들은 UUID로 구분하고,
   이름은 같아도 된다. 라이브러리 창에서 만들기·편집·복제·삭제를 지원한다.
@@ -17,19 +17,11 @@
 - 휴지통은 번들 파일의 삭제 상태다. 같은 UUID와 이름으로 되살리며, 복원 전까지 워크플로에서
   실행되지 않는다. 미사용 미디어 파일은 별도 확인을 거쳐 정리한다.
 - 옛 번들 형식을 읽고, 지원하지 않는 데이터는 상태와 이유를 표시한다. 저장·복제·삭제 중 창 잠금, 늦은
-  응답 제외, 업로드 취소를 지원한다. 세부 동작과 예외는 아래 문서에서 다룬다.
+  응답 제외, 업로드 취소를 지원한다.
 
-문서는 다음 순서로 읽는다.
-
-1. 이 README: 사용법과 테스트 실행 방법
-2. [설계 개요](docs/design.md): 슬롯, 실행과 캐시, 저장소, 화면 상태의 역할과 유지해야 할 조건
-3. [데이터 형식과 API](docs/data-format.md): 파일·요청·응답·오류·제한값과 호환성 정책의 기준
-4. comfy-docker 저장소의 `docs/bundle-library/README.md`: 운영 문서와 계획·기록의 안내.
-   설치·백업·복원은 `docs/bundle-library/operations.md`, 앞으로의 작업은
-   `docs/bundle-library/roadmap.md`에 있다.
-
-[Phase 0 호환성 검증 기록](docs/compatibility.md)은 초기 기술 검증 당시의 기록이다. 현재 형식이나
-전체 구현의 명세로 쓰지 않는다.
+이 README는 사용법과 테스트 실행 방법을 다룬다. 개발 노트(설계 개요, 데이터 형식과 API, Phase 0 호환성
+검증 기록)와 운영 문서·계획·기록은 개발 환경(comfy-docker 저장소)의 `docs/bundle-library/`에 있다(2026-10-17에
+이 저장소에서 옮겼다).
 
 ## 라이브러리 열기
 
@@ -205,7 +197,7 @@ changes first."라고 알린다. 저장(Save)하거나 되돌리면(Revert) 풀�
 - 언어를 더하려면 `locales/ko/`를 본떠 `locales/<언어 코드>/`를 만든다. 코드는 ComfyUI의 것(`ja`, `zh-TW` 등)이다.
   `bundle_library.json`(이 노드 팩의 메시지. 항목마다 `{"en": 번역한 영어, "text": 번역}`), `nodeDefs.json`,
   `commands.json`을 둔다. 번역하지 않은 메시지는 영어로 보인다. `node --test tests/js/*.test.mjs`가 빠진 메시지와,
-  번역한 뒤 영어가 바뀐 메시지를 보고한다. 형식은 [데이터 형식](docs/data-format.md#메시지-목록)에 있다.
+  번역한 뒤 영어가 바뀐 메시지를 보고한다. 형식은 `locales/en/`과 `locales/ko/`의 `bundle_library.json`이 보여 준다.
 
 ## 개발 규칙
 

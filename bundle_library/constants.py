@@ -23,7 +23,7 @@ FIELD_TYPES = tuple(COMFY_TYPES)
 # Field types whose value is an uploaded file (an asset) rather than a JSON value.
 MEDIA_TYPES = ("image", "video", "audio")
 
-# Limits from the plan (docs/data-format.md lists them for users).
+# Limits from the plan; the user documentation lists them.
 MAX_FIELDS = POOL_SIZE
 MAX_BUNDLE_NAME = 120
 MAX_FIELD_NAME = 64

@@ -1,5 +1,5 @@
-// Browser scenarios for the Load Bundle node (started in Phase 0, see
-// docs/compatibility.md). Set-up and safety notes are in harness.cjs.
+// Browser scenarios for the Load Bundle node (started in Phase 0). Set-up and
+// safety notes are in harness.cjs.
 const { startSession } = require("./harness.cjs");
 
 (async () => {

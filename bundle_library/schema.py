@@ -1,6 +1,6 @@
 """The bundle file format: reading a file of any supported version into the
 current one in memory, and sorting files into the states that decide what
-the library may do with them (docs/data-format.md, "호환성 정책").
+the library may do with them (the compatibility policy).
 
 Reading never writes: a file is upgraded in memory and stored in the
 current version only when the library saves it for another reason. Imports

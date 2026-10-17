@@ -162,7 +162,7 @@ export const duplicateBundle = (id, mode) => request(`/bundles/${id}/duplicate`,
 /**
  * One action on several bundles: "set_category" ({category}), "set_favorite"
  * ({favorite}), "add_tags" or "remove_tags" ({tags}), or "trash"
- * ({expected_revisions}). The answer has a result per bundle (data-format.md);
+ * ({expected_revisions}). The answer has a result per bundle;
  * a refused request changes nothing.
  */
 export const batchBundles = (ids, action, args = {}) => request("/bundles/batch", json("POST", { ids, action, ...args }));
@@ -176,7 +176,7 @@ export const setFavorite = (bundleId, favorite) => request(`/bundles/${bundleId}
 
 /**
  * The tags of the whole library, in use and in the trash: {tags: [{name, spellings, active, trash, protected}],
- * unreadable, legacy} (data-format.md).
+ * unreadable, legacy}.
  */
 export const listTags = () => request("/tags");
 /** Rename a tag in every bundle; with a tag there already, the two merge. */
@@ -253,7 +253,7 @@ function postFile(route, form, { onProgress = null, signal = null } = {}) {
 }
 
 /**
- * Upload an export ZIP to import (data-format.md, "가져오기"): resolves to the
+ * Upload an export ZIP to import: resolves to the
  * preview, {token, bundles, assets, ...}. Nothing in the library changes yet.
  */
 export function uploadImport(file, options) {
@@ -267,7 +267,7 @@ export const applyImport = (token, conflict, category) => request(`/import/${tok
 export const discardImport = (token) => request(`/import/${token}`, { method: "DELETE" }, { changes: false });
 
 /**
- * Make a ZIP of bundles to download (data-format.md, "내보내기"): {token, file_name, bytes, bundles, assets,
+ * Make a ZIP of bundles to download: {token, file_name, bytes, bundles, assets,
  * skipped, missing}. It can be downloaded from exportURL() for an hour.
  */
 export const exportBundles = (ids) => request("/export", json("POST", { ids }), { changes: false });

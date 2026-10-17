@@ -1,4 +1,4 @@
-"""HTTP API under /bundle-library/v1 (docs/data-format.md).
+"""HTTP API under /bundle-library/v1.
 
 register() adds the routes to a RouteTableDef: ComfyUI's PromptServer table at
 runtime, a fresh one in the tests. Nothing here imports ComfyUI.
