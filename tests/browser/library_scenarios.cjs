@@ -356,7 +356,7 @@ const LIB_HELPERS = () => {
     shownIds = (await visible()).sort();
     check("tag filter 'ui' shows exactly the bundles tagged ui", JSON.stringify(shownIds) === JSON.stringify(tagged) && shownIds.includes(uiId), shownIds);
     await page.locator(".bl-overlay .bl-tag-button").click();
-    const tagOptions = await lib(() => [...document.querySelectorAll(".bl-overlay .bl-menu:not([hidden]) .bl-menu-item")]
+    const tagOptions = await lib(() => [...document.querySelectorAll(".bl-overlay .bl-menu:not([hidden]) .bl-menu-item[role=menuitemradio]")]
         .map((o) => o.dataset.value));
     check("tag options list 'test' and 'Test' once", tagOptions.filter((t) => t.toLowerCase() === "test").length === 1, tagOptions);
     await page.getByRole("menuitemradio", { name: "All tags" }).click();

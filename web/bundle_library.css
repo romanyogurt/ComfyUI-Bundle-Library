@@ -1211,6 +1211,23 @@
     background: var(--comfy-menu-secondary-bg, #303030);
 }
 
+/* The tags of the whole library (tags_panel.js): laid out like the trash, a row per tag without a picture. */
+.bl-tags-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.bl-tags-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bl-trash-item.bl-tag-item {
+    grid-template-columns: 1fr auto auto;
+}
+
 /* The files a cleanup would delete. */
 .bl-cleanup-files {
     display: grid;
@@ -1313,6 +1330,14 @@
 
 .bl-batch-category {
     min-width: 200px;
+}
+
+.bl-batch-tag .bl-dim {
+    font-size: 11px;
+}
+
+.bl-batch-add-tag {
+    width: 140px;
 }
 
 .bl-batch-summary {

@@ -156,8 +156,9 @@ export const duplicateBundle = (id, mode) => request(`/bundles/${id}/duplicate`,
 
 /**
  * One action on several bundles: "set_category" ({category}), "set_favorite"
- * ({favorite}) or "trash" ({expected_revisions}). The answer has a result per
- * bundle (data-format.md); a refused request changes nothing.
+ * ({favorite}), "add_tags" or "remove_tags" ({tags}), or "trash"
+ * ({expected_revisions}). The answer has a result per bundle (data-format.md);
+ * a refused request changes nothing.
  */
 export const batchBundles = (ids, action, args = {}) => request("/bundles/batch", json("POST", { ids, action, ...args }));
 
@@ -167,6 +168,15 @@ export const renameCategory = (id, name) => request(`/categories/${id}`, json("P
 export const deleteCategory = (id) => request(`/categories/${id}`, { method: "DELETE" });
 export const setCategory = (bundleId, category) => request(`/bundles/${bundleId}/category`, json("PUT", { category }));
 export const setFavorite = (bundleId, favorite) => request(`/bundles/${bundleId}/favorite`, json("PUT", { favorite }));
+
+/**
+ * The tags of the whole library, in use and in the trash: {tags: [{name, spellings, active, trash, protected}],
+ * unreadable, legacy} (data-format.md).
+ */
+export const listTags = () => request("/tags");
+/** Rename a tag in every bundle; with a tag there already, the two merge. */
+export const renameTag = (from, to) => request("/tags/rename", json("POST", { from, to }));
+export const deleteTag = (tag) => request("/tags/delete", json("POST", { tag }));
 
 /** The bundles in the trash, last deleted first, and the files this version cannot use: {trash, errors}. */
 export const listTrash = () => request("/trash");

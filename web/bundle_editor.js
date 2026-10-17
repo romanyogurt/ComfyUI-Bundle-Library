@@ -739,7 +739,8 @@ export class BundleEditor {
         const choice = await this.modal.choose(
             "This bundle was changed elsewhere",
             `It was saved again (revision ${currentRevision}) after you opened it. Overwrite it with your version, `
-            + "or reload it and lose your changes?",
+            + "or reload it and lose your changes? Overwriting puts back everything your version has, its tags too "
+            + "(a tag renamed or deleted elsewhere comes back).",
             [["Overwrite", "overwrite", "danger"], ["Reload", "reload"], ["Cancel", null]]);
         try {
             if (choice === "overwrite") {
@@ -756,6 +757,12 @@ export class BundleEditor {
             this.modal.status(error.message, "error");
         }
         return false;
+    }
+
+    /** Show `bundle` as saved in place of a draft without changes: it was saved again elsewhere. */
+    showSaved(bundle) {
+        this.model.load(bundle);
+        this.render();
     }
 
     revert() {

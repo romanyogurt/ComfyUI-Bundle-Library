@@ -4,6 +4,7 @@
 // (LibraryModal.runBatch); these only draw.
 import { thumbnailURL } from "./api.js";
 import { button, el, icon, plural } from "./dom.js";
+import { tagCounts } from "./tags.js";
 
 /** The small picture of a bundle, if it has an image or a video. */
 function thumb(bundle) {
@@ -29,6 +30,7 @@ export class BatchPanel {
         // drawn again: the category Move puts the bundles in, an id or "" for
         // none, or null once the chosen category is gone.
         this.category = "";
+        this.tagText = ""; // a tag typed to add, kept when the panel is drawn again
         this.root = el("div", "bl-batch");
         this.show(bundles);
     }
@@ -102,6 +104,38 @@ export class BatchPanel {
         }
         chosen();
 
+        // The tags the selected bundles have, each with how many have it; × takes
+        // it off all of them, and a tag typed below goes on all of them.
+        const tags = el("div", "bl-batch-row bl-batch-tags");
+        tags.append(el("span", "bl-label", "Tags"));
+        for (const { name, count } of tagCounts(bundles)) {
+            const chip = el("span", "bl-chip bl-batch-tag", `${name} `);
+            chip.dataset.tag = name;
+            chip.append(el("span", "bl-dim", `${count}/${bundles.length}`));
+            const remove = button("×", "bl-chip-x", `Remove '${name}' from the selected bundles`);
+            remove.setAttribute("aria-label", `Remove the tag ${name} from the selected bundles`);
+            remove.addEventListener("click", () => void modal.runBatch("remove_tags", { tags: [name] }, this.bundles));
+            chip.append(remove);
+            tags.append(chip);
+        }
+        const addTag = el("input", "bl-input bl-tag-input bl-batch-add-tag");
+        addTag.dataset.control = "add-tag";
+        addTag.placeholder = "+ tag for all";
+        addTag.maxLength = 40;
+        addTag.value = this.tagText;
+        addTag.addEventListener("input", () => {
+            this.tagText = addTag.value;
+        });
+        addTag.addEventListener("keydown", (e) => {
+            if (e.isComposing || e.key !== "Enter") return;
+            e.preventDefault();
+            const tag = addTag.value.trim();
+            if (!tag) return;
+            this.tagText = "";
+            void modal.runBatch("add_tags", { tags: [tag] }, this.bundles);
+        });
+        tags.append(addTag);
+
         const trash = el("div", "bl-batch-row");
         const toTrash = button("", "bl-btn danger");
         toTrash.dataset.control = "trash";
@@ -110,10 +144,12 @@ export class BatchPanel {
         trash.append(el("span", "bl-label", "Trash"), toTrash);
         const locked = bundles.filter((b) => b.read_only).length;
         if (locked) {
-            trash.append(el("span", "bl-hint", `${plural(locked, "bundle")} this version cannot change will be left out.`));
+            const note = `${plural(locked, "bundle")} this version cannot change will be left out.`;
+            trash.append(el("span", "bl-hint", note));
+            tags.append(el("span", "bl-hint", note));
         }
 
-        this.root.replaceChildren(head, names, place, stars, trash);
+        this.root.replaceChildren(head, names, place, stars, tags, trash);
         if (focused) this.root.querySelector(`[data-control="${focused}"]`)?.focus({ preventScroll: true });
     }
 }

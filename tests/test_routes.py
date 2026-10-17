@@ -304,8 +304,18 @@ class RoutesTest(AioHTTPTestCase):
         trashed = await self.body(await self.client.post(P + "/bundles/batch", json={
             "ids": ids, "action": "trash", "expected_revisions": {ids[0]: 1, ids[1]: 7}}, headers=WRITE), 200)
         self.assertEqual([(r["ok"], r.get("code")) for r in trashed["results"]], [(True, None), (False, "revision_conflict")])
-        await self.error(await self.client.post(P + "/bundles/batch", json={"ids": ids, "action": "add_tags", "tags": ["x"]},
-                                                headers=WRITE), 400, "unsupported_action")
+        tagged = await self.body(await self.client.post(P + "/bundles/batch", json={
+            "ids": ids, "action": "add_tags", "tags": ["Old"]}, headers=WRITE), 200)
+        self.assertEqual([(r["ok"], r.get("code")) for r in tagged["results"]], [(False, "in_trash"), (True, None)])
+        listing = await self.body(await self.client.get(P + "/tags"), 200)
+        self.assertEqual({t["name"]: t["active"] for t in listing["tags"]}.get("Old"), 1)
+        renamed = await self.body(await self.client.post(P + "/tags/rename", json={"from": "old", "to": "New"},
+                                                         headers=WRITE), 200)
+        self.assertEqual((renamed["changed"], renamed["merged"]), (1, 0))
+        await self.error(await self.client.post(P + "/tags/rename", json={"from": "New"}, headers=WRITE), 400, "invalid")
+        deleted = await self.body(await self.client.post(P + "/tags/delete", json={"tag": "new"}, headers=WRITE), 200)
+        self.assertEqual(deleted["changed"], 1)
+        await self.error(await self.client.post(P + "/tags/delete", json={}, headers=WRITE), 400, "invalid")
         await self.error(await self.client.post(P + "/bundles/batch", json={"ids": ["../x"], "action": "trash"},
                                                 headers=WRITE), 400, "invalid_id")
 

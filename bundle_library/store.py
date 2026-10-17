@@ -24,18 +24,23 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from collections import Counter
+
 from . import organization, schema
+from . import tags as tag_rules
 from .assets import KINDS, AssetStore
-from .constants import ASSET_GRACE_SECONDS, MAX_BUNDLE_NAME, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MEDIA_TYPES
+from .constants import (
+    ASSET_GRACE_SECONDS, MAX_BUNDLE_NAME, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MAX_TAGS, MEDIA_TYPES,
+)
 from .model import (
     INT_MAX, INT_MIN, TRASH_ID_RE, UUID_RE, LibraryError, check_bundle_id, check_sha256, empty_value, invalid,
-    name_key, normalize_bundle,
+    name_key, normalize_bundle, normalize_tag, tag_name,
 )
 
 TEXT_PREVIEW = 200
 MAX_BATCH = 1000  # bundles in one batch request
-BATCH_ACTIONS = ("set_category", "set_favorite", "trash")
-LATER_BATCH_ACTIONS = ("add_tags", "remove_tags")  # Phase 7.8b
+BATCH_ACTIONS = ("set_category", "set_favorite", "trash", "add_tags", "remove_tags")
+MAX_BATCH_TAGS = 20  # tags in one add_tags or remove_tags request
 SYNC_FOLDERS = os.name != "nt"  # Windows cannot open a folder to sync it
 # Told with a change that is made but may not survive a power loss (_write_json).
 UNSYNCED = "Saved, but the library folder could not be synced to the disk; a power loss could undo it."
@@ -634,8 +639,6 @@ class BundleStore:
         if not isinstance(data, dict):
             raise invalid("A batch is a JSON object.")
         action = data.get("action")
-        if action in LATER_BATCH_ACTIONS:
-            raise LibraryError(400, "unsupported_action", f"This version of Bundle Library cannot {action} in a batch.")
         if action not in BATCH_ACTIONS:
             raise invalid(f"Unknown batch action: {action!r}.")
         ids = data.get("ids")
@@ -646,6 +649,16 @@ class BundleStore:
             raise invalid(f"A batch takes {MAX_BATCH} bundles at most.")
         if action == "trash":
             results = self._batch_trash(ids, data.get("expected_revisions"))
+        elif action in ("add_tags", "remove_tags"):
+            given = data.get("tags")
+            if not isinstance(given, list) or not given or len(given) > MAX_BATCH_TAGS:
+                raise invalid(f"tags must be a list of 1 to {MAX_BATCH_TAGS} tags.")
+            if action == "add_tags":  # a new tag follows the rules of saving
+                new = [normalize_tag(tag) for tag in given]
+                results = self._batch_tags(ids, lambda tags: tag_rules.added(tags, new))
+            else:  # any tag a bundle has, also one saved under looser rules
+                gone = [tag_name(tag) for tag in given]
+                results = self._batch_tags(ids, lambda tags: tag_rules.removed(tags, gone))
         elif action == "set_category":
             if "category" not in data:  # null takes the bundles out of their categories; absent is a mistake
                 raise invalid("category is required: a category id, or null for no category.")
@@ -692,6 +705,35 @@ class BundleStore:
                         results[bundle_id] = self._written({"id": bundle_id, "ok": True, "changed": True})
         return [results[bundle_id] for bundle_id in ids]
 
+    def _batch_tags(self, ids, change):
+        """Change the tags of each bundle in use as `change(tags)` says, bundle by
+        bundle under the lock, as it is stored now (no revision is asked for: a
+        tag change applies to the latest version). Only the tags change; nothing
+        is written when they stay the same. A change may not bring a bundle over
+        MAX_TAGS tags, unless it had more already and does not add any."""
+        results = []
+        with self._lock:
+            for bundle_id in ids:
+                try:
+                    current = self._in_use(self._writable(bundle_id))
+                    tags = change(current["tags"])
+                    if tags == current["tags"]:
+                        results.append({"id": bundle_id, "ok": True, "changed": False})
+                        continue
+                    if len(tags) > MAX_TAGS and len(tags) > len(current["tags"]):
+                        raise LibraryError(409, "too_many_tags",
+                                           f"Bundle '{current['name']}' would have {len(tags)} tags; a bundle has "
+                                           f"{MAX_TAGS} at most.")
+                    saved = self._save({**current, "tags": tags, "revision": current["revision"] + 1,
+                                        "updated_at": _now()})
+                    results.append(self._written({"id": bundle_id, "ok": True, "changed": True,
+                                                  "revision": saved["revision"]}))
+                except LibraryError as e:
+                    results.append(_failure(bundle_id, e))
+                except OSError as e:
+                    results.append(_io_failure(bundle_id, e))
+        return results
+
     def _batch_trash(self, ids, expected_revisions):
         if not isinstance(expected_revisions, dict):
             raise invalid("expected_revisions must map each bundle id to the revision it was seen at.")
@@ -709,6 +751,98 @@ class BundleStore:
                 except OSError as e:
                     results.append(_io_failure(bundle_id, e))
         return results
+
+    # -- tags across the library -------------------------------------------------
+
+    def tags(self):
+        """Every tag of the bundle files this version can read, in use and in the
+        trash: {"tags": [{"name", "spellings", "active", "trash", "protected"}],
+        "unreadable", "legacy"}. A tag is one entry whatever its case; `name` is
+        the spelling most bundles use. `protected` counts the bundles with the
+        tag this version cannot change (a rename or delete leaves them alone);
+        `unreadable` the bundle files it cannot read, which may have any tag, and
+        `legacy` the files left in the old trash folder, which it does not change."""
+        with self._lock:
+            self._scan()
+            files = self._files()
+            legacy = len(self._legacy_trash_files())
+        found = {}
+        unreadable = 0
+        for _, loaded in files:
+            if not loaded.readable:
+                unreadable += 1
+                continue
+            for tag in loaded.bundle["tags"]:
+                entry = found.setdefault(tag_rules.key(tag), {"spellings": Counter(), "active": 0, "trash": 0,
+                                                              "protected": 0})
+                entry["spellings"][tag] += 1
+                entry["trash" if loaded.deleted else "active"] += 1
+                if not loaded.writable:
+                    entry["protected"] += 1
+        tags = [{"name": entry["spellings"].most_common(1)[0][0], "spellings": sorted(entry["spellings"]),
+                 "active": entry["active"], "trash": entry["trash"], "protected": entry["protected"]}
+                for _, entry in sorted(found.items())]
+        return {"tags": tags, "unreadable": unreadable, "legacy": legacy}
+
+    def rename_tag(self, old, new):
+        """Call the tag `old` `new` in every bundle that has it, in use and in the
+        trash. A bundle that has both keeps one `new`, where the first of them
+        was (merged). The result is as in delete_tag(), with "merged"."""
+        old, new = tag_name(old), normalize_tag(new)
+        if old == new:
+            raise invalid("The new name is the same as the old one.")
+        merges = tag_rules.key(new) != tag_rules.key(old)
+        return self._retag_all(old, lambda tags: tag_rules.renamed(tags, old, new),
+                               merged=lambda tags: merges and tag_rules.has(tags, new))
+
+    def delete_tag(self, tag):
+        """Take the tag off every bundle that has it, in use and in the trash:
+        {"changed", "excluded", "unknown", "legacy", "warning"?}. `excluded`
+        lists the bundles with the tag left as they are ({"id", "name", "code",
+        "reason", "retry"?}: this version cannot change them, or writing failed),
+        `unknown` the files it cannot read ({"file", "reason"}: whether they
+        have the tag is not known), `legacy` the files of the old trash folder."""
+        tag = tag_name(tag)
+        return self._retag_all(tag, lambda tags: tag_rules.removed(tags, [tag]))
+
+    def _retag_all(self, tag, change, merged=None):
+        """Apply `change` to the tags of every bundle file that has `tag`, under
+        the lock, each written on its own: a failure stops that bundle only."""
+        changed, merged_count, excluded, unknown = 0, 0, [], []
+        unsynced = False
+        with self._lock:
+            self._scan()
+            for name, loaded in self._files():
+                if not loaded.readable:
+                    unknown.append({"file": f"bundles/{name}", "reason": loaded.problem})
+                    continue
+                bundle = loaded.bundle
+                if not tag_rules.has(bundle["tags"], tag):
+                    continue
+                if not loaded.writable:
+                    excluded.append({"id": bundle["id"], "name": bundle["name"], "code": loaded.state,
+                                     "reason": loaded.problem})
+                    continue
+                tags = change(bundle["tags"])
+                if tags == bundle["tags"]:
+                    continue  # a change of case done already
+                try:
+                    self._save({**bundle, "tags": tags, "revision": bundle["revision"] + 1, "updated_at": _now()})
+                except OSError as e:
+                    excluded.append({"id": bundle["id"], "name": bundle["name"], "code": "io_error",
+                                     "reason": f"The bundle file could not be written: {_reason(e)}", "retry": True})
+                    continue
+                unsynced = unsynced or not self._synced
+                changed += 1
+                if merged and merged(bundle["tags"]):
+                    merged_count += 1
+            legacy = len(self._legacy_trash_files())
+        result = {"changed": changed, "excluded": excluded, "unknown": unknown, "legacy": legacy}
+        if merged:
+            result["merged"] = merged_count
+        if unsynced:
+            result["warning"] = UNSYNCED
+        return result
 
     # -- the trash folder of 0.0.10 and earlier --------------------------------
 

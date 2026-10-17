@@ -235,6 +235,9 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | DELETE | `/bundles/{id}?expected_revision=N` | — | `{"deleted": id, "changed", "warning"?}`. 휴지통으로 보낸다 (`deleted_at`, revision +1). 이미 휴지통에 있으면 `changed: false`. 일괄 `trash`와 같은 코드다 |
 | POST | `/bundles/{id}/duplicate` | `{"mode"?: "values" 또는 "structure", "name"?}` | 201, 새 번들. `mode`를 생략하거나 `null`이면 `values`, 이름을 생략하거나 비우면 `<이름> copy`. 원본의 카테고리에 두고, 배치만 실패하면 `placement_error` |
 | POST | `/bundles/batch` | `{"ids", "action", 작업별 인수}` | 여러 번들에 한 작업 (아래 "여러 번들에 한 번에", 0.0.14부터) |
+| GET | `/tags` | — | `{"tags": [{"name", "spellings", "active", "trash", "protected"}], "unreadable", "legacy"}`. 아래 "태그" (0.0.19부터) |
+| POST | `/tags/rename` | `{"from", "to"}` (둘 다 필수) | `{"changed", "merged", "excluded", "unknown", "legacy", "warning"?}`. 쓰는 번들과 휴지통의 번들 모두에서 태그 이름을 바꾸고, `to`가 이미 있으면 합친다 |
+| POST | `/tags/delete` | `{"tag"}` (필수) | `{"changed", "excluded", "unknown", "legacy", "warning"?}`. 쓰는 번들과 휴지통의 번들 모두에서 태그를 뗀다 |
 | PUT | `/bundles/{id}/category` | `{"category": id 또는 null}` (키 필수, `null`은 카테고리 빼기) | `{"id", "category"}`. 쓰는 번들과 휴지통의 번들 모두. revision은 그대로다. 이미 그 상태면 아무것도 쓰지 않는다. 일괄 작업과 같은 코드다 |
 | PUT | `/bundles/{id}/favorite` | `{"favorite": true 또는 false}` | `{"id", "favorite"}`. revision은 그대로다 |
 | GET | `/categories` | — | `{"categories": [{"id", "name", "parent", "count"}], "revision", "state"}` |
@@ -275,12 +278,17 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | `set_category` | `category`: 카테고리 id 또는 `null` | 정리 파일 한 번 |
 | `set_favorite` | `favorite`: `true` 또는 `false` | 정리 파일 한 번 |
 | `trash` | `expected_revisions`: 번들 id → 고를 때 본 revision | 번들 파일마다 |
+| `add_tags` | `tags`: 붙일 태그 1~20개 | 바뀌는 번들 파일마다 (0.0.19부터) |
+| `remove_tags` | `tags`: 뗄 태그 1~20개 | 바뀌는 번들 파일마다 (0.0.19부터) |
 
 - 요청 전체를 먼저 검사하고, 문제가 있으면 아무것도 쓰지 않고 거부한다: `ids`가 비었거나 UUID가 아님,
-  1000개 초과, 모르는 `action`(400 `invalid`), 아직 받지 않는 `add_tags`·`remove_tags`(400
-  `unsupported_action`, Phase 7.8b), 인수 오류(`set_category`의 `category` 키가 없음 포함. 해제는
-  `"category": null`), 없는 카테고리(404), 이 버전이 쓸 수 없는 정리 파일(409 `organization_unwritable`),
-  `trash`에 revision이 빠진 id(400).
+  1000개 초과, 모르는 `action`(400 `invalid`), 인수 오류(`set_category`의 `category` 키가 없음 포함. 해제는
+  `"category": null`. `add_tags`의 태그는 저장 규칙(이름 공통 규칙과 40자)을 따라야 하고, `remove_tags`의 태그는
+  길이 제한 없이 문자열이면 된다), 없는 카테고리(404), 이 버전이 쓸 수 없는 정리 파일(409
+  `organization_unwritable`), `trash`에 revision이 빠진 id(400).
+- `add_tags`·`remove_tags`는 저장소 잠금 안에서 번들마다 그때 저장된 번들에 태그만 고쳐 쓴다(revision을 받지
+  않는다). 다른 값은 저장된 그대로 남는다(아래 "태그"). 이미 그 상태면 쓰지 않는다. 태그가 20개를 넘게 되면서
+  늘어나는 번들은 409 `too_many_tags`로 건너뛴다. 휴지통의 번들은 `in_trash`, 읽기 전용 번들은 `read_only`다.
 - 단건 경로(`DELETE /bundles/{id}`, `PUT …/category`, `PUT …/favorite`)는 같은 코드를 번들 하나에 쓴다.
 - `ids`의 중복은 하나로 친다. 결과는 처음 나온 순서다.
 - 카테고리·즐겨찾기는 최신 정리 정보에 적용한다. 바뀌는 번들이 있을 때만 정리 파일을 한 번 쓰고
@@ -310,6 +318,38 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 - 화면은 요청을 보내기 전에 대상 id와 revision을 정해 두고, 답이 올 때까지 창을 잠근다. 답이 없으면(통신
   오류나 "Stop waiting") 완료 여부를 알 수 없다고 보이고, 서버 작업을 취소한 것으로 보지 않는다.
 
+### 태그
+
+(0.0.19부터) 태그는 번들 내용에 있다. 두 태그는 `casefold()`가 같으면 같은 태그다: `Portrait`와
+`portrait`, `Straße`와 `STRASSE`는 한 태그다. 한 번들 안에서 같은 태그는 하나만 남는다(저장할 때). 화면도
+같은 기준을 따른다(`web/tags.js`의 `tagKey`, `tests/fixtures/tag_keys.json`이 양쪽을 같은 예로 검사한다).
+
+태그를 바꾸는 작업(일괄 `add_tags`·`remove_tags`, `/tags/rename`, `/tags/delete`)은 번들 전체를 다시 검사하지
+않고 태그만 고친다. 그래서 그 뒤 엄격해진 규칙에 맞지 않는 값(안전 범위 밖의 정수, 41자 태그, 21개 태그 등)은
+저장된 그대로 남는다. 새로 붙이는 태그와 새 이름은 저장 규칙을 따르고, 찾는 태그(`from`, 뗄 태그)는 길이
+제한 없이 이름을 적을 수 있다. 태그가 20개를 넘게 되는 변경은 이미 그보다 많던 번들에서도 늘리지 않는
+경우(바꾸기·떼기)만 한다. 실제로 바뀐 번들만 revision을 1 올리고 `updated_at`을 바꾼다. 형식 1의 파일은
+다른 쓰기처럼 형식 2로 쓴다. 노드의 캐시 키에는 태그가 들어가지 않는다.
+
+- `GET /tags`는 이 버전이 읽을 수 있는 번들 파일(쓰는 것과 휴지통의 것)의 태그를 태그마다 하나로 센다. `name`은
+  가장 많은 번들이 쓰는 표기이고 `spellings`는 쓰이는 표기 모두다. `active`·`trash`는 그 태그가 있는 번들 수,
+  `protected`는 그중 이 버전이 바꿀 수 없는 번들 수다. `unreadable`은 이 버전이 읽지 못하는 번들 파일 수(어떤
+  태그가 있는지 모른다), `legacy`는 옛 휴지통 폴더에 남은 파일 수(바꾸지 않는다)다.
+- `POST /tags/rename`은 `from`이 있는 모든 번들에서 그 태그를 `to`로 바꾼다. 같은 번들에 `to`도 있으면 둘 중
+  앞에 있던 자리에 `to` 하나만 남긴다(합치기, `merged`로 센다): `["Flowers", "old"]`에 `old → flowers`는
+  `["flowers"]`다. 대소문자만 바꿀 수도 있고, 이미 정확히 그 표기인 번들은 건드리지 않는다. `from`과 `to`가
+  같으면 400이다.
+- `POST /tags/delete`는 그 태그가 있는 모든 번들에서 태그를 뗀다. 번들은 그대로다.
+- 두 작업 모두 저장소 잠금 안에서 번들마다 따로 쓴다. 한 번들의 쓰기가 실패해도 앞의 변경은 그대로이고 뒤의
+  번들은 계속 처리한다. `changed`는 바뀐 번들 수다. `excluded`는 그 태그가 있지만 남긴 번들
+  `[{"id", "name", "code", "reason", "retry"?}]`(이 버전이 바꿀 수 없음, 또는 쓰기 실패 `io_error`와 `retry`),
+  `unknown`은 읽지 못해 그 태그가 있는지 모르는 파일 `[{"file", "reason"}]`이다. 모르는 파일은 일치한 것으로
+  세지 않는다. 폴더를 동기화하지 못한 쓰기가 있으면 `warning`이 붙는다.
+- 화면에서는 태그 메뉴 아래의 "Manage tags…"가 여는 Tags 칸에서 이름 바꾸기·합치기·지우기를 한다. 무엇이
+  얼마나 바뀌는지(휴지통 포함, 합쳐지는 수, 바꿀 수 없는 번들, 읽지 못하는 파일) 먼저 보이고 확인받는다. 걸려
+  있던 태그 필터는 새 이름을 따른다. 다른 탭에서 바뀐 번들은, 편집기에 변경이 없으면 목록을 다시 읽을 때 새
+  내용으로 바뀌고, 변경이 있으면 저장할 때 revision 충돌로 묻는다(덮어쓰면 그 초안의 태그가 돌아온다).
+
 ### 오류
 
 오류 본문은 `{"error": {"code", "message", ...}}`이다. `message`는 화면에 그대로 보여 줄 수
@@ -320,7 +360,6 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | 400 | `invalid` | 값이나 형식이 규칙에 맞지 않음 |
 | 400 | `invalid_id` | 번들·카테고리 UUID나 에셋 SHA-256 형식이 아님 |
 | 400 | `nesting_not_supported` | 카테고리 안에 카테고리를 만들려 함 |
-| 400 | `unsupported_action` | 이 버전이 아직 받지 않는 일괄 작업 (`add_tags`, `remove_tags`) |
 | 400 | `invalid_json` | JSON을 읽을 수 없음 |
 | 400 | `unsupported_type` | 지원하지 않는 필드 타입 |
 | 400 | `unknown_asset` | 올린 적 없는 파일을 가리킴 |
@@ -332,6 +371,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | 409 | `revision_conflict` | `expected_revision`이 현재와 다름. `current_revision`을 함께 준다 |
 | 409 | `in_trash`, `not_in_trash` | 휴지통의 번들을 고치거나 지우거나 복제하려 함 / 쓰는 번들을 되살리거나 영구 삭제하려 함 |
 | 409 | `read_only` | 이 버전이 모르는 데이터가 있어 고칠 수 없는 번들 |
+| 409 | `too_many_tags` | 태그를 붙이면 번들의 태그가 20개를 넘음 (일괄 결과의 번들별 `code`, 0.0.19부터) |
 | 409 | `category_conflict` | 같은 이름(대소문자 무시)의 카테고리가 있음 |
 | 409 | `organization_unwritable` | 이 버전이 바꿀 수 없는 정리 파일. `state`를 함께 준다 |
 | 409 | `newer_version`, `unsupported` | 더 새 버전이 저장한 파일 / 다른 형식이나 모르는 필드 타입의 파일 |

@@ -12,6 +12,8 @@ import { button, closeMenus, code, codeList, el, icon, menu, plural } from "./do
 import { ATTENTION, CATEGORY, FAVORITES, UNCATEGORIZED, compactGroups, groupBundles, groupLabel } from "./groups.js";
 import { displayNames } from "./names.js";
 import { slotStatuses } from "./reconcile.js";
+import { compareText, sameTag, tagCounts } from "./tags.js";
+import { TagsPanel } from "./tags_panel.js";
 import { TrashPanel } from "./trash_panel.js";
 
 let current = null;
@@ -224,6 +226,12 @@ class LibraryModal {
         window.addEventListener("focusin", this.onStrayFocus, true);
         document.body.append(this.overlay);
         window.addEventListener("beforeunload", this.onBeforeUnload);
+        // Another tab may have changed the library meanwhile: read the list again
+        // on coming back (a clean editor then shows a bundle saved there).
+        this.onVisible = () => {
+            if (document.visibilityState === "visible" && !this.commands.running) void this.reload();
+        };
+        document.addEventListener("visibilitychange", this.onVisible);
         this.search.focus();
     }
 
@@ -337,21 +345,12 @@ class LibraryModal {
 
     /** The tags of the bundles in use, with how many bundles have each; for the tag menu. */
     tagChoices() {
-        const tags = new Map();
-        for (const bundle of this.all) {
-            for (const tag of bundle.tags) {
-                const key = tag.toLowerCase();
-                const entry = tags.get(key) ?? { text: tag, count: 0 };
-                entry.count++;
-                tags.set(key, entry);
-            }
-        }
-        const sorted = [...tags.values()].sort((a, b) => a.text.localeCompare(b.text, undefined, { sensitivity: "base" }));
         return [
             { text: "All tags", value: "", checked: !this.tag, always: true, action: () => this.setTag("") },
-            ...sorted.map(({ text, count }) => ({
-                text, count, value: text, checked: this.tag.toLowerCase() === text.toLowerCase(), action: () => this.setTag(text),
+            ...tagCounts(this.all).map(({ name, count }) => ({
+                text: name, count, value: name, checked: !!this.tag && sameTag(this.tag, name), action: () => this.setTag(name),
             })),
+            { text: "Manage tags…", always: true, action: () => void this.showTags() },
         ];
     }
 
@@ -403,17 +402,18 @@ class LibraryModal {
         if (generation !== this.listGeneration) return; // a newer reload answers instead
         this.all = library.bundles ?? [];
         this.errors = library.errors ?? [];
-        this.categories = library.categories ?? [];
+        this.categories = [...(library.categories ?? [])].sort((a, b) => compareText(a.name, b.name) || compareText(a.id, b.id));
         this.organization = library.organization ?? { revision: 0, state: "missing" };
         this.shownLock = undefined; // the organization may have changed what the tools allow
         this.refreshLock();
-        if (this.tag && !this.all.some((b) => b.tags.some((t) => t.toLowerCase() === this.tag.toLowerCase()))) {
+        if (this.tag && !this.all.some((b) => b.tags.some((t) => sameTag(t, this.tag)))) {
             this.tag = ""; // no bundle has it any more
             this.showTagFilter();
         }
         if (this.search.value.trim()) await this.applySearch();
         else this.listChanged();
         this.editor?.organizationChanged();
+        void this.refreshEditor();
         if (selectId && this.all.some((b) => b.id === selectId)) await this.open(selectId, { force: true });
     }
 
@@ -444,11 +444,9 @@ class LibraryModal {
     visible() {
         let items = this.all;
         if (this.matches) items = items.filter((b) => this.matches.has(b.id));
-        const tag = this.tag.toLowerCase();
-        if (tag) items = items.filter((b) => b.tags.some((t) => t.toLowerCase() === tag));
+        if (this.tag) items = items.filter((b) => b.tags.some((t) => sameTag(t, this.tag)));
         // Names may repeat: the id keeps the order still.
-        items = [...items].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" })
-            || a.id.localeCompare(b.id));
+        items = [...items].sort((a, b) => compareText(a.name, b.name) || compareText(a.id, b.id));
         if (this.sortMode === "updated") items.sort((a, b) => b.updated_at.localeCompare(a.updated_at));
         return items;
     }
@@ -885,6 +883,13 @@ class LibraryModal {
                 ? { doing: `Adding ${n} to the favorites`, done: "Added to the favorites", what: "The change" }
                 : { doing: `Removing ${n} from the favorites`, done: "Removed from the favorites", what: "The change" };
         }
+        if (action === "add_tags") {
+            return { doing: `Adding the tag '${args.tags[0]}' to ${n}`, done: `Added the tag '${args.tags[0]}'`, what: "The change" };
+        }
+        if (action === "remove_tags") {
+            return { doing: `Removing the tag '${args.tags[0]}' from ${n}`, done: `Removed the tag '${args.tags[0]}'`,
+                what: "The change" };
+        }
         return { doing: `Moving ${n} to the trash`, done: "Moved to the trash", what: "The move to the trash" };
     }
 
@@ -1036,7 +1041,7 @@ class LibraryModal {
         if (!made) return null;
         if (!this.categories.some((c) => c.id === made.id)) { // when the list is read again later
             this.categories = [...this.categories, { ...made, count: 0 }]
-                .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }) || a.id.localeCompare(b.id));
+                .sort((a, b) => compareText(a.name, b.name) || compareText(a.id, b.id));
             this.renderList();
             this.editor?.organizationChanged();
         }
@@ -1147,6 +1152,50 @@ class LibraryModal {
         this.showPane(editor.root, { editor });
     }
 
+    /** The tags of the whole library, with ways to rename and delete them, in the pane. */
+    async showTags() {
+        if (this.tagsPanel) {
+            void this.tagsPanel.refresh();
+            return;
+        }
+        if (!(await this.leaveEditor())) return;
+        this.selection = new Set();
+        const panel = new TagsPanel(this);
+        this.showPane(panel.root, { tags: panel });
+        this.renderList();
+    }
+
+    /**
+     * Rename or delete a tag in every bundle (`request` sends it; `from` is the
+     * tag, `to` its new name). It holds the window until the server is done and
+     * the list is read again. A tag filter on `from` follows it to `to`.
+     */
+    async changeTags(request, { from, to = null }) {
+        await this.commands.hold({ kind: "tags", wait: "Wait until the tag is changed in every bundle." }, async () => {
+            let result;
+            try {
+                result = await request();
+            } catch (error) {
+                this.status(error.message, "error");
+                return;
+            }
+            if (this.tag && sameTag(this.tag, from)) {
+                this.tag = to ?? "";
+                this.showTagFilter();
+            }
+            await this.reload();
+            await this.tagsPanel?.refresh();
+            const kept = result.excluded.length ? ` ${plural(result.excluded.length, "bundle")} kept '${from}': `
+                + `${result.excluded.map((e) => e.reason).join("; ")}.` : "";
+            const unknown = result.unknown.length ? ` ${plural(result.unknown.length, "file")} this version cannot read `
+                + `${result.unknown.length === 1 ? "was" : "were"} left out.` : "";
+            const done = to ? `Renamed '${from}' to '${to}' in ${plural(result.changed, "bundle")}`
+                + (result.merged ? ` (${result.merged} merged)` : "") : `Deleted the tag '${from}' from ${plural(result.changed, "bundle")}`;
+            this.status(`${done}.${kept}${unknown}${result.warning ? ` ${result.warning}` : ""}`,
+                kept || result.warning ? "error" : "info");
+        });
+    }
+
     async showTrash() {
         if (this.trashPanel) {
             void this.trashPanel.refresh(); // the button reads the trash again
@@ -1188,10 +1237,11 @@ class LibraryModal {
      * view number (what was shown before no longer owns the pane). Name what
      * it is: an editor, the trash, the batch panel or a batch's result.
      */
-    showPane(content, { editor = null, trash = null, batch = null, result = null } = {}) {
+    showPane(content, { editor = null, trash = null, batch = null, result = null, tags = null } = {}) {
         if (this.editor !== editor) this.editor?.dispose();
         this.editor = editor;
         this.trashPanel = trash;
+        this.tagsPanel = tags;
         this.batchPanel = batch;
         this.result = result;
         this.trashButton.classList.toggle("selected", !!trash);
@@ -1210,13 +1260,38 @@ class LibraryModal {
         if (open) await this.open(bundle.id, { force: true });
     }
 
+    /** The bundle went to the trash: read the list again, then show both (the pane and the list change together). */
     async bundleDeleted(bundle, answer = {}) {
-        this.selection = new Set();
-        this.showPlaceholder();
         void this.refreshTrashCount();
         await this.reload();
+        this.selection = new Set();
+        this.showPlaceholder();
+        this.renderList();
         if (answer.warning) this.status(`Deleted '${bundle.name}'. It is in the trash. ${answer.warning}`, "error");
         else this.status(`Deleted '${bundle.name}'. It is in the trash.`);
+    }
+
+    /**
+     * When the list shows the open bundle saved again since the editor read it
+     * (in another tab, say) and the editor holds no changes, show the saved
+     * version (N23). An editor with changes keeps them: saving them meets the
+     * newer revision and asks what to do.
+     */
+    async refreshEditor() {
+        const editor = this.editor;
+        const summary = editor?.saved && this.summary(editor.saved.id);
+        const idle = () => !editor.changed && !editor.busy && !this.commands.running && !this.layer;
+        if (!summary || summary.revision <= editor.saved.revision || !idle()) return;
+        const view = this.commands.pane.shown;
+        let bundle;
+        try {
+            bundle = await getBundle(editor.saved.id);
+        } catch {
+            return; // the list will say what became of it
+        }
+        if (!this.commands.pane.shows(view) || this.editor !== editor || !idle()) return;
+        editor.showSaved(bundle);
+        this.status(`'${bundle.name}' was saved elsewhere; the editor shows it as saved now.`);
     }
 
     discardDraft() {
@@ -1296,6 +1371,7 @@ class LibraryModal {
         for (const type of STRAY_EVENTS) window.removeEventListener(type, this.onStrayEvent, true);
         window.removeEventListener("focusin", this.onStrayFocus, true);
         window.removeEventListener("beforeunload", this.onBeforeUnload);
+        document.removeEventListener("visibilitychange", this.onVisible);
         current = null;
     }
 

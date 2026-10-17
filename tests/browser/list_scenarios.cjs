@@ -265,7 +265,8 @@ const LIST_HELPERS = () => {
         { focused, menuBox });
     await shot("list-tag-menu.png");
     await page.keyboard.type("listta");
-    const narrowed = await list(() => [...window.__list.openMenu().querySelectorAll(".bl-menu-item")].map((i) => i.dataset.value));
+    const narrowed = await list(() => [...window.__list.openMenu().querySelectorAll(".bl-menu-item[role=menuitemradio]")]
+        .map((i) => i.dataset.value)); // the tag choices; "Manage tags…" stays below them
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");

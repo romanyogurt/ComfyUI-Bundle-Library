@@ -3,6 +3,7 @@
 // parse), the uploads, and one answer to whether leaving would lose something.
 // The editor draws from it; nothing here touches the DOM, so it runs under
 // `node --test` as well as in the browser.
+import { sameTag } from "./tags.js";
 
 export const MEDIA_TYPES = new Set(["image", "video", "audio"]);
 const BLANK = { text: "", boolean: false, int: 0, float: 0 };
@@ -205,7 +206,7 @@ export class EditorModel {
     /** Add a tag unless it is blank or already there (regardless of case); whether it was added. */
     addTag(text) {
         const tag = text.trim();
-        if (!tag || this.draft.tags.some((t) => t.toLowerCase() === tag.toLowerCase())) return false;
+        if (!tag || this.draft.tags.some((t) => sameTag(t, tag))) return false;
         this.draft.tags.push(tag);
         return true;
     }

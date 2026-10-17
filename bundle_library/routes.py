@@ -198,6 +198,28 @@ def register(routes, get_store):
         data = await _read_json(request)
         return web.json_response(await asyncio.to_thread(get_store().batch, data))
 
+    @routes.get(prefix + "/tags")
+    @_api
+    async def list_tags(request):
+        return web.json_response(await asyncio.to_thread(get_store().tags))
+
+    @routes.post(prefix + "/tags/rename")
+    @_api
+    @_writes
+    async def rename_tag(request):
+        """Renames a tag in every bundle, in use and in the trash; with a tag that
+        is there already, the two merge."""
+        data = _require(await _read_json(request), "from", "to")
+        return web.json_response(await asyncio.to_thread(get_store().rename_tag, data["from"], data["to"]))
+
+    @routes.post(prefix + "/tags/delete")
+    @_api
+    @_writes
+    async def delete_tag(request):
+        """Takes a tag off every bundle, in use and in the trash."""
+        data = _require(await _read_json(request), "tag")
+        return web.json_response(await asyncio.to_thread(get_store().delete_tag, data["tag"]))
+
     @routes.put(prefix + "/bundles/{bundle_id}/category")
     @_api
     @_writes

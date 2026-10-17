@@ -247,6 +247,18 @@ def _bundle(data, rules):
     }
 
 
+def normalize_tag(value):
+    """A tag to put on bundles, checked against the rules of saving: a string,
+    not empty, no line breaks or control characters, at most MAX_TAG_LENGTH."""
+    return _name(value, "Tag", MAX_TAG_LENGTH, _Rules(strict=True))
+
+
+def tag_name(value):
+    """A tag to look for (to rename or remove it): the same checks without the
+    length limit, so a tag saved under looser rules can still be named."""
+    return _name(value, "Tag", MAX_TAG_LENGTH, _Rules(strict=False))
+
+
 def normalize_bundle(data):
     """The editable part of a bundle (name, tags, note, fields), checked against
     every rule and normalized, for saving. Raises LibraryError(400) on the
