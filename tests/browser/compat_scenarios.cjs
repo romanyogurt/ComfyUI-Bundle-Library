@@ -97,7 +97,7 @@ function unplace(paths) {
 
     // ---- files placed in the library ---------------------------------------------------
     if (CONTAINER && LIBRARY) {
-        const placed = place(["int-2p60", "unknown-top-key", "v3-other-references"]);
+        const placed = place(["int-2p60", "unknown-top-key", "newer-other-references"]);
         try {
             await ev(() => window.__bl.app.extensionManager.command.execute("BundleLibrary.Open"));
             await overlay.waitFor();
@@ -151,7 +151,7 @@ function unplace(paths) {
                 editor.notes.includes("does not change it") && editor.inert && editor.tags && editor.enabled.length === 0
                 && editor.place, editor);
 
-            const newer = `bundles/${EXPECTED["v3-other-references"].id}.json`;
+            const newer = `bundles/${EXPECTED["newer-other-references"].id}.json`;
             const attention = (file) => `.bl-overlay .bl-group.attention .bl-error-item[data-file="${file}"]`;
             await until((selector) => document.querySelector(selector), attention(newer));
             const row = await ev((selector) => document.querySelector(selector).textContent, attention(newer));

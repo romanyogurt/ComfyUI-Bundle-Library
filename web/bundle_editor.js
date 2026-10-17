@@ -357,14 +357,18 @@ export class BundleEditor {
         const remove = button("✕", "bl-btn icon danger", t("editor.remove_field_title"));
         remove.addEventListener("click", () => void this.removeField(field));
         const grip = this.grip(root, field);
-        head.append(grip, name, el("span", "bl-badge", field.type in BADGE ? t(BADGE[field.type]) : field.type), up, down,
-            remove);
+        const off = el("span", "bl-badge bl-off-badge", t("editor.off_badge"));
+        const toggle = iconButton("eye", t("editor.turn_off"), "bl-field-toggle");
+        toggle.addEventListener("click", () => this.toggleField(field));
+        head.append(grip, name, el("span", "bl-badge", field.type in BADGE ? t(BADGE[field.type]) : field.type), off, toggle,
+            up, down, remove);
         const warning = el("div", "bl-warn");
         const error = el("div", "bl-error");
         error.hidden = true;
         const body = el("div", "bl-field-body");
         root.append(head, warning, body, error);
-        const card = { root, field, grip, name, up, down, warning, body, error, bar: null };
+        const card = { root, field, grip, name, off, toggle, up, down, warning, body, error, bar: null };
+        this.showOnOff(card);
         if (MEDIA_TYPES.has(field.type)) this.takeFiles(card);
         body.append(this.valueEditor(card));
         this.showError(card);
@@ -482,6 +486,26 @@ export class BundleEditor {
         }
         box.append(picker);
         return box;
+    }
+
+    /** Turn a field off, or on again (0.0.30): an off field stays in the bundle, value and all, but no node outputs it. */
+    toggleField(field) {
+        this.model.toggleField(field);
+        const card = this.cards.get(field.key);
+        if (card) this.showOnOff(card);
+        this.refreshState();
+    }
+
+    /** A card as its field is: dimmed with an "off" mark, and the toggle saying what it would do. */
+    showOnOff(card) {
+        const on = card.field.enabled !== false;
+        card.root.classList.toggle("off", !on);
+        card.off.hidden = on;
+        const label = on ? t("editor.turn_off") : t("editor.turn_on");
+        card.toggle.title = label;
+        card.toggle.setAttribute("aria-label", label);
+        card.toggle.setAttribute("aria-pressed", String(!on));
+        card.toggle.replaceChildren(icon(on ? "eye" : "eye-slash"));
     }
 
     /**

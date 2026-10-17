@@ -216,7 +216,7 @@ class TrashTest(unittest.TestCase):
         self.age(sha)
         cases = {
             "not JSON": lambda base: "{ broken",
-            "a newer version": lambda base: {**base, "schema_version": 3, "resources": [{"sha256": sha}]},
+            "a newer version": lambda base: {**base, "schema_version": 99, "resources": [{"sha256": sha}]},
             "another format": lambda base: {**base, "format": "someone-else/bundle"},
             "unknown keys": lambda base: {**base, "extra": {"sha256": sha}},
         }

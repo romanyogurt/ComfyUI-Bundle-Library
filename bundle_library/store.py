@@ -290,6 +290,7 @@ class BundleStore:
             field["asset"] = resolved
 
     def _save(self, bundle):
+        bundle = {**bundle, "schema_version": schema.version_for(bundle)}  # the lowest version that holds it
         path = self._path(bundle["id"])
         self._synced = _write_json(path, bundle, self.tmp_dir)
         self._remember(path.name, path.stat(), schema.read_file(path, bundle["id"]))
@@ -1257,7 +1258,8 @@ def _summary(loaded):
         "tags": bundle["tags"],
         "revision": bundle["revision"],
         "updated_at": bundle["updated_at"],
-        "fields": [{"name": f["name"], "type": f["type"], "preview": _preview(f)} for f in bundle["fields"]],
+        "fields": [{"name": f["name"], "type": f["type"], "preview": _preview(f),
+                    **({"enabled": False} if f.get("enabled") is False else {})} for f in bundle["fields"]],
     }
     if loaded.warnings:
         summary["warnings"] = loaded.warnings

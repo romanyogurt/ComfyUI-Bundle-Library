@@ -16,7 +16,7 @@ const GAP = 6; // between the bar and the preview, and between the preview's par
 const PADDING = 6; // inside the preview (bundle_library.css)
 const MAX_PREVIEW = 560; // a taller preview scrolls
 const TEXT_PREVIEW = 200; // characters of a text field in the bundle list (bundle_library/store.py)
-const PROBLEMS = { missing: msg("node.not_in_bundle"), type_mismatch: msg("node.other_type") };
+const PROBLEMS = { missing: msg("node.not_in_bundle"), off: msg("node.off_in_bundle"), type_mismatch: msg("node.other_type") };
 
 // Nodes showing a panel, for the refreshes that concern them all.
 const panels = new Set();

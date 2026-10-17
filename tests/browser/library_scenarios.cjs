@@ -863,7 +863,50 @@ const LIB_HELPERS = () => {
     await page.keyboard.press("Escape");
     await closed();
 
-    await finish({ expectRemoved: 9 }); // A–E, the UI-made bundle, its copy, the dragged one and the picked one
+    // ---- turning a field off and on (0.0.30) -----------------------------------------------------
+    const switchId = (await api("POST", "/bundles", { name: "[test] Switch", tags: ["test"], fields: [
+        { name: "a", type: "text", value: "kept" }, { name: "b", type: "int", value: 3 }] })).id;
+    await ev(async ([module, id]) => (await import(`${module}/library_modal.js`)).openLibrary({ selected: id }),
+        ["/extensions/ComfyUI-Bundle-Library", switchId]);
+    await opened();
+    await editing("[test] Switch");
+    const switchOf = (i) => fields.nth(i).locator(".bl-field-toggle");
+    const look = (i) => lib((index) => {
+        const card = window.__lib.card(index), button = card.querySelector(".bl-field-toggle");
+        return { off: card.classList.contains("off"), mark: !card.querySelector(".bl-off-badge").hidden,
+            pressed: button.getAttribute("aria-pressed"), label: button.getAttribute("aria-label"),
+            title: button.title, icon: button.querySelector("i").className };
+    }, i);
+    let seen = await look(0);
+    check("each field card has an on/off switch, on to begin with",
+        !seen.off && !seen.mark && seen.pressed === "false" && seen.label === "Turn off: keep the field, but no node outputs it"
+        && seen.title === seen.label && / pi-eye$/.test(seen.icon), seen);
+    await switchOf(0).click();
+    seen = await look(0);
+    st = await state();
+    check("turned off: the card dims with an 'off' mark, its value kept; not saved yet",
+        seen.off && seen.mark && seen.pressed === "true" && seen.label === "Turn on: a node outputs it again"
+        && / pi-eye-slash$/.test(seen.icon) && st.state === "● Unsaved changes" && st.fields[0].text === "kept", { seen, state: st.state });
+    await shot("library-field-off.png");
+    await switchOf(0).click();
+    check("on again: no change", (await state()).state === "Saved" && !(await look(0)).off);
+    await switchOf(0).click();
+    await page.keyboard.press("Control+s");
+    await savedState();
+    let switched = await api("GET", `/bundles/${switchId}`);
+    check("saved off: the field stays in the bundle, value and all, written as version 3",
+        switched.fields[0].enabled === false && switched.fields[0].value === "kept" && !("enabled" in switched.fields[1])
+        && switched.schema_version === 3 && (await look(0)).off, switched.fields);
+    await switchOf(0).click();
+    await page.keyboard.press("Control+s");
+    await savedState();
+    switched = await api("GET", `/bundles/${switchId}`);
+    check("on and saved: version 2 again, which older versions read", switched.schema_version === 2
+        && !("enabled" in switched.fields[0]), switched.schema_version);
+    await page.keyboard.press("Escape");
+    await closed();
+
+    await finish({ expectRemoved: 10 }); // A–E, the UI-made bundle, its copy, the dragged, the picked and the switched one
 })().catch((e) => {
     console.error(e);
     process.exit(1);

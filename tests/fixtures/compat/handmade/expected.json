@@ -55,9 +55,14 @@
     "id": "15c9aa68-a430-48ac-8869-04c6fa252eb2"
   },
   "v3-other-references": {
+    "state": "read_only",
+    "error_code": null,
+    "id": "7d885028-609a-4383-8300-dc75693e3055"
+  },
+  "newer-other-references": {
     "state": "newer_version",
     "error_code": "newer_version",
-    "id": "7d885028-609a-4383-8300-dc75693e3055"
+    "id": "e2a0f3c4-5b6d-4e7f-8a9b-0c1d2e3f4a5b"
   },
   "unknown-format": {
     "state": "unsupported",

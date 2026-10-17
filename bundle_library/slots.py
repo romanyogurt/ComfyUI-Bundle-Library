@@ -41,6 +41,8 @@ def field_problem(store, field, field_type):
     """Why `field` cannot fill a slot of `field_type`, or None."""
     if field is None:
         return "is missing from the bundle"
+    if field.get("enabled") is False:
+        return "is turned off in the bundle"
     if field["type"] != field_type:
         return f"is {field['type']}, not {field_type}"
     if field_type in MEDIA_TYPES:

@@ -54,6 +54,32 @@ class StoreTest(unittest.TestCase):
         self.assertEqual((ctx.exception.status, ctx.exception.code), (status, code), ctx.exception.message)
         return ctx.exception
 
+    def test_a_field_turned_off_is_kept_and_written_as_version_3_only_while_off(self):
+        # 0.0.30: "enabled": false keeps the field and its value in the bundle, but no node outputs it
+        data = self.data()
+        data["fields"][0]["enabled"] = False
+        data["fields"][3]["enabled"] = True  # on is the default: not written
+        bundle = self.store.create(data)
+        path = self.root / "bundles" / f"{bundle['id']}.json"
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(stored["schema_version"], 3)
+        self.assertEqual(stored["fields"][0], {"name": "prompt", "type": "text", "value": data["fields"][0]["value"],
+                                               "enabled": False})
+        self.assertNotIn("enabled", stored["fields"][3])
+        self.assertIs(self.store.get(bundle["id"])["fields"][0]["enabled"], False)
+        [summary] = self.store.list()["bundles"]
+        self.assertEqual([f.get("enabled", True) for f in summary["fields"]], [False, True, True, True])
+        copy = self.store.duplicate(bundle["id"], "structure")
+        self.assertEqual([f.get("enabled", True) for f in copy["fields"]], [False, True, True, True])
+        on = [{k: v for k, v in f.items() if k != "enabled"} for f in bundle["fields"]]
+        self.store.update(bundle["id"], {"name": bundle["name"], "tags": bundle["tags"], "note": "", "fields": on}, 1)
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["schema_version"], 2)  # what 0.0.29 reads
+        for value in ("no", 0, None):
+            with self.subTest(value):
+                error = self.refused(lambda: self.store.create(self.data(fields=[
+                    {"name": "x", "type": "text", "value": "", "enabled": value}])), 400, "invalid")
+                self.assertEqual(error.message, "Field 'x': enabled must be true or false.")
+
     def test_create_get_and_list(self):
         bundle = self.store.create(self.data())
         uuid.UUID(bundle["id"])

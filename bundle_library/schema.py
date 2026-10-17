@@ -16,7 +16,7 @@ from .model import UUID_RE, LibraryError, lone_surrogates, read_bundle_content
 from .text import Text
 
 FORMAT = "comfyui-bundle-library/bundle"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # States, from fully usable to unusable.
 OK = "ok"                    # every check passes
@@ -30,9 +30,10 @@ READABLE = (OK, WARNING, READ_ONLY)  # a bundle the library can show and run
 WRITABLE = (OK, WARNING)             # one it may also save, delete and restore
 
 _COMMON = {"format", "schema_version", "id", "revision", "name", "tags", "note", "fields", "created_at", "updated_at"}
-TOP_KEYS = {1: _COMMON, 2: _COMMON | {"deleted_at"}}
+TOP_KEYS = {1: _COMMON, 2: _COMMON | {"deleted_at"}, 3: _COMMON | {"deleted_at"}}
 VALUE_FIELD_KEYS = {"name", "type", "value"}
 MEDIA_FIELD_KEYS = {"name", "type", "asset"}
+FIELD_KEYS_SINCE = {3: {"enabled"}}  # keys a field may have from that version on
 ASSET_KEYS = {"sha256", "original_name", "ext", "bytes", "width", "height", "duration", "fps", "codec",
               "has_audio", "audio_codec", "sample_rate", "channels"}
 _TIME_RE = re.compile(r"^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{1,6})?Z$")
@@ -44,7 +45,20 @@ def _v1_to_v2(data):
     return {**data, "schema_version": 2, "deleted_at": None}
 
 
-MIGRATIONS = {1: _v1_to_v2}  # version -> the step to the next version
+def _v2_to_v3(data):
+    """Version 3 may turn a field off ("enabled": false, 0.0.30); no field of a
+    version-2 file is off."""
+    return {**data, "schema_version": 3}
+
+
+MIGRATIONS = {1: _v1_to_v2, 2: _v2_to_v3}  # version -> the step to the next version
+
+
+def version_for(bundle):
+    """The schema version `bundle` is written in: the lowest that holds it, so
+    that an older Bundle Library still uses the bundles it can (0.0.30): 3 when
+    a field is turned off, else 2."""
+    return 3 if any(field.get("enabled") is False for field in bundle["fields"]) else 2
 
 
 def migrate(data, version):
@@ -91,6 +105,7 @@ def _unknown_keys(data, version):
         if not isinstance(field, dict):
             continue
         allowed = MEDIA_FIELD_KEYS if field.get("type") in MEDIA_TYPES else VALUE_FIELD_KEYS
+        allowed = allowed.union(*(keys for since, keys in FIELD_KEYS_SINCE.items() if since <= version))
         label = f"field '{field.get('name')}'"
         found += [f"{label}: '{key}'" for key in sorted(set(field) - allowed)]
         if isinstance(field.get("asset"), dict):
@@ -142,7 +157,9 @@ def read(text, file_id=None):
     except LibraryError as e:
         state = UNSUPPORTED if e.code == "unsupported_type" else CORRUPT
         return Loaded(state, problem=e.message, refs=refs)
+    # Read into the current version, it says the version it is written in: the lowest that holds it (0.0.30).
     bundle = {**data, **content}
+    bundle["schema_version"] = version_for(bundle)
     if unknown:
         return Loaded(READ_ONLY, bundle, Text("common.unknown_data", list=", ".join(unknown[:5])),
                       warnings, refs)

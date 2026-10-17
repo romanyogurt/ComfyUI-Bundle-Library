@@ -214,6 +214,17 @@ class ImportTest(unittest.TestCase):
         self.assertFalse(listing[a]["favorite"], "stars stay where they were set")
         self.assertIsNone(listing[b]["category"])
 
+    def test_a_field_turned_off_travels_off(self):
+        a = self.source.create({"name": "Off", "tags": [], "fields": [
+            {"name": "on", "type": "text", "value": "a"}, {"name": "off", "type": "text", "value": "b", "enabled": False}]})["id"]
+        path = self.export(self.source, [a])
+        _, result = self.run_import(self.target, path)
+        self.assertEqual(self.bundle_file(self.target, a).read_bytes(), self.bundle_file(self.source, a).read_bytes())
+        self.assertEqual(json.loads(self.bundle_file(self.target, a).read_text(encoding="utf-8"))["schema_version"], 3)
+        _, copied = self.run_import(self.target, path, "copy")
+        copy = self.target.get(copied["results"][0]["id"])
+        self.assertEqual([f.get("enabled", True) for f in copy["fields"]], [True, False])
+
     def test_bundles_here_already_are_skipped_overwritten_or_copied(self):
         a, b = self.make(self.source, "A"), self.make(self.source, "B")
         path = self.export(self.source, [a, b])

@@ -179,7 +179,7 @@ class CompatTest(unittest.TestCase):
         self.assertEqual(snapshot(root), before)
 
     def test_cleanup_stops_for_a_newer_file_that_points_elsewhere(self):
-        root, names = self.handmade("v3-other-references")
+        root, names = self.handmade("newer-other-references")
         white = COMPAT / "0.0.10" / "assets" / "sha256" / "9e"
         shutil.copytree(white, root / "assets" / "sha256" / "9e")
         old = time.time() - ASSET_GRACE_SECONDS - 3600
@@ -220,24 +220,42 @@ class CompatTest(unittest.TestCase):
         root = self.library("0.0.2-phase1")
         [path] = (root / "bundles").iterdir()
         before = path.read_bytes()
-        step = lambda data: {**data, "schema_version": 3, "rating": 0}  # noqa: E731 - a test-only version 3
-        with mock.patch.object(schema, "SCHEMA_VERSION", 3), \
-                mock.patch.dict(schema.MIGRATIONS, {2: step}), \
-                mock.patch.dict(schema.TOP_KEYS, {3: schema.TOP_KEYS[2] | {"rating"}}):
+        later = schema.SCHEMA_VERSION + 1  # a test-only version after the current one
+        step = lambda data: {**data, "schema_version": later, "rating": 0}  # noqa: E731
+        with mock.patch.object(schema, "SCHEMA_VERSION", later), \
+                mock.patch.dict(schema.MIGRATIONS, {later - 1: step}), \
+                mock.patch.dict(schema.TOP_KEYS, {later: schema.TOP_KEYS[later - 1] | {"rating"}}):
             first = schema.read_file(path, path.stem)
             second = schema.read_file(path, path.stem)
         self.assertEqual(first.state, schema.OK)
-        self.assertEqual((first.bundle["schema_version"], first.bundle["rating"], first.bundle["deleted_at"]), (3, 0, None))
+        self.assertEqual((first.bundle["rating"], first.bundle["deleted_at"]), (0, None))  # every step ran
+        self.assertEqual(first.bundle["schema_version"], schema.version_for(first.bundle))  # as it would be written
         self.assertEqual(first.bundle, second.bundle)
         self.assertEqual(path.read_bytes(), before)
 
-    def test_writes_use_the_current_version(self):
+    def test_version_3_may_turn_a_field_off_and_version_2_may_not(self):
+        bundle_id = "0b6c3f5e-2d6a-4b3e-9f0a-1c2d3e4f5a6b"
+        base = {"format": schema.FORMAT, "id": bundle_id, "revision": 1, "name": "Off", "tags": [], "note": "",
+                "fields": [{"name": "a", "type": "text", "value": "kept", "enabled": False}],
+                "created_at": "2026-10-17T00:00:00.000Z", "updated_at": "2026-10-17T00:00:00.000Z", "deleted_at": None}
+        v3 = schema.read(json.dumps({**base, "schema_version": 3}), bundle_id)
+        self.assertEqual((v3.state, v3.bundle["fields"][0]), (schema.OK, {"name": "a", "type": "text", "value": "kept",
+                                                                           "enabled": False}))
+        v2 = schema.read(json.dumps({**base, "schema_version": 2}), bundle_id)
+        self.assertEqual(v2.state, schema.READ_ONLY)  # a key version 2 does not define
+        self.assertIn("'enabled'", v2.problem)
+        bad = {**base, "schema_version": 3, "fields": [{"name": "a", "type": "text", "value": "", "enabled": "no"}]}
+        self.assertEqual(schema.read(json.dumps(bad), bundle_id).state, schema.CORRUPT)
+        self.assertEqual(schema.version_for(v3.bundle), 3)
+        self.assertEqual(schema.version_for({**v3.bundle, "fields": [{"name": "a", "type": "text", "value": ""}]}), 2)
+
+    def test_writes_use_the_lowest_version_that_holds_the_bundle(self):
         root = self.library("0.0.2-phase1")
         store = BundleStore(root)
         [summary] = store.list()["bundles"]
         store.delete(summary["id"], summary["revision"])
         stored = json.loads((root / "bundles" / f"{summary['id']}.json").read_text(encoding="utf-8"))
-        self.assertEqual(stored["schema_version"], schema.SCHEMA_VERSION)
+        self.assertEqual(stored["schema_version"], 2)  # no field is off (0.0.30): 2, which 0.0.11 to 0.0.29 read
         self.assertEqual(hashlib.sha256(json.dumps(stored["fields"], sort_keys=True).encode()).hexdigest(),
                          hashlib.sha256(json.dumps(store.restore(summary["id"])["fields"], sort_keys=True)
                                         .encode()).hexdigest())

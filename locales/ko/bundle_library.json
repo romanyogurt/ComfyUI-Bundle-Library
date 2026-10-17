@@ -213,6 +213,10 @@
     "en": "Duplicate field name: '{name}'",
     "text": "필드 이름이 겹칩니다: '{name}'"
   },
+  "check.enabled_boolean": {
+    "en": "Field '{name}': enabled must be true or false.",
+    "text": "필드 '{name}': enabled는 true나 false여야 합니다."
+  },
   "check.field_label": {
     "en": "Field '{name}'",
     "text": "필드 '{name}'"
@@ -726,6 +730,10 @@
     "en": "Note (optional)",
     "text": "메모 (선택)"
   },
+  "editor.off_badge": {
+    "en": "off",
+    "text": "꺼짐"
+  },
   "editor.overwrite": {
     "en": "Overwrite",
     "text": "덮어쓰기"
@@ -825,6 +833,14 @@
   "editor.took_stored": {
     "en": "Chose {name} from the library.",
     "text": "라이브러리의 {name}을(를) 골랐습니다."
+  },
+  "editor.turn_off": {
+    "en": "Turn off: keep the field, but no node outputs it",
+    "text": "끄기: 필드는 남기고 노드의 출력에서 뺍니다"
+  },
+  "editor.turn_on": {
+    "en": "Turn on: a node outputs it again",
+    "text": "켜기: 다시 노드의 출력이 됩니다"
   },
   "editor.type_audio": {
     "en": "Audio",
@@ -1872,6 +1888,10 @@
   "node.not_in_bundle": {
     "en": "not in this bundle",
     "text": "이 번들에 없음"
+  },
+  "node.off_in_bundle": {
+    "en": "turned off in this bundle",
+    "text": "이 번들에서 꺼짐"
   },
   "node.open_library": {
     "en": "Open the Bundle Library",

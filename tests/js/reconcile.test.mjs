@@ -54,6 +54,23 @@ test("switching back restores the missing slot without moving links", () => {
     ]);
 });
 
+test("a field turned off is no output: a linked slot stays, marked off; an unlinked one goes; on again, all is back (0.0.30)", () => {
+    const off = A.map((f) => (f.name === "ref_1" || f.name === "use_bgm" ? { ...f, enabled: false } : f));
+    const { slots } = planSlots(linked(A, ["ref_1"]), off);
+    assert.deepEqual(slots.map((s) => [s.name, s.from, s.status]), [["prompt", 0, "ok"], ["ref_1", 1, "off"], ["ref_2", 2, "ok"]]);
+    assert.deepEqual(planChanges(linked(A, ["ref_1"]), off), { added: [], removed: ["use_bgm"], retyped: [] });
+    assert.deepEqual(slotStatuses(A, off), ["ok", "off", "ok", "off"]);
+    assert.deepEqual(planSlots([], off).slots.map((s) => s.name), ["prompt", "ref_2"], "a new node gets the fields that are on");
+    const onAgain = planSlots(slots.map((s) => ({ ...s, linked: s.name === "ref_1" })), A).slots;
+    assert.deepEqual(onAgain.map((s) => [s.name, s.from, s.status]), [
+        ["prompt", 0, "ok"], ["ref_1", 1, "ok"], ["ref_2", 2, "ok"], ["use_bgm", null, "ok"],
+    ]);
+    const retypedAndOff = A.map((f) => (f.name === "ref_1" ? { ...f, type: "text", enabled: false } : f));
+    assert.deepEqual(slotStatuses(A, retypedAndOff), ["ok", "off", "ok", "ok"], "off says it first");
+    const many = Array.from({ length: POOL_SIZE + 2 }, (_, i) => ({ name: `f${i}`, type: "text", ...(i < 2 ? { enabled: false } : {}) }));
+    assert.deepEqual([planSlots([], many).slots.length, planSlots([], many).overflow], [POOL_SIZE, 0], "only fields that are on take outputs");
+});
+
 test("fields beyond the pool are counted, not added", () => {
     const many = Array.from({ length: POOL_SIZE + 3 }, (_, i) => ({ name: `f${i}`, type: "text" }));
     const { slots, overflow } = planSlots([], many);

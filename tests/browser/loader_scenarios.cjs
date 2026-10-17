@@ -483,6 +483,65 @@ const { startSession } = require("./harness.cjs");
         b.app.graph.remove(window.__node2);
     });
 
+    // ---- a field turned off in the bundle (0.0.30) ------------------------------------------------
+    const switchId = await ev(async () => {
+        const b = window.__bl;
+        const made = await b.request("POST", "/bundles", { name: "[test] Switch", tags: ["test"], fields: [
+            { name: "prompt", type: "text", value: "on and off" }, { name: "flag", type: "boolean", value: true },
+            { name: "extra", type: "text", value: "spare" }] });
+        window.dispatchEvent(new CustomEvent("bundle-library:changed")); // the lists read before it was made
+        await b.sleep(300);
+        const n = b.add("BundleLibraryLoad", [80, 420]);
+        window.__switch = n;
+        await b.pick(n, made.id);
+        const preview = b.add("PreviewAny", [700, 420]);
+        window.__switchPreview = preview.id;
+        n.connect(0, preview, 0); // prompt is linked; flag and extra are not
+        return made.id;
+    });
+    /** Turn the named fields of the bundle off (or every field on), then read the node as the library says it changed. */
+    const turn = (off) => ev(async ([id, names]) => {
+        const b = window.__bl, n = window.__switch;
+        const full = await b.request("GET", `/bundles/${id}`);
+        await b.request("PUT", `/bundles/${id}`, { ...full, expected_revision: full.revision, fields: full.fields.map(
+            ({ enabled, ...f }) => (names.includes(f.name) ? { ...f, enabled: false } : f)) });
+        window.dispatchEvent(new CustomEvent("bundle-library:changed"));
+        await b.sleep(600);
+        const { rows, notice } = n.bundlePanel;
+        return { version: (await b.request("GET", `/bundles/${id}`)).schema_version, outs: b.outs(n).map((o) => o.label),
+            rows: rows.textContent, notice: notice.hidden ? null : notice.textContent };
+    }, [switchId, off]);
+    const update = () => ev(async () => {
+        const b = window.__bl, n = window.__switch;
+        n.bundlePanel.notice.querySelector(".bl-update")?.click();
+        await b.sleep(300);
+        return b.outs(n).map((o) => [o.label, o.links]);
+    });
+    let switched = await turn(["prompt", "extra"]);
+    check("turned off: a linked output stays, marked to fail; an unlinked one is offered to drop",
+        switched.version === 3 && switched.rows.includes("turned off in this bundle; running will fail")
+        && switched.rows.includes("turned off in this bundle (not connected)") && switched.notice?.includes("−extra")
+        && !switched.notice.includes("prompt"), switched);
+    check("Update outputs drops the unlinked off output only", JSON.stringify(await update()) === JSON.stringify([
+        ["prompt", 1], ["flag", 0]]));
+    run = await ev(() => window.__bl.run());
+    const offErrors = (run.errors ?? []).map((e) => e.exception_message);
+    check("running with a linked output turned off fails with that reason",
+        offErrors.length === 1 && offErrors[0].includes("'prompt' is turned off in the bundle"), offErrors);
+    switched = await turn([]);
+    check("on again: the output is fine where it was, and the other field is offered back",
+        switched.version === 2 && !switched.rows.includes("turned off") && switched.notice?.includes("+extra"), switched);
+    check("Update outputs adds it at the end; the link never moved", JSON.stringify(await update()) === JSON.stringify([
+        ["prompt", 1], ["flag", 0], ["extra", 0]]));
+    run = await ev(() => window.__bl.run());
+    check("the run passes again", run.history?.status?.status_str === "success"
+        && run.history?.outputs?.[await ev(() => window.__switchPreview)]?.text?.[0] === "on and off", run.errors);
+    await ev(() => {
+        const b = window.__bl;
+        b.app.graph.remove(b.app.graph.getNodeById(window.__switchPreview));
+        b.app.graph.remove(window.__switch);
+    });
+
     // ---- Nodes 2.0 ---------------------------------------------------------
     await ev(async () => {
         const b = window.__bl;
@@ -579,7 +638,7 @@ const { startSession } = require("./harness.cjs");
     check("the same workflow saved again (outputs and slot_spec agree) loads without it", (await warnings()).length === before);
     await ev(() => window.__bl.app.graph.clear());
 
-    await finish({ expectRemoved: 5 });
+    await finish({ expectRemoved: 6 }); // A–E and the switched one
 })().catch((e) => {
     console.error(e);
     process.exit(1);

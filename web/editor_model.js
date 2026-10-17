@@ -23,9 +23,10 @@ export function editable(bundle) {
         tags: [...bundle.tags],
         note: bundle.note ?? "",
         fields: bundle.fields.map((f) => {
-            if (!MEDIA_TYPES.has(f.type)) return { name: f.name, type: f.type, value: f.value };
+            const off = f.enabled === false ? { enabled: false } : {}; // turned off (0.0.30); on is not written
+            if (!MEDIA_TYPES.has(f.type)) return { name: f.name, type: f.type, value: f.value, ...off };
             const asset = f.asset && { sha256: f.asset.sha256, ...(f.asset.original_name ? { original_name: f.asset.original_name } : {}) };
-            return { name: f.name, type: f.type, asset: asset || null };
+            return { name: f.name, type: f.type, asset: asset || null, ...off };
         }),
     };
 }
@@ -73,7 +74,8 @@ export function summaryOf(bundle) {
         tags: [...bundle.tags],
         revision: bundle.revision,
         updated_at: bundle.updated_at,
-        fields: bundle.fields.map((f) => ({ name: f.name, type: f.type, preview: preview(f) })),
+        fields: bundle.fields.map((f) => ({ name: f.name, type: f.type, preview: preview(f),
+            ...(f.enabled === false ? { enabled: false } : {}) })),
         ...(bundle.warnings ? { warnings: bundle.warnings, warnings_i18n: bundle.warnings_i18n } : {}),
         ...(bundle.read_only ? { read_only: bundle.read_only, read_only_i18n: bundle.read_only_i18n } : {}),
     };
@@ -223,6 +225,13 @@ export class EditorModel {
 
     removeTag(index) {
         this.draft.tags.splice(index, 1);
+    }
+
+    /** Turn a field off (kept with its value, but no node outputs it) or on again (0.0.30); whether it is on now. */
+    toggleField(field) {
+        if (field.enabled === false) delete field.enabled;
+        else field.enabled = false;
+        return field.enabled !== false;
     }
 
     /** Take a file the library already keeps (picked from it, 0.0.29); an upload running for the field stops. */

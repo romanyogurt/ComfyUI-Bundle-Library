@@ -48,7 +48,9 @@ docker run --rm --entrypoint python -e CUDA_VISIBLE_DEVICES= \
 
 - 경고(읽히지만 작성 규칙을 넘음): 정수 2^53+1, 2^60, 2^63−1, 121자 이름
 - 손상: 표지 `true`·`1.0`, 중복 필드 이름, v2의 없거나 잘못된 `deleted_at`, JSON이 아닌 파일
-- 새 버전: 파일을 `resources`로 가리키는 `schema_version: 3` (정리가 그 파일을 놓치면 안 된다)
+- 새 버전: 파일을 `resources`로 가리키는 `schema_version: 3` (`v3-other-references`, 정리가 그 파일을 놓치면
+  안 된다). 0.0.30에서 버전 3이 생겨, 이 표본은 버전 3에 모르는 키 `resources`가 있는 읽기 전용 파일이 됐다(정리는
+  여전히 멈춘다). 새 버전의 경우는 `newer-other-references`(`schema_version: 99`, 0.0.30에 더함)가 맡는다
 - 미지원: 모르는 `format`, 모르는 필드 타입 `mesh`
 - 읽기 전용: 최상위, 필드, 에셋 정보 안의 모르는 키
 - 정상: v2의 활성·휴지통 번들, 이름이 같은 두 번들

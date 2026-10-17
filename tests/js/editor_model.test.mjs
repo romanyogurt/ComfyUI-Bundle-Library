@@ -98,6 +98,24 @@ test("fields: names, keys, moves and the notes about their names", () => {
     assert.match(model.nameNotes().get(original.key).renamed, /Renamed from 'prompt'/);
 });
 
+test("a field turned off is kept and sent off; on again, it is no change (0.0.30)", () => {
+    const model = new EditorModel(stored([{ name: "prompt", type: "text", value: "hi" }, { name: "ref", type: "image", asset: null }]));
+    const [prompt, ref] = model.draft.fields;
+    assert.equal(model.toggleField(ref), false);
+    assert.equal(model.dirty, true);
+    assert.deepEqual(editable(model.draft).fields, [{ name: "prompt", type: "text", value: "hi" },
+        { name: "ref", type: "image", asset: null, enabled: false }]);
+    assert.equal(model.toggleField(ref), true);
+    assert.equal(model.dirty, false, "on again: as it was saved");
+    assert.equal("enabled" in ref, false);
+    model.toggleField(prompt);
+    const saved = { ...stored([]), fields: editable(model.draft).fields };
+    assert.deepEqual(summaryOf(saved).fields.map((f) => [f.name, f.enabled ?? true]), [["prompt", false], ["ref", true]]);
+    const reopened = new EditorModel(saved);
+    assert.equal(reopened.dirty, false);
+    assert.equal(reopened.draft.fields[0].enabled, false, "a stored off field opens off");
+});
+
 test("a field dropped at another place moves there; at its own place, or nowhere, nothing changes (0.0.28)", () => {
     const model = new EditorModel(stored(["a", "b", "c", "d"].map((name) => ({ name, type: "text", value: name }))));
     const names = () => model.draft.fields.map((f) => f.name);

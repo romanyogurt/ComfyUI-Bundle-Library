@@ -220,10 +220,18 @@ def _field(value, index, rules):
                            Text("check.field_type_unsupported", name=name, field_type=repr(field_type), list=', '.join(FIELD_TYPES)))
     label = Text("check.field_label", name=name)
     if field_type in MEDIA_TYPES:
-        return {"name": name, "type": field_type, "asset": _asset(value.get("asset"), label)}
-    if "value" not in value:
+        field = {"name": name, "type": field_type, "asset": _asset(value.get("asset"), label)}
+    elif "value" not in value:
         raise invalid(Text("check.value_missing", label=label))
-    return {"name": name, "type": field_type, "value": _value(field_type, value["value"], label, rules)}
+    else:
+        field = {"name": name, "type": field_type, "value": _value(field_type, value["value"], label, rules)}
+    # Turned off (0.0.30): kept with its value, but no output of a node. Only "off" is stored.
+    if "enabled" in value:
+        if type(value["enabled"]) is not bool:
+            raise invalid(Text("check.enabled_boolean", name=name))
+        if not value["enabled"]:
+            field["enabled"] = False
+    return field
 
 
 def _bundle(data, rules):
@@ -274,8 +282,9 @@ def read_bundle_content(data):
 
 
 def empty_value(field):
-    """The field with its value cleared, for duplicating a bundle's structure."""
+    """The field with its value cleared, for duplicating a bundle's structure; on or off as it was."""
+    off = {"enabled": False} if field.get("enabled") is False else {}
     if field["type"] in MEDIA_TYPES:
-        return {"name": field["name"], "type": field["type"], "asset": None}
+        return {"name": field["name"], "type": field["type"], "asset": None, **off}
     blank = {"text": "", "boolean": False, "int": 0, "float": 0.0}[field["type"]]
-    return {"name": field["name"], "type": field["type"], "value": blank}
+    return {"name": field["name"], "type": field["type"], "value": blank, **off}

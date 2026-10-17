@@ -820,6 +820,16 @@
     outline: none;
 }
 
+/* A field turned off (0.0.30): kept, but no node outputs it. Its controls stay as they are. */
+.bl-field.off .bl-field-name,
+.bl-field.off .bl-field-body {
+    opacity: 0.45;
+}
+
+.bl-badge.bl-off-badge {
+    color: #fbbf24;
+}
+
 /* The handle a field's card is dragged by (0.0.28): two columns of three dots. */
 .bl-grip {
     flex: none;

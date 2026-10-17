@@ -74,6 +74,9 @@ class FieldProblemTest(unittest.TestCase):
     def test_why_a_field_cannot_fill_its_slot(self):
         cases = [
             (None, "text", "is missing from the bundle"),
+            ({"name": "prompt", "type": "text", "value": "x", "enabled": False}, "text", "is turned off in the bundle"),
+            ({"name": "ref", "type": "image", "asset": {"sha256": MISSING}, "enabled": False}, "video",
+             "is turned off in the bundle"),  # off says it first: turning it on is the way out
             ({"name": "ref", "type": "text", "value": "x"}, "image", "is text, not image"),
             ({"name": "seed", "type": "float", "value": 1.0}, "int", "is float, not int"),
             ({"name": "ref", "type": "image", "asset": None}, "image", "has no image"),

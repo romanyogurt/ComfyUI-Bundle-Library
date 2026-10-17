@@ -36,6 +36,12 @@ export function parseSpec(text) {
     return slots.length <= POOL_SIZE ? slots : null;
 }
 
+/** The fields that are outputs: all but those turned off ("enabled": false, 0.0.30). */
+const outputFields = (fields) => fields.filter((f) => f.enabled !== false);
+
+/** The names of the fields turned off. */
+const offNames = (fields) => new Set(fields.filter((f) => f.enabled === false).map((f) => f.name));
+
 export function serializeSpec(slots) {
     if (!slots.length) return "";
     return JSON.stringify({ v: 1, slots: slots.map(({ name, type }) => ({ name, type })) });
@@ -43,21 +49,23 @@ export function serializeSpec(slots) {
 
 /**
  * The outputs a node should have once `fields` (the newly selected bundle,
- * [{name, type}] in bundle order) replaces what it shows now.
+ * [{name, type, enabled?}] in bundle order) replaces what it shows now. A
+ * field turned off is no output: for the node it is as if the bundle lacked it.
  *
  * `current` is [{name, type, linked}] in output order. A linked slot is never
- * dropped, moved or retyped: if the bundle lacks its field, or has it under
- * another type, it stays and is marked, and the run fails only for whatever
- * uses it. Unlinked slots follow the bundle. Fields not shown yet are added at
- * the end, in bundle order, so existing links keep their output index.
+ * dropped, moved or retyped: if the bundle lacks its field, has it turned off
+ * or under another type, it stays and is marked, and the run fails only for
+ * whatever uses it. Unlinked slots follow the bundle. Fields not shown yet are
+ * added at the end, in bundle order, so existing links keep their output index.
  *
  * Returns {slots: [{name, type, from, status}], overflow}, where `from` is
  * the slot's current index (null for a new one), `status` is "ok",
- * "missing" or "type_mismatch", and `overflow` counts fields left out
+ * "missing", "off" or "type_mismatch", and `overflow` counts fields left out
  * because the pool is full.
  */
 export function planSlots(current, fields) {
-    const byName = new Map(fields.map((f) => [f.name, f]));
+    const byName = new Map(outputFields(fields).map((f) => [f.name, f]));
+    const off = offNames(fields);
     const slots = [];
     current.forEach((slot, from) => {
         const field = byName.get(slot.name);
@@ -68,12 +76,12 @@ export function planSlots(current, fields) {
                 ? { name: slot.name, type: slot.type, from, status: "type_mismatch" }
                 : { name: slot.name, type: field.type, from, status: "ok" });
         } else if (slot.linked) {
-            slots.push({ name: slot.name, type: slot.type, from, status: "missing" });
+            slots.push({ name: slot.name, type: slot.type, from, status: off.has(slot.name) ? "off" : "missing" });
         }
     });
     const shown = new Set(current.map((slot) => slot.name));
     let overflow = 0;
-    for (const field of fields) {
+    for (const field of outputFields(fields)) {
         if (shown.has(field.name)) continue;
         if (slots.length < POOL_SIZE) {
             slots.push({ name: field.name, type: field.type, from: null, status: "ok" });
@@ -99,12 +107,13 @@ export function planChanges(current, fields) {
     };
 }
 
-/** "ok", "missing" or "type_mismatch" for each slot against a bundle's fields. */
+/** "ok", "missing", "off" or "type_mismatch" for each slot against a bundle's fields. */
 export function slotStatuses(slots, fields) {
-    const byName = new Map(fields.map((f) => [f.name, f]));
+    const byName = new Map(outputFields(fields).map((f) => [f.name, f]));
+    const off = offNames(fields);
     return slots.map((slot) => {
         const field = byName.get(slot.name);
-        if (!field) return "missing";
+        if (!field) return off.has(slot.name) ? "off" : "missing";
         return field.type === slot.type ? "ok" : "type_mismatch";
     });
 }
