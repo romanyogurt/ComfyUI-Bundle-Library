@@ -3,12 +3,16 @@
 // parse), the uploads, and one answer to whether leaving would lose something.
 // The editor draws from it; nothing here touches the DOM, so it runs under
 // `node --test` as well as in the browser.
+import { t } from "./i18n.js";
 import { sameTag } from "./tags.js";
 
 export const MEDIA_TYPES = new Set(["image", "video", "audio"]);
 const BLANK = { text: "", boolean: false, int: 0, float: 0 };
 const TEXT_PREVIEW = 200; // characters of a text field in a list summary (bundle_library/store.py)
-export const TOO_LARGE = `Whole numbers must be within ±${Number.MAX_SAFE_INTEGER.toLocaleString("en-US")}.`;
+const LARGEST = Number.MAX_SAFE_INTEGER.toLocaleString("en-US");
+
+/** Why a whole number cannot be kept as it is. */
+export const tooLarge = () => t("Whole numbers must be within ±{max}.", { max: LARGEST });
 
 let lastKey = 0;
 
@@ -31,8 +35,8 @@ export function numberProblem(type, text) {
     const blank = text.trim() === "";
     const value = Number(text);
     if (!blank && Number.isFinite(value) && (type !== "int" || Number.isSafeInteger(value))) return null;
-    if (type !== "int") return "Enter a number.";
-    return !blank && Number.isInteger(value) ? TOO_LARGE : "Enter a whole number.";
+    if (type !== "int") return t("Enter a number.");
+    return !blank && Number.isInteger(value) ? tooLarge() : t("Enter a whole number.");
 }
 
 /**
@@ -51,7 +55,7 @@ function draftField(field, origin = field.name) {
         draft.text = exact ?? String(draft.value);
         draft.original = draft.text;
         draft.originalValue = draft.value;
-        draft.problem = exact ? `${TOO_LARGE} Change this value before saving.` : null;
+        draft.problem = exact ? t("Whole numbers must be within ±{max}. Change this value before saving.", { max: LARGEST }) : null;
     }
     return draft;
 }
@@ -77,7 +81,7 @@ export function summaryOf(bundle) {
 
 export class EditorModel {
     /** `bundle`: the stored bundle to edit, or null for a new one called `newName`. */
-    constructor(bundle, newName = "New bundle") {
+    constructor(bundle, newName = t("New bundle")) {
         // Uploads running, by field key: {controller, name, sent}. Only the file
         // chosen last for a field counts; an earlier upload is stopped.
         this.uploads = new Map();
@@ -85,7 +89,7 @@ export class EditorModel {
     }
 
     /** Edit `bundle` (as stored) from now on, or a new one: the draft starts over, and running uploads stop. */
-    load(bundle, newName = "New bundle") {
+    load(bundle, newName = t("New bundle")) {
         this.stopUploads();
         this.saved = bundle;
         this.pendingCategory = null; // where a new bundle goes when first saved (an id, or null)
@@ -142,11 +146,12 @@ export class EditorModel {
         const notes = new Map();
         for (const field of this.draft.fields) {
             const name = field.name.trim();
-            const problem = !name ? "A field needs a name."
-                : counts.get(name) > 1 ? `Another field is also named '${name}'.`
-                    : name.startsWith("@") ? "Names starting with '@' are reserved." : null;
+            const problem = !name ? t("A field needs a name.")
+                : counts.get(name) > 1 ? t("Another field is also named '{name}'.", { name })
+                    : name.startsWith("@") ? t("Names starting with '@' are reserved.") : null;
             const renamed = field.origin && field.origin !== name
-                ? `Renamed from '${field.origin}': workflows connected to '${field.origin}' will show it as missing.` : null;
+                ? t("Renamed from '{origin}': workflows connected to '{origin}' will show it as missing.",
+                    { origin: field.origin }) : null;
             notes.set(field.key, { problem, renamed });
         }
         return notes;
@@ -154,11 +159,11 @@ export class EditorModel {
 
     /** Why the draft cannot be saved as it is, or null. */
     get blocker() {
-        if (this.readOnly) return "This version of Bundle Library cannot change this bundle.";
-        if (this.uploads.size > 0) return "Wait for the upload to finish.";
-        if (!this.draft.name.trim()) return "The bundle needs a name.";
-        if ([...this.nameNotes().values()].some((n) => n.problem)) return "Fix the marked field names first.";
-        if (this.draft.fields.some((f) => f.problem)) return "Fix the marked values first.";
+        if (this.readOnly) return t("This version of Bundle Library cannot change this bundle.");
+        if (this.uploads.size > 0) return t("Wait for the upload to finish.");
+        if (!this.draft.name.trim()) return t("The bundle needs a name.");
+        if ([...this.nameNotes().values()].some((n) => n.problem)) return t("Fix the marked field names first.");
+        if (this.draft.fields.some((f) => f.problem)) return t("Fix the marked values first.");
         return null;
     }
 

@@ -1,0 +1,16 @@
+{
+  "BundleLibraryLoad": {
+    "display_name": "번들 불러오기",
+    "description": "Bundle Library의 번들을 불러옵니다. 출력은 고른 번들의 필드를 따르고, 다른 번들을 고르면 같은 이름의 필드 출력은 연결을 그대로 둡니다.",
+    "inputs": {
+      "bundle_id": {
+        "name": "bundle_id",
+        "tooltip": "고른 번들의 UUID. 번들 선택으로 고릅니다."
+      },
+      "slot_spec": {
+        "name": "slot_spec",
+        "tooltip": "출력마다 어느 필드를 전하는지, 출력 순서대로. 노드의 화면이 관리합니다."
+      }
+    }
+  }
+}

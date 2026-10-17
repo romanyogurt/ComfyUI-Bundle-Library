@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { EditorModel, TOO_LARGE, editable, numberProblem, summaryOf } from "../../web/editor_model.js";
+import { EditorModel, editable, numberProblem, summaryOf, tooLarge } from "../../web/editor_model.js";
 
 const SHA = "a".repeat(64);
 
@@ -18,7 +18,7 @@ test("numbers: what does not parse, and why", () => {
     assert.equal(numberProblem("int", "20"), null);
     assert.equal(numberProblem("int", "1.5"), "Enter a whole number.");
     assert.equal(numberProblem("int", ""), "Enter a whole number.", "an empty box is not 'too large'");
-    assert.equal(numberProblem("int", "9007199254740993"), TOO_LARGE);
+    assert.equal(numberProblem("int", "9007199254740993"), tooLarge());
     assert.equal(numberProblem("float", "1.5"), null);
     assert.equal(numberProblem("float", ""), "Enter a number.");
     assert.equal(numberProblem("float", "1e400"), "Enter a number.");

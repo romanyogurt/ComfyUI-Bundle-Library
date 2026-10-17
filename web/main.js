@@ -2,6 +2,10 @@ import { app } from "../../scripts/app.js";
 import { checkVersion } from "./api.js";
 import { NODE_ID, setupLoaderNode } from "./loader_node.js";
 import { openLibrary, renderSidebar } from "./library_modal.js";
+import { useLocale } from "./i18n.js";
+
+// The pack speaks the language ComfyUI is set to (Settings > Comfy > Locale), read whenever text is made.
+useLocale(() => app.extensionManager?.setting?.get("Comfy.Locale"));
 
 const stylesheet = document.createElement("link");
 stylesheet.rel = "stylesheet";

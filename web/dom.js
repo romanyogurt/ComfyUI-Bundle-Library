@@ -1,6 +1,13 @@
 // Small DOM helpers. User data only ever goes in through textContent and
 // attributes, never innerHTML.
 
+import { msg, t } from "./i18n.js";
+
+const KINDS = { image: msg("image"), video: msg("video"), audio: msg("audio") };
+
+/** A file's kind in words: "image", "video" or "audio" in English. */
+export const kindName = (kind) => (kind in KINDS ? t(KINDS[kind]) : kind);
+
 export function el(tag, className, text) {
     const element = document.createElement(tag);
     if (className) element.className = className;
@@ -46,7 +53,7 @@ export function codeList(names) {
  * The library modal also closes it on a click elsewhere (closeMenus()).
  */
 export function menu(content, items, { className = "bl-btn", title, label, up = false, search = null,
-    empty = "Nothing to choose." } = {}) {
+    empty = t("Nothing to choose.") } = {}) {
     const root = el("span", "bl-menu-wrap");
     const opener = button(typeof content === "string" ? content : "", className, title);
     if (typeof content !== "string") opener.append(content);
@@ -163,7 +170,7 @@ export function closeMenus(root, except = null) {
     return closed;
 }
 
-export const plural = (count, word) => `${count} ${word}${count === 1 ? "" : "s"}`;
+export { plural } from "./i18n.js"; // "3 bundles", "번들 3개"
 
 /** "2026-10-15 07:45", in the browser's time zone. */
 export function formatTime(iso) {

@@ -4,6 +4,7 @@
 // (LibraryModal.runBatch); these only draw.
 import { exportURL, thumbnailURL } from "./api.js";
 import { button, el, formatBytes, icon, plural } from "./dom.js";
+import { msg, t, tn } from "./i18n.js";
 import { tagCounts } from "./tags.js";
 
 /** The small picture of a bundle, if it has an image or a video. */
@@ -42,9 +43,9 @@ export class BatchPanel {
         const focused = this.root.contains(document.activeElement) ? document.activeElement.dataset.control : null;
         if (this.category && !modal.categories.some((c) => c.id === this.category)) this.category = null;
         const head = el("div", "bl-batch-head");
-        const clear = button("Clear selection");
+        const clear = button(t("Clear selection"));
         clear.addEventListener("click", () => modal.clearSelection());
-        head.append(el("div", "bl-batch-title", `${plural(bundles.length, "bundle")} selected`), clear);
+        head.append(el("div", "bl-batch-title", t("{bundles} selected", { bundles: plural(bundles.length, "bundle") })), clear);
 
         const names = el("div", "bl-batch-names");
         const categories = new Map(modal.categories.map((c) => [c.id, c.name]));
@@ -53,8 +54,8 @@ export class BatchPanel {
             row.dataset.id = bundle.id;
             const text = el("div", "bl-list-text");
             text.append(el("div", "bl-list-name", modal.labels?.get(bundle.id) ?? bundle.name),
-                el("div", "bl-list-sub", [categories.get(bundle.category) ?? "Uncategorized", bundle.favorite ? "★" : null,
-                    bundle.read_only ? "🔒 cannot be changed by this version" : null].filter(Boolean).join(" · ")));
+                el("div", "bl-list-sub", [categories.get(bundle.category) ?? t("Uncategorized"), bundle.favorite ? "★" : null,
+                    bundle.read_only ? t("🔒 cannot be changed by this version") : null].filter(Boolean).join(" · ")));
             row.append(thumb(bundle), text);
             return row;
         }));
@@ -63,8 +64,8 @@ export class BatchPanel {
         const place = el("div", "bl-batch-row");
         this.categorySelect = el("select", "bl-input bl-batch-category");
         this.categorySelect.dataset.control = "category";
-        const choices = [["", "No category"], ...modal.categories.map((c) => [c.id, c.name])];
-        if (this.category === null) choices.unshift([GONE, "Choose a category (the one chosen was deleted)"]);
+        const choices = [["", t("No category")], ...modal.categories.map((c) => [c.id, c.name])];
+        if (this.category === null) choices.unshift([GONE, t("Choose a category (the one chosen was deleted)")]);
         for (const [value, label] of choices) {
             const option = el("option", null, label);
             option.value = value;
@@ -72,11 +73,11 @@ export class BatchPanel {
             this.categorySelect.append(option);
         }
         this.categorySelect.value = this.category ?? GONE;
-        const move = button("Move", "bl-btn primary");
+        const move = button(t("Move"), "bl-btn primary");
         move.dataset.control = "move";
         const chosen = () => {
             move.disabled = !!why || this.category === null;
-            move.title = why ?? (this.category === null ? "The category chosen was deleted. Choose one again." : "");
+            move.title = why ?? (this.category === null ? t("The category chosen was deleted. Choose one again.") : "");
         };
         this.categorySelect.addEventListener("change", () => {
             this.category = this.categorySelect.value;
@@ -86,18 +87,18 @@ export class BatchPanel {
             if (this.category === null) return;
             void modal.runBatch("set_category", { category: this.category || null }, this.bundles);
         });
-        place.append(el("span", "bl-label", "Category"), this.categorySelect, move);
+        place.append(el("span", "bl-label", t("Category")), this.categorySelect, move);
 
         const stars = el("div", "bl-batch-row");
         const add = button("", "bl-btn");
         add.dataset.control = "add-favorites";
-        add.append("★ Add to favorites");
+        add.append(t("★ Add to favorites"));
         add.addEventListener("click", () => void modal.runBatch("set_favorite", { favorite: true }, this.bundles));
         const remove = button("", "bl-btn");
         remove.dataset.control = "remove-favorites";
-        remove.append("☆ Remove from favorites");
+        remove.append(t("☆ Remove from favorites"));
         remove.addEventListener("click", () => void modal.runBatch("set_favorite", { favorite: false }, this.bundles));
-        stars.append(el("span", "bl-label", "Favorites"), add, remove);
+        stars.append(el("span", "bl-label", t("Favorites")), add, remove);
         for (const control of [this.categorySelect, add, remove]) {
             control.disabled = !!why;
             if (why) control.title = why;
@@ -107,20 +108,20 @@ export class BatchPanel {
         // The tags the selected bundles have, each with how many have it; × takes
         // it off all of them, and a tag typed below goes on all of them.
         const tags = el("div", "bl-batch-row bl-batch-tags");
-        tags.append(el("span", "bl-label", "Tags"));
+        tags.append(el("span", "bl-label", t("Tags")));
         for (const { name, count } of tagCounts(bundles)) {
             const chip = el("span", "bl-chip bl-batch-tag", `${name} `);
             chip.dataset.tag = name;
             chip.append(el("span", "bl-dim", `${count}/${bundles.length}`));
-            const remove = button("×", "bl-chip-x", `Remove '${name}' from the selected bundles`);
-            remove.setAttribute("aria-label", `Remove the tag ${name} from the selected bundles`);
+            const remove = button("×", "bl-chip-x", t("Remove '{tag}' from the selected bundles", { tag: name }));
+            remove.setAttribute("aria-label", t("Remove the tag {tag} from the selected bundles", { tag: name }));
             remove.addEventListener("click", () => void modal.runBatch("remove_tags", { tags: [name] }, this.bundles));
             chip.append(remove);
             tags.append(chip);
         }
         const addTag = el("input", "bl-input bl-tag-input bl-batch-add-tag");
         addTag.dataset.control = "add-tag";
-        addTag.placeholder = "+ tag for all";
+        addTag.placeholder = t("+ tag for all");
         addTag.maxLength = 40;
         addTag.value = this.tagText;
         addTag.addEventListener("input", () => {
@@ -139,20 +140,21 @@ export class BatchPanel {
         const out = el("div", "bl-batch-row");
         const toZip = button("", "bl-btn");
         toZip.dataset.control = "export";
-        toZip.append(icon("download"), " Export ZIP");
+        toZip.append(icon("download"), ` ${t("Export ZIP")}`);
         toZip.addEventListener("click", () => void modal.runExport(this.bundles));
-        out.append(el("span", "bl-label", "Export"), toZip,
-            el("span", "bl-hint", "The bundles and the files they use, to keep or to bring into another library."));
+        out.append(el("span", "bl-label", t("Export")), toZip,
+            el("span", "bl-hint", t("The bundles and the files they use, to keep or to bring into another library.")));
 
         const trash = el("div", "bl-batch-row");
         const toTrash = button("", "bl-btn danger");
         toTrash.dataset.control = "trash";
-        toTrash.append(icon("trash"), " Move to trash…");
+        toTrash.append(icon("trash"), ` ${t("Move to trash…")}`);
         toTrash.addEventListener("click", () => void modal.runBatch("trash", {}, this.bundles));
-        trash.append(el("span", "bl-label", "Trash"), toTrash);
+        trash.append(el("span", "bl-label", t("Trash")), toTrash);
         const locked = bundles.filter((b) => b.read_only).length;
         if (locked) {
-            const note = `${plural(locked, "bundle")} this version cannot change will be left out.`;
+            const note = tn(locked, "{count} bundle this version cannot change will be left out.",
+                "{count} bundles this version cannot change will be left out.");
             trash.append(el("span", "bl-hint", note));
             tags.append(el("span", "bl-hint", note));
         }
@@ -164,12 +166,12 @@ export class BatchPanel {
 
 // How each kind of refusal is listed in a result, most useful first.
 const OUTCOMES = [
-    ["retry", "Not done; trying again may work"],
-    ["revision_conflict", "Changed elsewhere since you selected it; not moved"],
-    ["protected", "This version cannot change these; left as they are"],
-    ["not_found", "No longer in the library"],
-    ["in_trash", "In the trash"],
-    ["other", "Not done"],
+    ["retry", msg("Not done; trying again may work")],
+    ["revision_conflict", msg("Changed elsewhere since you selected it; not moved")],
+    ["protected", msg("This version cannot change these; left as they are")],
+    ["not_found", msg("No longer in the library")],
+    ["in_trash", msg("In the trash")],
+    ["other", msg("Not done")],
 ];
 const PROTECTED = new Set(["read_only", "newer_version", "unsupported", "corrupt", "corrupt_bundle"]);
 
@@ -202,9 +204,9 @@ export class BatchResult {
         const line = el("div", "bl-batch-title", `${this.job.describe.doing}…`);
         this.stall = el("div", "bl-batch-stall");
         this.stall.hidden = true;
-        const stop = button("Stop waiting");
+        const stop = button(t("Stop waiting"));
         stop.addEventListener("click", () => this.modal.stopWaiting(this.job));
-        this.stall.append(el("div", "bl-hint", "No answer yet. You can stop waiting; the server may still finish it."), stop);
+        this.stall.append(el("div", "bl-hint", t("No answer yet. You can stop waiting; the server may still finish it.")), stop);
         this.root.replaceChildren(line, el("div", "bl-hint", plural(this.job.summaries.length, "bundle")), this.stall);
     }
 
@@ -217,20 +219,20 @@ export class BatchResult {
         const { job, modal } = this;
         const names = new Map(job.summaries.map((b) => [b.id, b.label]));
         const done = el("div", "bl-batch-actions");
-        const back = button("Done", "bl-btn primary");
+        const back = button(t("Done"), "bl-btn primary");
         back.addEventListener("click", () => modal.leaveResult());
         const parts = [];
         if (unknown) {
-            parts.push(el("div", "bl-batch-title", "Could not tell whether it finished"),
-                el("div", "bl-warn", `${job.describe.what} was sent, but no answer came back. The server may have done all, `
-                    + "some or none of it. Reload the list to see where things stand."));
-            const reload = button("Reload the list");
+            parts.push(el("div", "bl-batch-title", t("Could not tell whether it finished")),
+                el("div", "bl-warn", t("{what} was sent, but no answer came back. The server may have done all, "
+                    + "some or none of it. Reload the list to see where things stand.", { what: job.describe.what })));
+            const reload = button(t("Reload the list"));
             reload.addEventListener("click", () => void modal.reload());
-            const again = button("Try again");
+            const again = button(t("Try again"));
             again.addEventListener("click", () => void modal.retryBatch(job, job.summaries.map((b) => b.id)));
             done.append(reload, again, back);
         } else if (refused) {
-            parts.push(el("div", "bl-batch-title", "Nothing was changed"), el("div", "bl-error", refused.message));
+            parts.push(el("div", "bl-batch-title", t("Nothing was changed")), el("div", "bl-error", refused.message));
             done.append(back);
         } else {
             const results = answer.results;
@@ -238,8 +240,9 @@ export class BatchResult {
             const unchanged = results.filter((r) => r.ok && !r.changed);
             const failed = results.filter((r) => !r.ok);
             parts.push(el("div", "bl-batch-title", job.describe.done),
-                el("div", "bl-batch-summary", [`${changed.length} changed`, unchanged.length ? `${unchanged.length} already so` : null,
-                    failed.length ? `${failed.length} not done` : null].filter(Boolean).join(" · ")));
+                el("div", "bl-batch-summary", [t("{count} changed", { count: changed.length }),
+                    unchanged.length ? t("{count} already so", { count: unchanged.length }) : null,
+                    failed.length ? t("{count} not done", { count: failed.length }) : null].filter(Boolean).join(" · ")));
             const list = (title, items, kind) => {
                 if (!items.length) return;
                 const group = el("div", `bl-batch-outcome ${kind}`);
@@ -255,12 +258,12 @@ export class BatchResult {
                 }
                 parts.push(group);
             };
-            for (const [kind, title] of OUTCOMES) list(title, failed.filter((r) => kindOf(r) === kind), kind);
-            list("Changed", changed, "changed");
-            list("Already so", unchanged, "unchanged");
+            for (const [kind, title] of OUTCOMES) list(t(title), failed.filter((r) => kindOf(r) === kind), kind);
+            list(t("Changed"), changed, "changed");
+            list(t("Already so"), unchanged, "unchanged");
             const retryable = failed.filter((r) => r.retry).map((r) => r.id);
             if (retryable.length) {
-                const again = button(`Try again with ${plural(retryable.length, "bundle")}`);
+                const again = button(t("Try again with {bundles}", { bundles: plural(retryable.length, "bundle") }));
                 again.addEventListener("click", () => void modal.retryBatch(job, retryable));
                 done.append(again);
             }
@@ -277,13 +280,13 @@ export class ExportResult extends BatchResult {
         const { job, modal } = this;
         const names = new Map(job.summaries.map((b) => [b.id, b.label]));
         const done = el("div", "bl-batch-actions");
-        const back = button("Done", "bl-btn primary");
+        const back = button(t("Done"), "bl-btn primary");
         back.addEventListener("click", () => modal.leaveResult());
         const parts = [];
         if (unknown || refused) {
-            parts.push(el("div", "bl-batch-title", "Nothing to download"),
+            parts.push(el("div", "bl-batch-title", t("Nothing to download")),
                 el("div", refused ? "bl-error" : "bl-warn", refused ? refused.message
-                    : "No answer came back. The export may still be made on the server; export again to download it."));
+                    : t("No answer came back. The export may still be made on the server; export again to download it.")));
             done.append(back);
             this.root.replaceChildren(...parts, done);
             return;
@@ -291,15 +294,15 @@ export class ExportResult extends BatchResult {
         const link = el("a", "bl-btn primary bl-export-download");
         link.href = exportURL(answer.token, answer.file_name);
         link.download = answer.file_name;
-        link.append(icon("download"), " Download again");
-        parts.push(el("div", "bl-batch-title", "Exported"), el("div", "bl-batch-summary",
-            `${plural(answer.bundles, "bundle")} and ${plural(answer.assets, "file")} · ${formatBytes(answer.bytes)} · `
-            + `${answer.file_name}`), el("div", "bl-hint", "The download starts by itself; the file can be downloaded "
-            + "again for an hour."));
+        link.append(icon("download"), ` ${t("Download again")}`);
+        parts.push(el("div", "bl-batch-title", t("Exported")), el("div", "bl-batch-summary",
+            `${t("{bundles} and {files}", { bundles: plural(answer.bundles, "bundle"), files: plural(answer.assets, "file") })} · `
+            + `${formatBytes(answer.bytes)} · ${answer.file_name}`), el("div", "bl-hint", t("The download starts by itself; the file "
+            + "can be downloaded again for an hour.")));
         if (answer.skipped.length) {
             const group = el("div", "bl-batch-outcome other");
             group.dataset.outcome = "skipped";
-            group.append(el("div", "bl-batch-outcome-title", `Left out (${answer.skipped.length})`));
+            group.append(el("div", "bl-batch-outcome-title", `${t("Left out")} (${answer.skipped.length})`));
             for (const s of answer.skipped) {
                 const row = el("div", "bl-batch-outcome-row");
                 row.dataset.id = s.id;
@@ -309,9 +312,9 @@ export class ExportResult extends BatchResult {
             parts.push(group);
         }
         if (answer.missing.length) {
-            parts.push(el("div", "bl-warn", `${plural(answer.missing.length, "file")} the bundles use ${answer.missing.length === 1
-                ? "is" : "are"} not in the library and ${answer.missing.length === 1 ? "is" : "are"} not in the ZIP: `
-                + `${[...new Set(answer.missing.flatMap((m) => m.bundles))].join(", ")}.`));
+            parts.push(el("div", "bl-warn", tn(answer.missing.length, "{count} file the bundles use is not in the library and is "
+                + "not in the ZIP: {names}.", "{count} files the bundles use are not in the library and are not in the ZIP: {names}.",
+            { names: [...new Set(answer.missing.flatMap((m) => m.bundles))].join(", ") })));
         }
         done.append(link, back);
         this.root.replaceChildren(...parts, done);

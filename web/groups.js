@@ -2,6 +2,8 @@
 // the categories by name, Uncategorized. Pure functions: they run under
 // `node --test` as well as in the browser.
 
+import { t } from "./i18n.js";
+
 export const ATTENTION = "attention";
 export const FAVORITES = "favorites";
 export const CATEGORY = "category";
@@ -37,9 +39,9 @@ export function groupBundles(bundles, categories, errors = [], { filtering = fal
 
 /** The heading of a group. */
 export function groupLabel(group) {
-    if (group.kind === ATTENTION) return "⚠ Needs attention";
-    if (group.kind === FAVORITES) return "★ Favorites";
-    return group.name;
+    if (group.kind === ATTENTION) return `⚠ ${t("Needs attention")}`;
+    if (group.kind === FAVORITES) return `★ ${t("Favorites")}`;
+    return group.kind === UNCATEGORIZED ? t("Uncategorized") : group.name; // a category's name is the user's
 }
 
 /**
