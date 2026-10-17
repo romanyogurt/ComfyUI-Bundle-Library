@@ -1,27 +1,31 @@
 // Browser scenarios for the Korean screens (Phase 9a): with ComfyUI's language
 // set to Korean (Comfy.Locale "ko"), the node panel, the sidebar, the library
 // window, the editor, the panes, the questions and the results show the text
-// of web/locales/ko.js, and no English text of that dictionary is left in view:
+// of the Korean catalog (locales/ko/bundle_library.json, which the page gets
+// from the server), and no English text of the English catalog is left in view:
 // not in the text, nor in a title, aria-label or placeholder. ComfyUI's own
 // translations of the pack (locales/ko) name the node and the command. Checked
 // as DOM text: headless Chromium has no Korean font. The English screens are
 // the other suites'. Set-up and safety notes are in harness.cjs.
+const fs = require("fs");
 const path = require("path");
-const { pathToFileURL } = require("url");
 const { startSession } = require("./harness.cjs");
 
 const PREFIX = "[test] I18n";
 const MODULE = "/extensions/ComfyUI-Bundle-Library";
 
 (async () => {
-    const KO = (await import(pathToFileURL(path.join(__dirname, "../../web/locales/ko.js")).href)).default;
-    // The English texts of the dictionary that Korean shows otherwise: exact ones, and those with places as
-    // patterns (only when enough of their own words are left to tell them from anything else).
+    const read = (lang) => JSON.parse(fs.readFileSync(path.join(__dirname, `../../locales/${lang}/bundle_library.json`), "utf8"));
+    const [EN, KO] = [read("en"), read("ko")];
+    // The English texts that Korean shows otherwise (each form of a message, unless its Korean is the same): exact
+    // ones, and those with places as patterns (only when enough of their own words are left to tell them apart).
+    const forms = (message) => (typeof message === "string" ? [message] : Object.values(message ?? {}));
+    const english = Object.entries(EN).flatMap(([id, message]) => forms(message).filter((text) => !forms(KO[id]?.text).includes(text)));
     const escape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const exact = new Set(Object.keys(KO).filter((k) => !/\{\w+\}/.test(k) && KO[k] !== k).map((k) => k.trim()));
-    const patterns = Object.keys(KO).filter((k) => /\{\w+\}/.test(k) && k.replace(/\{\w+\}|[^A-Za-z]/g, "").length >= 4)
+    const exact = new Set(english.filter((k) => !/\{\w+\}/.test(k)).map((k) => k.trim()));
+    const patterns = english.filter((k) => /\{\w+\}/.test(k) && k.replace(/\{\w+\}|[^A-Za-z]/g, "").length >= 4)
         .map((k) => new RegExp(`^${k.trim().split(/\{\w+\}/).map(escape).join(".+?")}$`, "s"));
-    const english = (text) => exact.has(text) || patterns.some((p) => p.test(text));
+    const isEnglish = (text) => exact.has(text) || patterns.some((p) => p.test(text));
 
     const session = await startSession("i18n");
     const { page, ev, check, finish } = session;
@@ -56,7 +60,7 @@ const MODULE = "/extensions/ComfyUI-Bundle-Library";
     /** Check that what `selector` shows has no English of the dictionary left, and has `korean` in it. */
     const korean = async (label, selector, expected) => {
         const seen = await texts(selector);
-        const left = seen.filter(english);
+        const left = seen.filter(isEnglish);
         const missing = expected.filter((text) => !seen.includes(text));
         check(`${label}: in Korean, no English of the dictionary left`, seen.length > 0 && !left.length && !missing.length,
             { left, missing });
@@ -82,6 +86,10 @@ const MODULE = "/extensions/ComfyUI-Bundle-Library";
     await session.reload();
     const locale = await ev(async (module) => (await import(`${module}/i18n.js`)).locale(), MODULE);
     check("the pack follows ComfyUI's language setting", locale === "ko", locale);
+    const sent = await ev(async () => (await window.__bl.request("GET", "/messages?lang=ko")).messages);
+    check("the server sends the catalogs of English and Korean, a translation as its text alone",
+        sent?.en?.["trash.empty_confirm"] === "Empty the trash?" && sent?.ko?.["trash.empty_confirm"] === "휴지통을 비울까요?",
+        sent && Object.keys(sent));
     const served = await ev(async () => (await (await fetch("/i18n")).json()).ko ?? null);
     check("ComfyUI serves the pack's own Korean (locales/ko): the node and the command",
         served?.nodeDefs?.BundleLibraryLoad?.display_name === "번들 불러오기"

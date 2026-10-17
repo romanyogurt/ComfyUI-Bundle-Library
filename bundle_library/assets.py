@@ -18,7 +18,7 @@ from .constants import (
     MAX_VIDEO_BYTES, MAX_VIDEO_PIXELS, THUMBNAIL_SIZES, VIDEO_EXTENSIONS,
 )
 from .model import SHA256_RE, LibraryError, check_sha256, clean_original_name
-from .text import Text, Word
+from .text import Text
 
 MIME_TYPES = {**dict(IMAGE_FORMATS.values()), **VIDEO_EXTENSIONS, **AUDIO_EXTENSIONS}  # extension -> MIME type
 KINDS = {**{ext: "image" for ext, _ in IMAGE_FORMATS.values()},
@@ -35,14 +35,17 @@ _AUDIO_DEMUXERS = {"wav": "wav", "flac": "flac", "mp3": "mp3", "ogg": "ogg"}
 _OGG_AUDIO = {"opus", "vorbis"}
 _CODEC_NAMES = {"mp3float": "mp3"}  # decoder name -> the codec's usual name
 _REFUSED = {
-    "image": Text("Only PNG, JPEG and WebP images are accepted."),
-    "video": Text("Only MP4, WebM and MOV videos are accepted."),
-    "audio": Text("Only WAV, FLAC, MP3, OGG and M4A audio files are accepted."),
+    "image": Text("file.only_image"),
+    "video": Text("file.only_video"),
+    "audio": Text("file.only_audio"),
 }
 
 
 def _open(path):
     return Image.open(path, formats=_FORMATS)
+
+# A file kind's name, as a word a page translates (text.py).
+_KIND_NAMES = {"image": Text("kind.image"), "video": Text("kind.video"), "audio": Text("kind.audio")}
 
 
 class AssetStore:
@@ -103,18 +106,18 @@ class AssetStore:
                 if width * height > limit:
                     raise LibraryError(
                         413, "too_many_pixels",
-                        Text("The image is too large ({width}×{height}); the limit is {limit} pixels.", width=width, height=height, limit=format(limit, ',')))
+                        Text("file.image_too_large_size", width=width, height=height, limit=format(limit, ',')))
                 turned = image.getexif().get(0x0112) in _SWAPS_SIDES
                 image.load()  # decode it all: a broken file is refused now, not at run time
                 image_format = image.format
         except LibraryError:
             raise
         except Image.DecompressionBombError:
-            raise LibraryError(413, "too_many_pixels", Text("The image is too large.")) from None
+            raise LibraryError(413, "too_many_pixels", Text("file.image_too_large")) from None
         except UnidentifiedImageError:
             raise LibraryError(415, "unsupported_format", _REFUSED["image"]) from None
         except (OSError, SyntaxError, ValueError):
-            raise LibraryError(400, "corrupt_image", Text("The image could not be decoded completely; the file may be damaged.")) from None
+            raise LibraryError(400, "corrupt_image", Text("file.image_incomplete")) from None
         return (height, width, image_format) if turned else (width, height, image_format)
 
     def _check_media(self, path, kind):
@@ -131,7 +134,7 @@ class AssetStore:
             if kind == "video" and meta["width"] * meta["height"] > limits["pixels"]:
                 raise LibraryError(
                     413, "too_many_pixels",
-                    Text("The video is too large ({width}×{height}); the limit is {pixels} pixels per frame.", width=meta['width'], height=meta['height'], pixels=format(limits['pixels'], ',')))
+                    Text("file.video_too_large", width=meta['width'], height=meta['height'], pixels=format(limits['pixels'], ',')))
             if kind == "audio":
                 _check_audio_shape(meta, limits)
             try:
@@ -144,7 +147,7 @@ class AssetStore:
                 raise
             except (StopIteration, av.error.FFmpegError, OSError, ValueError):
                 raise LibraryError(400, "corrupt_media",
-                                   Text("The {kind} could not be decoded; the file may be damaged.", kind=Word(kind))) from None
+                                   Text("file.not_decoded", kind=_KIND_NAMES.get(kind, kind))) from None
         return ext, meta
 
     def path(self, sha256):
@@ -230,7 +233,7 @@ class AssetStore:
         request: the image itself, or a frame near the start of a video.
         None for audio and for unknown files."""
         if size not in THUMBNAIL_SIZES:
-            raise LibraryError(400, "invalid", Text("Thumbnail size must be one of {list}.", list=', '.join(map(str, THUMBNAIL_SIZES))))
+            raise LibraryError(400, "invalid", Text("file.thumb_size", list=', '.join(map(str, THUMBNAIL_SIZES))))
         source = self.path(sha256)
         if source is None or KINDS[source.suffix[1:]] == "audio":
             return None
@@ -345,10 +348,10 @@ def _check_audio_shape(meta, limits):
     channels, rate = meta["channels"], meta["sample_rate"]
     if channels > limits["channels"]:
         raise LibraryError(415, "unsupported_format",
-                           Text("The audio has {channels} channels; the limit is {channels2}.", channels=channels, channels2=limits['channels']))
+                           Text("file.audio_channels", channels=channels, channels2=limits['channels']))
     if rate > limits["rate"]:
         raise LibraryError(415, "unsupported_format",
-                           Text("The audio's sample rate is {n} kHz; the limit is {n2} kHz.", n=format(rate / 1000, 'g'), n2=format(limits['rate'] / 1000, 'g')))
+                           Text("file.audio_sample_rate", n=format(rate / 1000, 'g'), n2=format(limits['rate'] / 1000, 'g')))
 
 
 def _decode_audio(container, limits=None, claimed=None):
@@ -367,7 +370,7 @@ def _decode_audio(container, limits=None, claimed=None):
             name = {"u8": "8-bit", "u8p": "8-bit", "s64": "64-bit integer", "s64p": "64-bit integer"}.get(
                 frame.format.name, frame.format.name)
             raise LibraryError(415, "unsupported_format",
-                               Text("The audio's sample format ({name}) cannot be loaded; use 16-, 24- or 32-bit PCM, or floating point.", name=name))
+                               Text("file.audio_sample_format", name=name))
         problem = audio_overflow(samples, channels, rate, limits, claimed)
         if problem:
             raise LibraryError(413, *problem)
@@ -383,25 +386,24 @@ def audio_overflow(samples, channels, rate, limits, claimed=None):
     if samples > limits["seconds"] * rate:
         limit = _span(limits["seconds"])
         if claimed and claimed > limits["seconds"]:
-            return "too_long", Text("The audio is too long ({length}); the limit is {limit}.", length=_clock(claimed), limit=limit)
-        return "too_long", Text("The audio is too long; the limit is {limit}.", limit=limit)
+            return "too_long", Text("file.audio_too_long_length", length=_clock(claimed), limit=limit)
+        return "too_long", Text("file.audio_too_long", limit=limit)
     if samples * channels > limits["samples"]:
-        values = {"channels": channels, "rate": format(rate / 1000, "g"),
+        values = {"count": channels, "rate": format(rate / 1000, "g"),
                   "length": _clock(limits["samples"] / channels / rate)}
-        if channels > 1:
-            return "too_many_samples", Text("The audio is too large to load: with {channels} channels at {rate} kHz it may "
-                                            "last at most {length}.", **values)
-        return "too_many_samples", Text("The audio is too large to load: with {channels} channel at {rate} kHz it may last "
-                                        "at most {length}.", **values)
+        return "too_many_samples", Text("file.audio_too_large", **values)
     return None
 
 
 def _span(seconds):
     if seconds % 60 == 0:
-        count = format(seconds // 60, "g")
-        return Text("{count} minute", count=count) if seconds == 60 else Text("{count} minutes", count=count)
-    count = format(seconds, "g")
-    return Text("{count} second", count=count) if seconds == 1 else Text("{count} seconds", count=count)
+        return Text("file.minutes", count=_number(seconds // 60))
+    return Text("file.seconds", count=_number(seconds))
+
+
+def _number(value):
+    """`value` as a page counts it: 5 rather than 5.0."""
+    return int(value) if float(value).is_integer() else value
 
 
 def _clock(seconds):

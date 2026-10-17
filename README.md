@@ -6,7 +6,7 @@
 
 ## 현재 구현과 문서
 
-이 문서와 [설계 개요](docs/design.md)는 노드 0.0.26의 소스를 기준으로 한다.
+이 문서와 [설계 개요](docs/design.md)는 노드 0.0.27의 소스를 기준으로 한다.
 
 - 번들과 미디어는 ComfyUI 사용자 디렉토리의 `bundle_library/`에 저장한다. 번들은 UUID로 구분하고,
   이름은 같아도 된다. 라이브러리 창에서 만들기·편집·복제·삭제를 지원한다.
@@ -176,24 +176,30 @@ changes first."라고 알린다. 저장(Save)하거나 되돌리면(Revert) 풀�
 
 ## 언어
 
-(0.0.24부터)
+(0.0.24부터, 언어별 메시지 목록은 0.0.27부터)
 
-- 화면은 ComfyUI의 언어 설정(Settings → Comfy → Locale)을 따른다. 한국어면 한국어로, 그 밖의 언어면 영어로
-  보인다. 설정을 바꾸면 그다음에 그리는 화면부터 바뀐다(열려 있던 창은 다시 열 때).
+- 화면은 ComfyUI의 언어 설정(Settings → Comfy → Locale)을 따른다. 목록이 있는 언어(지금은 한국어)면 그 언어로,
+  그 밖의 언어면 영어로 보인다. 설정을 바꾸면 그다음에 그리는 화면부터 바뀐다(열려 있던 창은 다시 열 때).
 - 노드의 이름·설명·입력 설명과 명령 이름은 ComfyUI가 노드 팩의 `locales/ko/`로 바꾼다. ComfyUI는 이 파일을
   시작할 때 읽고, 노드 이름은 페이지를 열 때 정해진다.
 - 서버가 보내는 오류와 이유(일괄·내보내기·가져오기의 번들별 이유, 읽기 전용의 이유, 저장 규칙의 경고 등)도
   한국어로 보인다(0.0.25부터). 번들·태그·필드·카테고리 이름 같은 사용자의 데이터와, 디스크 오류처럼 시스템이 주는
   글은 그대로 보인다.
+- 언어를 더하려면 `locales/ko/`를 본떠 `locales/<언어 코드>/`를 만든다. 코드는 ComfyUI의 것(`ja`, `zh-TW` 등)이다.
+  `bundle_library.json`(이 노드 팩의 메시지. 항목마다 `{"en": 번역한 영어, "text": 번역}`), `nodeDefs.json`,
+  `commands.json`을 둔다. 번역하지 않은 메시지는 영어로 보인다. `node --test tests/js/*.test.mjs`가 빠진 메시지와,
+  번역한 뒤 영어가 바뀐 메시지를 보고한다. 형식은 [데이터 형식](docs/data-format.md#메시지-목록)에 있다.
 
 ## 개발 규칙
 
 - 코드에 나오는 문자열(UI, 오류·로그 메시지, 자동으로 만드는 이름)은 영어로 쓴다. 문서는
   한국어로 쓴다.
-- 화면의 문자열은 `web/i18n.js`의 `t()`·`tn()`·`plural()`·`msg()`·`around()`로 쓰고, 한국어를 `web/locales/ko.js`에
-  더한다. 문장을 조각으로 잇지 않는다(언어마다 어순이 다르다). `tests/js/i18n.test.mjs`가 빠진 항목, 자리표시가
-  다른 항목, 쓰이지 않는 항목을 잡는다. 서버가 보내는 문장은 `bundle_library/text.py`의 `Text`로 만든다
-  (`tests/test_text.py`가 잡는다).
+- 화면과 서버의 메시지는 id로 쓴다. 화면은 `web/i18n.js`의 `t(id, values)`·`msg(id)`·`around()`, 서버는
+  `bundle_library/text.py`의 `Text(id, ...)`다. 문장은 `locales/en/bundle_library.json`에, 한국어는
+  `locales/ko/bundle_library.json`에 더한다. 문장을 조각으로 잇지 않는다(언어마다 어순이 다르다). 영어를 고치면
+  한국어를 다시 번역하고 그 `en`을 지금의 영어로 바꾼다. `tests/js/i18n.test.mjs`가 없는 id, 쓰이지 않는 항목,
+  꼴이나 자리표시가 다른 번역, 빠지거나 오래된 한국어를 잡는다. 서버가 내는 오류는 `Text`여야 한다
+  (`tests/test_text.py`).
 
 ## 테스트
 
@@ -227,7 +233,7 @@ scripts/bundle-library-test-server.sh stop
 | 테스트 | 확인하는 것 |
 | --- | --- |
 | `tests/test_*.py` (`python -m unittest discover -s tests -t .`) | 저장소, 모델, API, 변환, 미디어 검사. `test_compat.py`는 `tests/fixtures/compat/`의 출시 표본으로 호환성 계약을, `test_versions.py`는 버전 번호와 JS 상수 사본을 확인한다 |
-| `tests/js/*.test.mjs` (호스트의 `node --test`) | 슬롯 조정, 이름 표시, 목록 묶음의 순수 함수, 번역 사전(화면 코드와 서버의 모든 문장에 한국어 항목이 있고 자리표시가 같은지) |
+| `tests/js/*.test.mjs` (호스트의 `node --test`) | 슬롯 조정, 이름 표시, 목록 묶음의 순수 함수, 메시지 목록(코드가 쓰는 id가 영어 목록에 있고 쓰이지 않는 항목이 없는지, 번역의 꼴·자리표시가 영어와 맞는지, 한국어에 빠지거나 오래된 번역이 없는지) |
 | `tests/e2e/compare_load_image.py`, `compare_media.py` | 변환 결과가 core LoadImage·LoadVideo·LoadAudio와 같은지 |
 | `tests/e2e/api_smoke.py` | 테스트 번들 두 개를 만들어 API로 확인한다 |
 | `tests/e2e/node_smoke.py` | Load Bundle을 실행해 출력, 캐시, 오류를 확인한다 |

@@ -14,21 +14,21 @@ export const CHANGED_EVENT = "bundle-library:changed";
 // ways, so video and audio are only checked by their prefix.
 export const MEDIA = {
     image: { bytes: 50 * 1024 * 1024, types: ["image/png", "image/jpeg", "image/webp"],
-        accept: "image/png,image/jpeg,image/webp", label: msg("PNG, JPEG and WebP images") },
+        accept: "image/png,image/jpeg,image/webp", label: msg("upload.kinds_image") },
     video: { bytes: 1024 * 1024 * 1024, prefix: "video/", accept: "video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov",
-        label: msg("MP4, WebM and MOV videos") },
+        label: msg("upload.kinds_video") },
     audio: { bytes: 200 * 1024 * 1024, prefix: "audio/", accept: "audio/*,.wav,.flac,.mp3,.ogg,.opus,.m4a",
-        label: msg("WAV, FLAC, MP3, OGG and M4A audio files") },
+        label: msg("upload.kinds_audio") },
 };
 
 /** Why `file` cannot go in a field of `kind`, or null. */
 export function fileProblem(file, kind) {
     const spec = MEDIA[kind];
     const typed = !file.type || (spec.types ? spec.types.includes(file.type) : file.type.startsWith(spec.prefix));
-    if (!typed) return t("Only {kinds} are accepted.", { kinds: t(spec.label) });
+    if (!typed) return t("upload.only_kinds", { kinds: t(spec.label) });
     if (file.size > spec.bytes) {
         const limit = spec.bytes >= 1024 ** 3 ? `${spec.bytes / 1024 ** 3} GB` : `${spec.bytes / 1024 ** 2} MB`;
-        return t("The file is larger than {limit}.", { limit });
+        return t("upload.too_large", { limit });
     }
     return null;
 }
@@ -57,11 +57,10 @@ export function warnVersionMismatch(server, page = VERSION) {
     if (versionWarned || server === page) return;
     versionWarned = true;
     const detail = newer(page, server)
-        ? t("Bundle Library was updated to {page}, but ComfyUI still runs {server}. Restart ComfyUI to finish the update.",
-            { page, server })
-        : t("ComfyUI runs Bundle Library {server}, but this page has {page}. Reload the page.", { page, server });
+        ? t("version.restart_comfyui", { page, server })
+        : t("version.reload_page", { page, server });
     app.extensionManager?.toast?.add({ severity: "warn", summary: "Bundle Library",
-        detail: t("{detail} Until then the library cannot be changed from this page.", { detail }) });
+        detail: t("version.read_only", { detail }) });
 }
 
 /** Compare this page's version with the server's (on start). */
@@ -97,7 +96,7 @@ async function request(path, options = {}, { changes = true } = {}) {
     try {
         response = await api.fetchApi(PREFIX + path, { ...options, method, headers });
     } catch (error) {
-        throw new ApiError(t("Could not reach ComfyUI: {reason}", { reason: error.message }), 0, "network");
+        throw new ApiError(t("api.unreachable_reason", { reason: error.message }), 0, "network");
     }
     const body = await response.json().catch(() => null);
     if (!response.ok) {
@@ -112,6 +111,9 @@ async function request(path, options = {}, { changes = true } = {}) {
     }
     return body;
 }
+
+/** The catalogs of messages for a language code such as "ko" (i18n.js): GET /messages. */
+export const getMessages = (code) => request(`/messages?lang=${encodeURIComponent(code)}`);
 
 function json(method, data) {
     return { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) };
@@ -222,7 +224,7 @@ export function uploadAsset(file, kind = "image", { onProgress = null, name = nu
  */
 function postFile(route, form, { onProgress = null, signal = null } = {}) {
     return new Promise((resolve, reject) => {
-        const aborted = () => reject(new ApiError(t("Upload cancelled."), 0, "aborted"));
+        const aborted = () => reject(new ApiError(t("upload.cancelled"), 0, "aborted"));
         if (signal?.aborted) return aborted();
         const xhr = new XMLHttpRequest();
         xhr.open("POST", api.apiURL(`${PREFIX}${route}`));
@@ -239,9 +241,9 @@ function postFile(route, form, { onProgress = null, signal = null } = {}) {
             const detail = xhr.response?.error;
             if (detail?.code === "version_mismatch") warnVersionMismatch(detail.server_version);
             if (xhr.status >= 200 && xhr.status < 300 && xhr.response) resolve(xhr.response);
-            else reject(new ApiError(detail?.message ?? t("Upload failed: HTTP {status}", { status: xhr.status }), xhr.status, detail?.code, detail));
+            else reject(new ApiError(detail?.message ?? t("upload.failed_http", { status: xhr.status }), xhr.status, detail?.code, detail));
         });
-        xhr.addEventListener("error", () => reject(new ApiError(t("Could not reach ComfyUI."), 0, "network")));
+        xhr.addEventListener("error", () => reject(new ApiError(t("api.unreachable"), 0, "network")));
         xhr.addEventListener("abort", aborted);
         signal?.addEventListener("abort", () => xhr.abort(), { once: true });
         xhr.send(form);

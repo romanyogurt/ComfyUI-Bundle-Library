@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import "./english.mjs"; // the English catalog, as the page has it
 import { compactGroups, groupBundles, groupLabel } from "../../web/groups.js";
 
 const heroes = { id: "c1", name: "Heroes" };

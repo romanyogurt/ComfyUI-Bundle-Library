@@ -2,7 +2,7 @@
 
 Bundle Library가 디스크에 저장하는 형식과 HTTP API를 정리한다. 구현은
 `bundle_library/model.py`(검증), `schema.py`(번들 파일의 버전과 상태), `store.py`(번들),
-`organization.py`(카테고리와 즐겨찾기), `assets.py`(미디어), `routes.py`(API)에 있다. 버전이 다른 파일을 어떻게 다루는지는 끝의
+`organization.py`(카테고리와 즐겨찾기), `assets.py`(미디어), `text.py`(메시지), `routes.py`(API)에 있다. 버전이 다른 파일을 어떻게 다루는지는 끝의
 [호환성 정책](#호환성-정책)에 있다.
 
 ## 저장 위치
@@ -228,6 +228,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | 메서드 | 경로 | 요청 | 응답 |
 | --- | --- | --- | --- |
 | GET | `/health` | — | `{"version", "organization", "bundles", "trash", "corrupt", "newer", "unsupported", "legacy_trash": [파일 이름], "writable"}`. `organization`은 정리 파일의 상태(`missing`, `ok`, `read_only`, `newer_version`, `unsupported`, `corrupt`) |
+| GET | `/messages?lang=` | — | `{"languages", "messages"}`: 영어와 그 언어의 메시지 목록. 아래 "메시지 목록" (0.0.27부터) |
 | GET | `/bundles` | `q`(이름·태그·카테고리 이름·필드 이름·텍스트 값 검색), `tag`, `sort`(`name`/`updated`, 이름이 같으면 id 순) | `{"bundles": [요약], "errors": [{"file", "id", "code", "error"}], "categories": [{"id", "name", "parent", "count"}], "organization": {"revision", "state"}}`. 휴지통의 번들은 빠진다. `categories`는 이름순이고 `count`는 걸러진 목록에서 센다 |
 | POST | `/bundles` | `{"name", "tags"?, "note"?, "fields"?, "category"?}` | 201, 번들. `category`(id)를 주면 그 카테고리에도 둔다. 형식은 쓰기 전에 검사하고(400), 없는 카테고리 등 배치만 실패하면 `placement_error` |
 | GET | `/bundles/{id}` | — | 번들. 경고가 있으면 `warnings`, 읽기 전용이면 `read_only`(이유)를 더한다. 휴지통에 있으면 404 `in_trash` |
@@ -467,22 +468,46 @@ assets/<SHA-256>.<ext>    번들들이 쓰는 파일의 원본 (썸네일은 넣
 
 ### 메시지의 번역
 
-(0.0.25부터) 서버가 보내는 문장(오류의 `message`, 일괄·내보내기·가져오기 결과의 번들별 `message`와 `reason`,
-`warning`, `placement_error`, 번들의 `read_only`와 `warnings`, 목록 `errors`의 `error`, 태그 작업의 이유)은
-영어 문장 그대로이고, 그 곁에 `<키>_i18n`으로 그 문장의 틀과 값을 함께 준다. 문장의 목록(`warnings`) 곁에는 같은
-순서의 목록을 준다(틀이 없는 항목은 `null`).
+(0.0.25부터, id는 0.0.27부터) 서버가 보내는 문장(오류의 `message`, 일괄·내보내기·가져오기 결과의 번들별 `message`와
+`reason`, `warning`, `placement_error`, 번들의 `read_only`와 `warnings`, 목록 `errors`의 `error`, 태그 작업의 이유)은
+영어 문장 그대로이고, 그 곁에 `<키>_i18n`으로 그 메시지의 id와 값을 함께 준다. 문장의 목록(`warnings`) 곁에는 같은
+순서의 목록을 준다(id가 없는 항목은 `null`).
 
 ```json
 {"error": {"code": "wrong_kind", "message": "Field 'ref': the file is an audio, not an image.",
-           "message_i18n": {"template": "Field '{name}': the file is {kind}, not {type}.",
-                            "values": {"name": "ref", "kind": {"word": "an audio"}, "type": {"word": "an image"}}}}}
+           "message_i18n": {"id": "store.wrong_kind",
+                            "values": {"name": "ref", "kind": {"id": "kind.an_audio", "values": {}},
+                                       "type": {"id": "kind.an_image", "values": {}}}}}}
 ```
 
-- `template`은 영어 문장의 틀이고 `{이름}` 자리만 있다. 화면은 이것을 키로 제 언어의 사전(`web/locales/ko.js`)에서
-  찾고, 없으면 영어 그대로 보인다.
-- 값은 이름이나 수(그대로 보인다), `{"word"}`(번역할 낱말: "an image" 같은 것), 또는 다른 틀
-  `{"template", "values"}`다. 사용자의 이름(번들·필드·카테고리·태그·파일 이름)은 번역하지 않는다.
+- `id`는 [메시지 목록](#메시지-목록)의 키다. 화면은 이것을 제 언어의 목록에서 찾고, 모르는 id면 받은 영어를 그대로
+  보인다.
+- 값은 이름이나 수(그대로 보인다), 또는 다른 메시지 `{"id", "values"}`(번역할 낱말: "an image" 같은 것)다. 사용자의
+  이름(번들·필드·카테고리·태그·파일 이름)은 번역하지 않는다. 수에 따라 꼴이 바뀌는 메시지는 값 `count`로 꼴을 고른다.
 - 시스템이 주는 글(디스크 오류의 이유 등)은 값으로 들어가 영어로 남는다.
+- 0.0.25·0.0.26의 `{"template", "values"}`(영어 틀과 값, 낱말은 `{"word"}`)는 0.0.27에서 `{"id", "values"}`로 바뀌었다.
+  화면은 id가 없는 것을 받은 영어로 보인다.
+
+### 메시지 목록
+
+`GET /messages?lang=<언어 코드>`는 화면이 메시지를 말하는 목록을 준다(0.0.27부터). 읽기 요청이라 쓰기 헤더가 필요 없다.
+
+```json
+{"languages": ["en", "ko"],
+ "messages": {"en": {"trash.empty_confirm": "Empty the trash?",
+                     "count.bundles": {"one": "{count} bundle", "other": "{count} bundles"}},
+              "ko": {"trash.empty_confirm": "휴지통을 비울까요?", "count.bundles": "번들 {count}개"}}}
+```
+
+- `languages`는 목록이 있는 언어다. `messages`에는 영어와, `lang`에 맞는 언어(대소문자를 가리지 않고 같은 코드,
+  없으면 기본 언어: `ko-KR`은 `ko`)의 목록이 있다. 맞는 언어가 없으면 영어만 있다.
+- 목록은 요청마다 디스크에서 읽는다. 업데이트한 뒤 아직 재시작하지 않은 서버도 새 화면에 새 목록을 준다. 읽을 수
+  없는 번역 목록은 빼고 서버 로그에 남긴다.
+- 파일은 노드 팩의 `locales/<언어>/bundle_library.json`이다. 영어는 id → 문장, 또는 수에 따라 꼴이 바뀌면
+  `{"one", "other"}`다. 번역은 id → `{"en": 번역할 때의 영어, "text": 번역}`이고, 응답에는 `text`만 담는다. `en`은
+  번역이 바탕으로 삼은 영어로, 지금의 영어와 다르면 그 번역은 오래된 것이다(검사가 보고한다).
+- 번역의 꼴은 그 언어의 `Intl.PluralRules` 범주(`one`, `few`, `many`, `other` 등)마다 두고, 범주가 `other` 하나뿐인
+  언어는 문장 하나로 쓴다. 자리표시 `{이름}`은 영어와 같아야 하고, 다르면 화면은 영어를 보인다.
 
 ### 오류
 

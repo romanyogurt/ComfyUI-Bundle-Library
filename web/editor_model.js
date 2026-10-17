@@ -12,7 +12,7 @@ const TEXT_PREVIEW = 200; // characters of a text field in a list summary (bundl
 const LARGEST = Number.MAX_SAFE_INTEGER.toLocaleString("en-US");
 
 /** Why a whole number cannot be kept as it is. */
-export const tooLarge = () => t("Whole numbers must be within ±{max}.", { max: LARGEST });
+export const tooLarge = () => t("editor.int_range", { max: LARGEST });
 
 let lastKey = 0;
 
@@ -35,8 +35,8 @@ export function numberProblem(type, text) {
     const blank = text.trim() === "";
     const value = Number(text);
     if (!blank && Number.isFinite(value) && (type !== "int" || Number.isSafeInteger(value))) return null;
-    if (type !== "int") return t("Enter a number.");
-    return !blank && Number.isInteger(value) ? tooLarge() : t("Enter a whole number.");
+    if (type !== "int") return t("editor.enter_number");
+    return !blank && Number.isInteger(value) ? tooLarge() : t("editor.enter_integer");
 }
 
 /**
@@ -55,7 +55,7 @@ function draftField(field, origin = field.name) {
         draft.text = exact ?? String(draft.value);
         draft.original = draft.text;
         draft.originalValue = draft.value;
-        draft.problem = exact ? t("Whole numbers must be within ±{max}. Change this value before saving.", { max: LARGEST }) : null;
+        draft.problem = exact ? t("editor.int_range_fix", { max: LARGEST }) : null;
     }
     return draft;
 }
@@ -81,7 +81,7 @@ export function summaryOf(bundle) {
 
 export class EditorModel {
     /** `bundle`: the stored bundle to edit, or null for a new one called `newName`. */
-    constructor(bundle, newName = t("New bundle")) {
+    constructor(bundle, newName = t("common.new_bundle")) {
         // Uploads running, by field key: {controller, name, sent}. Only the file
         // chosen last for a field counts; an earlier upload is stopped.
         this.uploads = new Map();
@@ -89,7 +89,7 @@ export class EditorModel {
     }
 
     /** Edit `bundle` (as stored) from now on, or a new one: the draft starts over, and running uploads stop. */
-    load(bundle, newName = t("New bundle")) {
+    load(bundle, newName = t("common.new_bundle")) {
         this.stopUploads();
         this.saved = bundle;
         this.pendingCategory = null; // where a new bundle goes when first saved (an id, or null)
@@ -146,12 +146,11 @@ export class EditorModel {
         const notes = new Map();
         for (const field of this.draft.fields) {
             const name = field.name.trim();
-            const problem = !name ? t("A field needs a name.")
-                : counts.get(name) > 1 ? t("Another field is also named '{name}'.", { name })
-                    : name.startsWith("@") ? t("Names starting with '@' are reserved.") : null;
+            const problem = !name ? t("editor.field_name_required")
+                : counts.get(name) > 1 ? t("editor.field_name_taken", { name })
+                    : name.startsWith("@") ? t("editor.field_name_reserved") : null;
             const renamed = field.origin && field.origin !== name
-                ? t("Renamed from '{origin}': workflows connected to '{origin}' will show it as missing.",
-                    { origin: field.origin }) : null;
+                ? t("editor.renamed_from", { origin: field.origin }) : null;
             notes.set(field.key, { problem, renamed });
         }
         return notes;
@@ -159,11 +158,11 @@ export class EditorModel {
 
     /** Why the draft cannot be saved as it is, or null. */
     get blocker() {
-        if (this.readOnly) return t("This version of Bundle Library cannot change this bundle.");
-        if (this.uploads.size > 0) return t("Wait for the upload to finish.");
-        if (!this.draft.name.trim()) return t("The bundle needs a name.");
-        if ([...this.nameNotes().values()].some((n) => n.problem)) return t("Fix the marked field names first.");
-        if (this.draft.fields.some((f) => f.problem)) return t("Fix the marked values first.");
+        if (this.readOnly) return t("editor.locked");
+        if (this.uploads.size > 0) return t("editor.wait_upload");
+        if (!this.draft.name.trim()) return t("editor.name_required");
+        if ([...this.nameNotes().values()].some((n) => n.problem)) return t("editor.fix_field_names");
+        if (this.draft.fields.some((f) => f.problem)) return t("editor.fix_values");
         return null;
     }
 

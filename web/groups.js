@@ -39,9 +39,9 @@ export function groupBundles(bundles, categories, errors = [], { filtering = fal
 
 /** The heading of a group. */
 export function groupLabel(group) {
-    if (group.kind === ATTENTION) return `⚠ ${t("Needs attention")}`;
-    if (group.kind === FAVORITES) return `★ ${t("Favorites")}`;
-    return group.kind === UNCATEGORIZED ? t("Uncategorized") : group.name; // a category's name is the user's
+    if (group.kind === ATTENTION) return `⚠ ${t("list.needs_attention")}`;
+    if (group.kind === FAVORITES) return `★ ${t("common.favorites")}`;
+    return group.kind === UNCATEGORIZED ? t("common.uncategorized") : group.name; // a category's name is the user's
 }
 
 /**

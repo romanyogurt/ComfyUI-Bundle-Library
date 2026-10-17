@@ -76,21 +76,35 @@ class RoutesTest(AioHTTPTestCase):
         await self.body(await self.client.post(P + "/bundles", json=data, headers={
             **WRITE, "Origin": same_origin, "Sec-Fetch-Site": "same-origin"}), 201)
 
-    async def test_a_message_comes_with_its_template_for_the_page_to_translate(self):
-        # Phase 9b: the English as before, and beside it what it was made of (bundle_library/text.py).
+    async def test_a_message_comes_with_its_id_for_the_page_to_translate(self):
+        # The English as before, and beside it the message's id and values (bundle_library/text.py, 0.0.27).
         await self.body(await self.client.post(P + "/categories", json={"name": "Heroes"}, headers=WRITE), 201)
         error = await self.error(await self.client.post(P + "/categories", json={"name": "heroes"}, headers=WRITE),
                                  409, "category_conflict")
-        self.assertEqual(error["message_i18n"], {"template": "A category named '{name}' already exists.",
-                                                 "values": {"name": "Heroes"}})
+        self.assertEqual(error["message"], "A category named 'Heroes' already exists.")
+        self.assertEqual(error["message_i18n"], {"id": "category.name_taken", "values": {"name": "Heroes"}})
         bundle = await self.body(await self.client.post(P + "/bundles", json=await self.bundle_data(), headers=WRITE), 201)
         answer = await self.body(await self.client.post(P + "/bundles/batch", json={
             "ids": [bundle["id"]], "action": "trash", "expected_revisions": {bundle["id"]: bundle["revision"] + 1}},
             headers=WRITE), 200)
         result = answer["results"][0]
-        self.assertEqual((result["code"], result["message_i18n"]["template"]),
-                         ("revision_conflict", "The bundle has changed since it was loaded (now revision {revision})."),
-                         result)
+        self.assertEqual((result["code"], result["message_i18n"]["id"]), ("revision_conflict", "store.revision_conflict"), result)
+
+    async def test_the_page_gets_the_catalogs_of_english_and_its_language(self):
+        # GET /messages needs no write header: what the page says its messages with (text.catalogs).
+        answer = await self.body(await self.client.get(P + "/messages?lang=ko-KR"), 200)
+        self.assertIn("en", answer["languages"])
+        self.assertIn("ko", answer["languages"])
+        self.assertEqual(sorted(answer["messages"]), ["en", "ko"])
+        self.assertEqual(answer["messages"]["en"]["trash.empty_confirm"], "Empty the trash?")
+        self.assertEqual(answer["messages"]["en"]["count.bundles"], {"one": "{count} bundle", "other": "{count} bundles"})
+        self.assertEqual(answer["messages"]["ko"]["trash.empty_confirm"], "휴지통을 비울까요?")  # the text alone
+        self.assertEqual(answer["messages"]["ko"]["count.bundles"], "번들 {count}개")
+        for lang in ("fr", "", "en"):
+            answer = await self.body(await self.client.get(P + "/messages?lang=" + lang), 200)
+            self.assertEqual(sorted(answer["messages"]), ["en"], lang)
+        answer = await self.body(await self.client.get(P + "/messages"), 200)
+        self.assertEqual(sorted(answer["messages"]), ["en"])
 
     async def test_every_write_route_is_guarded(self):
         bundle = await self.body(await self.client.post(P + "/bundles", json=await self.bundle_data(), headers=WRITE), 201)

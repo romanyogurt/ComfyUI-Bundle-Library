@@ -8,12 +8,12 @@ import {
 import { BatchPanel, BatchResult, ExportResult } from "./batch_panel.js";
 import { BundleEditor } from "./bundle_editor.js";
 import { Commands } from "./commands.js";
-import { button, closeMenus, code, codeList, el, icon, menu, plural } from "./dom.js";
+import { button, closeMenus, code, codeList, el, icon, menu } from "./dom.js";
 import { ATTENTION, CATEGORY, FAVORITES, UNCATEGORIZED, compactGroups, groupBundles, groupLabel } from "./groups.js";
 import { ImportPanel, ImportResult } from "./import_panel.js";
 import { displayNames } from "./names.js";
 import { slotStatuses } from "./reconcile.js";
-import { around, msg, said, t, tn } from "./i18n.js";
+import { around, msg, said, t } from "./i18n.js";
 import { compareText, sameTag, tagCounts } from "./tags.js";
 import { TagsPanel } from "./tags_panel.js";
 import { TrashPanel } from "./trash_panel.js";
@@ -48,10 +48,10 @@ function draggedIds(data) {
 const COLLAPSED_KEY = "bundle-library.collapsed-groups";
 const SORT_KEY = "bundle-library.sort";
 // [value, menu text, icon, button label]. "name" and "updated" are the values kept from before 0.0.26.
-const SORTS = [["name", msg("Name A→Z"), "sort-alpha-down", msg("Sort: name A→Z")],
-    ["name_desc", msg("Name Z→A"), "sort-alpha-up", msg("Sort: name Z→A")],
-    ["updated", msg("Newest first"), "sort-amount-down", msg("Sort: newest first")],
-    ["updated_asc", msg("Oldest first"), "sort-amount-up", msg("Sort: oldest first")]];
+const SORTS = [["name", msg("library.sort_name"), "sort-alpha-down", msg("library.sort_name_title")],
+    ["name_desc", msg("library.sort_name_desc"), "sort-alpha-up", msg("library.sort_name_desc_title")],
+    ["updated", msg("library.sort_updated"), "sort-amount-down", msg("library.sort_updated_title")],
+    ["updated_asc", msg("library.sort_updated_asc"), "sort-amount-up", msg("library.sort_updated_asc_title")]];
 
 function remembered(key, fallback) {
     try {
@@ -82,10 +82,10 @@ function loadSort() {
 
 // What an empty group says, unless the whole list is empty (that has its own line).
 const EMPTY_GROUP = {
-    [FAVORITES]: msg("Star a bundle (☆) to list it here as well."),
-    [CATEGORY]: msg("No bundles. Drag one here, or choose this category in the editor."),
+    [FAVORITES]: msg("library.favorites_hint"),
+    [CATEGORY]: msg("library.group_empty_category"),
 };
-const EMPTY_WHILE_FILTERING = msg("No starred bundle matches.");
+const EMPTY_WHILE_FILTERING = msg("library.no_favorite_match");
 
 /** The text around elements (around() in i18n.js), with the elements in their place. */
 const spread = ([before, after], middle) => [before, ...middle, after];
@@ -157,17 +157,17 @@ class LibraryModal {
         const title = el("div", "bl-modal-title", "Bundle Library");
         this.search = el("input", "bl-input bl-search");
         this.search.type = "search";
-        this.search.placeholder = t("Search names, tags, fields and text");
+        this.search.placeholder = t("library.search_placeholder");
         let searchTimer = null;
         this.search.addEventListener("input", () => {
             if (this.lockReason) return; // disabled meanwhile; a typed key that slipped through does nothing
             clearTimeout(searchTimer);
             searchTimer = setTimeout(() => void this.applySearch(), 250);
         });
-        const create = button(t("+ New bundle"), "bl-btn primary bl-new");
+        const create = button(t("library.new_bundle_button"), "bl-btn primary bl-new");
         create.addEventListener("click", () => void this.newBundle());
         this.createButton = create;
-        const close = button("✕", "bl-btn icon bl-close", t("Close (Esc)"));
+        const close = button("✕", "bl-btn icon bl-close", t("library.close"));
         close.addEventListener("click", () => void this.requestClose());
         header.append(title, this.search, create, close);
 
@@ -185,9 +185,9 @@ class LibraryModal {
         footer.append(this.statusLine);
         if (this.onPick) {
             this.pickHint = el("div", "bl-pick-hint");
-            const cancel = button(t("Cancel"));
+            const cancel = button(t("common.cancel"));
             cancel.addEventListener("click", () => void this.requestClose());
-            this.pickButton = button(t("Use this bundle"), "bl-btn primary bl-pick");
+            this.pickButton = button(t("library.use_bundle"), "bl-btn primary bl-pick");
             this.pickButton.addEventListener("click", () => this.pick());
             footer.append(this.pickHint, cancel, this.pickButton);
         }
@@ -307,8 +307,8 @@ class LibraryModal {
     buildTools() {
         const footer = el("div", "bl-side-footer");
         const tools = el("div", "bl-list-tools");
-        this.newCategoryButton = button("", "bl-btn icon bl-new-category", t("New category"));
-        this.newCategoryButton.setAttribute("aria-label", t("New category"));
+        this.newCategoryButton = button("", "bl-btn icon bl-new-category", t("library.category_new"));
+        this.newCategoryButton.setAttribute("aria-label", t("library.category_new"));
         this.newCategoryButton.append(icon("folder-plus"));
         this.newCategoryButton.addEventListener("click", () => {
             if (this.allowed()) void this.newCategory();
@@ -318,7 +318,7 @@ class LibraryModal {
         })), { className: "bl-btn icon bl-sort-button", up: true });
         this.sortButton = sort.opener;
         const tags = menu(icon("filter"), () => this.tagChoices(), {
-            className: "bl-btn icon bl-tag-button", up: true, search: t("Find a tag"), empty: t("No tags match."),
+            className: "bl-btn icon bl-tag-button", up: true, search: t("library.tag_find"), empty: t("library.no_tag_match"),
         });
         this.tagButton = tags.opener;
         this.trashButton = button("", "bl-btn icon bl-trash-button");
@@ -326,7 +326,7 @@ class LibraryModal {
         this.trashButton.append(icon("trash"), this.trashCount);
         this.trashButton.addEventListener("click", () => void this.showTrash());
         this.importButton = button("", "bl-btn icon bl-import-button");
-        this.importButton.setAttribute("aria-label", t("Import bundles from a ZIP"));
+        this.importButton.setAttribute("aria-label", t("library.import_title"));
         this.importButton.append(icon("upload"));
         const importPicker = el("input");
         importPicker.type = "file";
@@ -345,7 +345,7 @@ class LibraryModal {
         // While a bundle in a category is dragged, this takes the place of the
         // tools: Uncategorized may be hidden (it is when empty). Same height,
         // so nothing in the list moves.
-        this.dropZone = el("div", "bl-drop-zone", t("Drop here to take it out of its category"));
+        this.dropZone = el("div", "bl-drop-zone", t("library.drop_uncategorize"));
         this.dropZone.hidden = true;
         this.dropTarget(this.dropZone, { kind: UNCATEGORIZED });
         footer.append(tools, this.dropZone);
@@ -373,11 +373,11 @@ class LibraryModal {
     /** The tags of the bundles in use, with how many bundles have each; for the tag menu. */
     tagChoices() {
         return [
-            { text: t("All tags"), value: "", checked: !this.tag, always: true, action: () => this.setTag("") },
+            { text: t("library.tag_all"), value: "", checked: !this.tag, always: true, action: () => this.setTag("") },
             ...tagCounts(this.all).map(({ name, count }) => ({
                 text: name, count, value: name, checked: !!this.tag && sameTag(this.tag, name), action: () => this.setTag(name),
             })),
-            { text: t("Manage tags…"), always: true, action: () => void this.showTags() },
+            { text: t("library.manage_tags"), always: true, action: () => void this.showTags() },
         ];
     }
 
@@ -392,16 +392,16 @@ class LibraryModal {
     showTagFilter() {
         this.chips.hidden = !this.tag;
         this.tagButton.classList.toggle("active", !!this.tag);
-        this.tagButton.title = this.lockReason ?? (this.tag ? t("Tag: {tag}", { tag: this.tag }) : t("Filter by tag"));
-        this.tagButton.setAttribute("aria-label", this.tag ? t("Filter by tag (now: {tag})", { tag: this.tag }) : t("Filter by tag"));
+        this.tagButton.title = this.lockReason ?? (this.tag ? t("library.tag_filter_label", { tag: this.tag }) : t("library.tag_filter"));
+        this.tagButton.setAttribute("aria-label", this.tag ? t("library.tag_filter_now", { tag: this.tag }) : t("library.tag_filter"));
         if (!this.tag) {
             this.chips.replaceChildren();
             return;
         }
-        const chip = el("span", "bl-chip bl-filter-chip", t("Tag: {tag}", { tag: this.tag }));
-        const clear = button("×", "bl-chip-x", t("Show every tag"));
+        const chip = el("span", "bl-chip bl-filter-chip", t("library.tag_filter_label", { tag: this.tag }));
+        const clear = button("×", "bl-chip-x", t("library.tag_show_all"));
         clear.disabled = !!this.lockReason;
-        clear.setAttribute("aria-label", t("Clear the tag filter"));
+        clear.setAttribute("aria-label", t("library.clear_tag_filter"));
         clear.addEventListener("click", () => {
             this.setTag("");
             this.tagButton.focus({ preventScroll: true });
@@ -423,7 +423,7 @@ class LibraryModal {
         try {
             library = await listLibrary({ fresh: true });
         } catch (error) {
-            if (generation === this.listGeneration) this.status(t("Could not read the library: {reason}", { reason: error.message }), "error");
+            if (generation === this.listGeneration) this.status(t("library.read_failed", { reason: error.message }), "error");
             return;
         }
         if (generation !== this.listGeneration || this.closed) return; // a newer reload answers instead
@@ -466,7 +466,7 @@ class LibraryModal {
         try {
             matches = query ? await searchBundleIds(query) : null;
         } catch (error) {
-            if (generation === this.searchGeneration) this.status(t("Could not search: {reason}", { reason: error.message }), "error");
+            if (generation === this.searchGeneration) this.status(t("library.search_failed", { reason: error.message }), "error");
         }
         if (generation !== this.searchGeneration) return; // the query changed meanwhile
         this.matches = matches;
@@ -503,8 +503,8 @@ class LibraryModal {
         const nothing = !visible.length && !groups.some((g) => g.errors.length);
         const parts = groups.map((group) => this.renderGroup(group, filtering, nothing));
         if (nothing) {
-            parts.push(el("div", "bl-empty-state", filtering ? t("No bundles match.")
-                : t("No bundles yet. Create one with + New bundle.")));
+            parts.push(el("div", "bl-empty-state", filtering ? t("library.no_match")
+                : t("library.empty_library")));
         }
         this.list.replaceChildren(...parts);
         this.restoreFocus(focus);
@@ -518,7 +518,7 @@ class LibraryModal {
         root.dataset.group = group.key;
         const collapsed = !filtering && this.collapsed.has(group.key); // a search shows every match
         const head = el("div", "bl-group-head");
-        const toggle = button("", "bl-group-toggle", filtering ? "" : collapsed ? t("Expand") : t("Collapse"));
+        const toggle = button("", "bl-group-toggle", filtering ? "" : collapsed ? t("library.expand") : t("library.collapse"));
         toggle.disabled = filtering;
         toggle.setAttribute("aria-expanded", String(!collapsed));
         toggle.append(el("span", "bl-group-sign", filtering ? "" : collapsed ? "+" : "−"),
@@ -533,10 +533,10 @@ class LibraryModal {
         head.append(toggle);
         if (group.kind === CATEGORY && !this.organizeBlocker) {
             const actions = menu("⋯", [
-                [t("Rename…"), () => void this.askRename(group.category)],
-                [t("Delete…"), () => void this.askDelete(group.category)],
-            ], { className: "bl-btn icon bl-group-menu", title: t("Rename or delete '{name}'", { name: group.name }),
-                label: t("Category {name}", { name: group.name }) });
+                [t("common.rename_menu"), () => void this.askRename(group.category)],
+                [t("common.delete_menu"), () => void this.askDelete(group.category)],
+            ], { className: "bl-btn icon bl-group-menu", title: t("library.category_menu_title", { name: group.name }),
+                label: t("library.category_group", { name: group.name }) });
             actions.opener.disabled = !!this.lockReason;
             head.append(actions.root);
         }
@@ -610,19 +610,19 @@ class LibraryModal {
         }
         const text = el("div", "bl-list-text");
         text.append(el("div", "bl-list-name", this.labels.get(bundle.id) ?? bundle.name),
-            el("div", "bl-list-sub", bundle.tags.length ? bundle.tags.join(" · ") : t("{count} field(s)", { count: bundle.fields.length })));
+            el("div", "bl-list-sub", bundle.tags.length ? bundle.tags.join(" · ") : t("library.fields_count", { count: bundle.fields.length })));
         const lacking = this.lacking(bundle);
         if (lacking.length) {
             const warn = el("div", "bl-list-warn");
-            warn.title = t("No {fields}", { fields: lacking.join(", ") }); // the line may be cut short
-            const [before, after] = around("⚠ no {fields}", "fields");
+            warn.title = t("library.row_lacking_title", { fields: lacking.join(", ") }); // the line may be cut short
+            const [before, after] = around("library.row_lacking", "fields");
             warn.append(before, ...codeList(lacking), after);
             text.append(warn);
         }
-        if (bundle.read_only) text.append(el("div", "bl-list-warn", t("🔒 Cannot be changed by this version")));
-        else if (bundle.warnings) text.append(el("div", "bl-list-warn", t("⚠ Fix before saving")));
+        if (bundle.read_only) text.append(el("div", "bl-list-warn", t("common.locked")));
+        else if (bundle.warnings) text.append(el("div", "bl-list-warn", t("library.fix_before_saving")));
         const star = button(bundle.favorite ? "★" : "☆", "bl-star",
-            this.organizeBlocker ?? (bundle.favorite ? t("Remove from the favorites") : t("Add to the favorites")));
+            this.organizeBlocker ?? (bundle.favorite ? t("common.favorite_remove") : t("common.favorite_add")));
         star.classList.toggle("on", !!bundle.favorite);
         star.setAttribute("aria-pressed", String(!!bundle.favorite));
         star.disabled = !!this.organizeBlocker || !!this.lockReason;
@@ -691,7 +691,7 @@ class LibraryModal {
         text.append(el("div", "bl-list-name bl-bad", `⚠ ${entry.file}`), el("div", "bl-list-sub", said(entry, "error")));
         row.append(el("div", "bl-list-thumb"), text);
         if (entry.id) {
-            const purge = button(t("Delete forever"), "bl-btn danger");
+            const purge = button(t("common.delete_forever"), "bl-btn danger");
             purge.disabled = !!this.lockReason;
             purge.addEventListener("click", () => {
                 if (this.allowed()) void this.purgeUnreadable(entry);
@@ -848,8 +848,7 @@ class LibraryModal {
         for (const id of gone) this.selection.delete(id);
         const hidden = gone.filter((id) => this.all.some((b) => b.id === id)).length;
         if (hidden) {
-            this.status(tn(hidden, "{count} selected bundle hidden by the search or filter was taken out of the selection.",
-                "{count} selected bundles hidden by the search or filter were taken out of the selection."));
+            this.status(t("library.selection_hidden", { count: hidden }));
         }
     }
 
@@ -867,7 +866,7 @@ class LibraryModal {
      * The editor's own star and category stay free.
      */
     get lockReason() {
-        return this.commands.waiting ?? (this.unsaved ? t("Save or discard your changes first.") : null);
+        return this.commands.waiting ?? (this.unsaved ? t("library.save_or_discard_first") : null);
     }
 
     /**
@@ -892,11 +891,11 @@ class LibraryModal {
             this.trashButton]) {
             control.disabled = locked;
         }
-        this.importButton.title = why ?? t("Import bundles from a ZIP");
+        this.importButton.title = why ?? t("library.import_title");
         this.newCategoryButton.disabled = locked || !!this.organizeBlocker;
         this.search.title = why ?? "";
         this.createButton.title = why ?? "";
-        this.newCategoryButton.title = why ?? this.organizeBlocker ?? t("New category");
+        this.newCategoryButton.title = why ?? this.organizeBlocker ?? t("library.category_new");
         this.trashButton.title = why ?? this.trashButton.getAttribute("aria-label");
         this.showSort();
         this.showTagFilter();
@@ -910,30 +909,30 @@ class LibraryModal {
 
     /** What a batch is called in the pane, by its action and arguments. */
     describeBatch(action, args, count) {
-        const n = plural(count, "bundle");
+        const n = t("count.bundles", { count });
         if (action === "set_category") {
             const name = this.categories.find((c) => c.id === args.category)?.name;
             return args.category
-                ? { doing: t("Moving {bundles} to {category}", { bundles: n, category: name }),
-                    done: t("Moved to {category}", { category: name }), what: t("The move") }
-                : { doing: t("Taking {bundles} out of their categories", { bundles: n }), done: t("Taken out of their categories"),
-                    what: t("The change") };
+                ? { doing: t("library.moving", { bundles: n, category: name }),
+                    done: t("library.moved_to", { category: name }), what: t("library.job_move") }
+                : { doing: t("library.uncategorizing", { bundles: n }), done: t("library.uncategorized_done"),
+                    what: t("library.job_change") };
         }
         if (action === "set_favorite") {
             return args.favorite
-                ? { doing: t("Adding {bundles} to the favorites", { bundles: n }), done: t("Added to the favorites"), what: t("The change") }
-                : { doing: t("Removing {bundles} from the favorites", { bundles: n }), done: t("Removed from the favorites"),
-                    what: t("The change") };
+                ? { doing: t("library.favorite_adding", { bundles: n }), done: t("library.favorite_added"), what: t("library.job_change") }
+                : { doing: t("library.favorite_removing", { bundles: n }), done: t("library.favorite_removed"),
+                    what: t("library.job_change") };
         }
         if (action === "add_tags") {
-            return { doing: t("Adding the tag '{tag}' to {bundles}", { tag: args.tags[0], bundles: n }),
-                done: t("Added the tag '{tag}'", { tag: args.tags[0] }), what: t("The change") };
+            return { doing: t("library.tag_adding", { tag: args.tags[0], bundles: n }),
+                done: t("library.tag_added", { tag: args.tags[0] }), what: t("library.job_change") };
         }
         if (action === "remove_tags") {
-            return { doing: t("Removing the tag '{tag}' from {bundles}", { tag: args.tags[0], bundles: n }),
-                done: t("Removed the tag '{tag}'", { tag: args.tags[0] }), what: t("The change") };
+            return { doing: t("library.tag_removing", { tag: args.tags[0], bundles: n }),
+                done: t("library.tag_removed", { tag: args.tags[0] }), what: t("library.job_change") };
         }
-        return { doing: t("Moving {bundles} to the trash", { bundles: n }), done: t("Moved to the trash"), what: t("The move to the trash") };
+        return { doing: t("library.trash_moving", { bundles: n }), done: t("library.trash_moved"), what: t("library.job_trash") };
     }
 
     /**
@@ -952,13 +951,13 @@ class LibraryModal {
         job.describe = this.describeBatch(action, args, bundles.length);
         if (action === "trash") {
             job.args.expected_revisions = Object.fromEntries(job.summaries.map((b) => [b.id, b.revision]));
-            const confirmed = await this.confirm(t("Move {bundles} to the trash?", { bundles: plural(bundles.length, "bundle") }),
-                t("They can be restored from the trash. Until then, workflows that use them report them as missing."),
-                t("Move to trash"), { danger: true });
+            const confirmed = await this.confirm(t("library.trash_confirm", { bundles: t("count.bundles", { count: bundles.length }) }),
+                t("library.trash_detail"),
+                t("library.move_to_trash"), { danger: true });
             if (!confirmed) return;
         }
         await this.commands.hold({
-            kind: "batch", wait: t("Wait until the change to the selected bundles is done."), stallMs: STALL_MS,
+            kind: "batch", wait: t("library.wait_batch"), stallMs: STALL_MS,
             onStall: () => {
                 if (this.result?.job === job) this.result.stalled();
             },
@@ -991,11 +990,11 @@ class LibraryModal {
         const job = {
             token: ++this.batchJobs, action: "export", args: {},
             summaries: bundles.map((b) => ({ id: b.id, label: this.labels?.get(b.id) ?? b.name, revision: b.revision })),
-            describe: { doing: t("Exporting {bundles}", { bundles: plural(bundles.length, "bundle") }), done: t("Exported"),
-                what: t("The export") },
+            describe: { doing: t("library.exporting", { bundles: t("count.bundles", { count: bundles.length }) }), done: t("common.exported"),
+                what: t("library.job_export") },
         };
         await this.commands.hold({
-            kind: "export", wait: t("Wait until the export is made."), stallMs: STALL_MS,
+            kind: "export", wait: t("library.wait_export"), stallMs: STALL_MS,
             onStall: () => {
                 if (this.result?.job === job) this.result.stalled();
             },
@@ -1024,7 +1023,7 @@ class LibraryModal {
         this.selection = new Set();
         this.status(""); // what the status line said was about something else
         const panel = new ImportPanel(this, file);
-        await this.commands.hold({ kind: "upload", wait: t("Wait until the file is uploaded, or cancel the upload.") },
+        await this.commands.hold({ kind: "upload", wait: t("library.wait_upload") },
             async (ticket) => {
                 ticket.view = this.showPane(panel.root, { imports: panel });
                 this.renderList();
@@ -1035,7 +1034,7 @@ class LibraryModal {
                     if (!this.commands.pane.shows(ticket.view)) return;
                     if (error.code === "aborted") {
                         this.showPlaceholder();
-                        this.status(t("Cancelled the upload of {name}.", { name: file.name }));
+                        this.status(t("common.upload_cancelled_name", { name: file.name }));
                     } else {
                         panel.showError(error.message);
                     }
@@ -1057,11 +1056,11 @@ class LibraryModal {
         const job = {
             token: ++this.batchJobs, action: "import", args: {}, upload: panel.preview.token, conflict, category,
             summaries: panel.preview.bundles.map((b) => ({ id: b.id, label: b.name, revision: null })),
-            describe: { doing: t("Importing {bundles}", { bundles: plural(importable, "bundle") }), done: t("Imported"),
-                what: t("The import") },
+            describe: { doing: t("library.importing", { bundles: t("count.bundles", { count: importable }) }), done: t("library.imported"),
+                what: t("library.job_import") },
         };
         await this.commands.hold({
-            kind: "import", wait: t("Wait until the bundles are imported."), stallMs: STALL_MS,
+            kind: "import", wait: t("library.wait_import"), stallMs: STALL_MS,
             onStall: () => {
                 if (this.result?.job === job) this.result.stalled();
             },
@@ -1095,9 +1094,9 @@ class LibraryModal {
         const view = this.result;
         if (view?.job !== job || !this.allowed()) return;
         job.checked = true;
-        job.describe.doing = t("Asking the server for the import's answer");
+        job.describe.doing = t("library.import_asking");
         await this.commands.hold({
-            kind: "import", wait: t("Wait for the import's answer."), stallMs: STALL_MS,
+            kind: "import", wait: t("library.wait_import_answer"), stallMs: STALL_MS,
             onStall: () => {
                 if (this.result === view) view.stalled();
             },
@@ -1116,7 +1115,7 @@ class LibraryModal {
     cancelImport() {
         this.showPlaceholder();
         this.renderList();
-        this.status(t("Nothing was imported."));
+        this.status(t("library.nothing_imported"));
     }
 
     /**
@@ -1140,7 +1139,7 @@ class LibraryModal {
     async retryBatch(job, ids) {
         const bundles = this.all.filter((b) => ids.includes(b.id));
         if (!bundles.length) {
-            this.status(t("None of them is in the list any more; reload to see where things stand."));
+            this.status(t("library.none_listed"));
             return;
         }
         const { expected_revisions: _seen, ...args } = job.args;
@@ -1158,7 +1157,7 @@ class LibraryModal {
     get organizeBlocker() {
         const { state } = this.organization;
         return state === "ok" || state === "missing" ? null
-            : t("This version of Bundle Library cannot change the categories and favorites: see Needs attention.");
+            : t("library.organization_locked");
     }
 
     /**
@@ -1209,8 +1208,8 @@ class LibraryModal {
         this.showOrganized(id, { category });
         try {
             await this.organize(() => setCategory(id, category));
-            this.status(category ? t("Moved '{name}' to {category}.", { name: summary.name, category: name })
-                : t("'{name}' is uncategorized now.", { name: summary.name }));
+            this.status(category ? t("library.moved_named", { name: summary.name, category: name })
+                : t("library.uncategorized_named", { name: summary.name }));
         } catch (error) {
             this.status(error.message, "error");
         }
@@ -1223,9 +1222,8 @@ class LibraryModal {
             return null;
         }
         let made = null;
-        await this.ask(t("New category"), t("Each bundle sits in one category. Choose it in the editor, or drag the "
-            + "bundle onto the category."), {
-            placeholder: t("Category name"), action: t("Create"),
+        await this.ask(t("library.category_new"), t("library.category_hint"), {
+            placeholder: t("library.category_name"), action: t("library.create"),
             submit: async (name) => {
                 made = await this.organize(() => createCategory(name));
             },
@@ -1237,36 +1235,35 @@ class LibraryModal {
             this.renderList();
             this.editor?.organizationChanged();
         }
-        this.status(t("Created the category '{name}'.", { name: made.name }));
+        this.status(t("library.category_created", { name: made.name }));
         return made;
     }
 
     async askRename(category) {
         if (!this.allowed()) return;
         let renamed = null;
-        await this.ask(t("Rename '{name}'", { name: category.name }), null, {
-            value: category.name, action: t("Rename"),
+        await this.ask(t("library.category_rename_title", { name: category.name }), null, {
+            value: category.name, action: t("common.rename"),
             submit: async (name) => {
                 renamed = await this.organize(() => renameCategory(category.id, name));
             },
         });
-        if (renamed) this.status(t("Renamed the category to '{name}'.", { name: renamed.name }));
+        if (renamed) this.status(t("library.category_renamed", { name: renamed.name }));
     }
 
     async askDelete(category) {
         if (!this.allowed()) return;
         const count = this.all.filter((b) => b.category === category.id).length;
-        const confirmed = await this.confirm(t("Delete the category '{name}'?", { name: category.name }),
-            count ? tn(count, "Its bundle moves to Uncategorized. The bundles themselves are not changed.",
-                "Its {count} bundles move to Uncategorized. The bundles themselves are not changed.")
-                : t("It has no bundles."),
-            t("Delete category"), { danger: true });
+        const confirmed = await this.confirm(t("library.category_delete_confirm", { name: category.name }),
+            count ? t("library.category_delete_detail", { count })
+                : t("library.category_empty"),
+            t("library.category_delete"), { danger: true });
         if (!confirmed) return;
         try {
             await this.organize(() => deleteCategory(category.id));
             this.collapsed.delete(`${CATEGORY}:${category.id}`);
             remember(COLLAPSED_KEY, [...this.collapsed]);
-            this.status(t("Deleted the category '{name}'.", { name: category.name }));
+            this.status(t("library.category_deleted", { name: category.name }));
         } catch (error) {
             this.status(error.message, "error");
         }
@@ -1274,14 +1271,14 @@ class LibraryModal {
 
     /** Delete a file this version cannot fully read, once the user confirms. */
     async purgeUnreadable(entry) {
-        const confirmed = await this.confirm(t("Delete {file} for good?", { file: entry.file }), [
-            t("This version of Bundle Library cannot fully read it: {reason}.", { reason: said(entry, "error") }),
-            t("If a newer Bundle Library saved it, that version loses it too. Deleting cannot be undone."),
-        ], t("Delete forever"), { danger: true });
+        const confirmed = await this.confirm(t("library.attention_delete_confirm", { file: entry.file }), [
+            t("library.not_fully_read", { reason: said(entry, "error") }),
+            t("library.attention_delete_detail"),
+        ], t("common.delete_forever"), { danger: true });
         if (!confirmed) return;
         try {
             await purgeBundle(entry.id, { unreadable: true });
-            this.status(t("Deleted {file} for good.", { file: entry.file }));
+            this.status(t("library.attention_deleted", { file: entry.file }));
         } catch (error) {
             this.status(error.message, "error");
         }
@@ -1310,7 +1307,7 @@ class LibraryModal {
         }
         if (!force && !(await this.leaveEditor())) return;
         this.selection = new Set([id]);
-        const view = this.showPane(el("div", "bl-empty-state bl-loading", t("Loading…")));
+        const view = this.showPane(el("div", "bl-empty-state bl-loading", t("common.loading")));
         this.renderList();
         let bundle;
         try {
@@ -1331,8 +1328,8 @@ class LibraryModal {
     async newBundle() {
         if (!(await this.leaveEditor())) return;
         const taken = new Set(this.all.map((b) => b.name.toLowerCase()));
-        let name = t("New bundle");
-        for (let n = 2; taken.has(name.toLowerCase()); n++) name = t("New bundle {n}", { n });
+        let name = t("common.new_bundle");
+        for (let n = 2; taken.has(name.toLowerCase()); n++) name = t("library.new_bundle_numbered", { n });
         this.selection = new Set();
         this.show(new BundleEditor(this, null, name));
         this.renderList();
@@ -1363,7 +1360,7 @@ class LibraryModal {
      * the list is read again. A tag filter on `from` follows it to `to`.
      */
     async changeTags(request, { from, to = null }) {
-        await this.commands.hold({ kind: "tags", wait: t("Wait until the tag is changed in every bundle.") }, async () => {
+        await this.commands.hold({ kind: "tags", wait: t("library.wait_tag") }, async () => {
             let result;
             try {
                 result = await request();
@@ -1377,14 +1374,14 @@ class LibraryModal {
             }
             await this.reload();
             await this.tagsPanel?.refresh();
-            const bundles = plural(result.changed, "bundle");
-            const kept = result.excluded.length ? t("{bundles} kept '{tag}': {reasons}.", { tag: from,
-                bundles: plural(result.excluded.length, "bundle"), reasons: result.excluded.map((e) => said(e, "reason")).join("; ") }) : null;
-            const unknown = result.unknown.length ? tn(result.unknown.length, "{count} file this version cannot read was left out.",
-                "{count} files this version cannot read were left out.") : null;
-            const done = !to ? t("Deleted the tag '{tag}' from {bundles}.", { tag: from, bundles })
-                : result.merged ? t("Renamed '{tag}' to '{to}' in {bundles} ({count} merged).", { tag: from, to, bundles, count: result.merged })
-                    : t("Renamed '{tag}' to '{to}' in {bundles}.", { tag: from, to, bundles });
+            const bundles = t("count.bundles", { count: result.changed });
+            const kept = result.excluded.length ? t("library.tag_kept", { tag: from,
+                bundles: t("count.bundles", { count: result.excluded.length }),
+                reasons: result.excluded.map((e) => said(e, "reason")).join("; ") }) : null;
+            const unknown = result.unknown.length ? t("library.unknown_files_left_out", { count: result.unknown.length }) : null;
+            const done = !to ? t("library.tag_deleted", { tag: from, bundles })
+                : result.merged ? t("library.tag_renamed_merged", { tag: from, to, bundles, count: result.merged })
+                    : t("library.tag_renamed", { tag: from, to, bundles });
             this.status([done, kept, unknown, said(result, "warning")].filter(Boolean).join(" "), kept || result.warning ? "error" : "info");
         });
     }
@@ -1406,7 +1403,7 @@ class LibraryModal {
         this.trashGeneration++; // a count still on its way is older
         this.trashCount.textContent = count ? String(count) : "";
         this.trashCount.hidden = !count;
-        this.trashButton.setAttribute("aria-label", count ? t("Trash ({count})", { count }) : t("Trash"));
+        this.trashButton.setAttribute("aria-label", count ? t("library.trash_count", { count }) : t("common.trash"));
         this.trashButton.title = this.lockReason ?? this.trashButton.getAttribute("aria-label");
     }
 
@@ -1423,7 +1420,7 @@ class LibraryModal {
 
     /** The pane with nothing in it but how to fill it; returns its view number. */
     showPlaceholder() {
-        return this.showPane(el("div", "bl-empty-state", t("Select a bundle on the left, or create one with + New bundle.")));
+        return this.showPane(el("div", "bl-empty-state", t("library.select_hint")));
     }
 
     /**
@@ -1492,8 +1489,8 @@ class LibraryModal {
         this.selection = new Set();
         this.showPlaceholder();
         this.renderList();
-        if (answer.warning) this.status(t("Deleted '{name}'. It is in the trash. {warning}", { name: bundle.name, warning: said(answer, "warning") }), "error");
-        else this.status(t("Deleted '{name}'. It is in the trash.", { name: bundle.name }));
+        if (answer.warning) this.status(t("library.trashed_warning", { name: bundle.name, warning: said(answer, "warning") }), "error");
+        else this.status(t("library.trashed", { name: bundle.name }));
     }
 
     /**
@@ -1519,13 +1516,13 @@ class LibraryModal {
         if (generation !== this.refreshGeneration || !this.commands.pane.shows(view) || this.editor !== editor || !idle()
             || bundle.revision <= editor.saved.revision) return;
         editor.showSaved(bundle);
-        this.status(t("'{name}' was saved elsewhere; the editor shows it as saved now.", { name: bundle.name }));
+        this.status(t("library.saved_elsewhere", { name: bundle.name }));
     }
 
     discardDraft() {
         this.showPlaceholder();
         this.renderList();
-        this.status(t("Discarded the new bundle."));
+        this.status(t("library.new_discarded"));
     }
 
     /**
@@ -1545,13 +1542,11 @@ class LibraryModal {
         const lacking = summary ? this.lacking(summary) : [];
         this.pickButton.disabled = !summary;
         this.pickHint.replaceChildren(...(!this.editor
-            ? [this.selection.size > 1 ? t("Select only one bundle to use it.") : t("Select a bundle.")]
+            ? [this.selection.size > 1 ? t("library.use_one_only") : t("common.select_bundle")]
             : this.commands.running ? [this.commands.waiting]
-            : !summary ? [t("Save or revert your changes first.")]
-                : lacking.length === 1 ? spread(around("⚠ The node's connected output {name} is missing here or has another type; "
-                    + "running would fail.", "name"), [code(lacking[0])])
-                    : lacking.length ? spread(around("⚠ The node's connected outputs {names} are missing here or have another "
-                        + "type; running would fail.", "names"), codeList(lacking))
+            : !summary ? [t("library.save_or_revert_first")]
+                : lacking.length === 1 ? spread(around("library.node_output_missing", "name"), [code(lacking[0])])
+                    : lacking.length ? spread(around("library.node_outputs_missing", "names"), codeList(lacking))
                         : []));
     }
 
@@ -1577,11 +1572,11 @@ class LibraryModal {
             return;
         }
         const editor = this.editor;
-        const choices = [[t("Discard"), "discard", "danger"], [t("Keep editing"), null]];
-        if (!editor.blocker) choices.unshift([t("Save"), "save", "primary"]); // what cannot be saved can still be dropped
-        const choice = await this.choose(t("Save your changes?"),
-            [t("Your changes to '{name}' have not been saved.", { name: editor.draft.name || t("this bundle") }),
-                ...(editor.blocker ? [t("They cannot be saved as they are: {reason}", { reason: editor.blocker })] : [])], choices);
+        const choices = [[t("common.discard"), "discard", "danger"], [t("library.keep_editing"), null]];
+        if (!editor.blocker) choices.unshift([t("common.save"), "save", "primary"]); // what cannot be saved can still be dropped
+        const choice = await this.choose(t("library.save_changes_confirm"),
+            [t("library.unsaved_named", { name: editor.draft.name || t("library.this_bundle") }),
+                ...(editor.blocker ? [t("library.cannot_save", { reason: editor.blocker })] : [])], choices);
         if (choice === "discard") {
             this.close();
         } else if (choice === "save") {
@@ -1682,7 +1677,7 @@ class LibraryModal {
      * too: what it then finishes no longer touches this question, nor the one
      * shown by then.
      */
-    ask(title, message, { value = "", placeholder = "", maxLength = 60, action = t("OK"), submit }) {
+    ask(title, message, { value = "", placeholder = "", maxLength = 60, action = t("library.ok"), submit }) {
         return new Promise((resolve) => {
             const box = el("form", "bl-confirm bl-ask");
             const input = el("input", "bl-input bl-ask-input");
@@ -1694,7 +1689,7 @@ class LibraryModal {
             const row = el("div", "bl-confirm-buttons");
             const ok = button(action, "bl-btn primary");
             ok.type = "submit";
-            const cancel = button(t("Cancel"));
+            const cancel = button(t("common.cancel"));
             let busy = false;
             let token = null;
             const finish = (done) => {
@@ -1729,7 +1724,7 @@ class LibraryModal {
     }
 
     async confirm(title, message, label, { danger = false } = {}) {
-        return (await this.choose(title, message, [[label, true, danger ? "danger" : "primary"], [t("Cancel"), false]])) === true;
+        return (await this.choose(title, message, [[label, true, danger ? "danger" : "primary"], [t("common.cancel"), false]])) === true;
     }
 
     viewImage(url, caption) {
@@ -1758,7 +1753,7 @@ function fillSidebar(list, fresh = false) {
             return entry;
         };
         const groups = compactGroups(bundles, categories);
-        list.replaceChildren(...(!bundles.length ? [el("div", "bl-empty-state", t("No bundles yet."))]
+        list.replaceChildren(...(!bundles.length ? [el("div", "bl-empty-state", t("library.empty_group"))]
             : groups ? groups.flatMap((group) => [el("div", "bl-sidebar-group", groupLabel(group)), ...group.bundles.map(item)])
                 : bundles.map(item)));
     }, (error) => {
@@ -1773,7 +1768,7 @@ window.addEventListener(CHANGED_EVENT, () => {
 /** The sidebar tab: the bundle names by category, each opening the library at that bundle. */
 export function renderSidebar(container) {
     const root = el("div", "bl-sidebar");
-    const open = button(t("Open library"), "bl-btn primary");
+    const open = button(t("library.open"), "bl-btn primary");
     open.addEventListener("click", () => openLibrary());
     sidebarList = el("div", "bl-sidebar-list");
     root.append(open, sidebarList);

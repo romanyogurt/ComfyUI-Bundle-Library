@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import "./english.mjs"; // the English catalog, as the page has it
+
 import { Commands, Slot } from "../../web/commands.js";
 
 /** A promise with its resolve and reject, to answer a request when the test says so. */

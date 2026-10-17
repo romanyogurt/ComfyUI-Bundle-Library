@@ -11,30 +11,31 @@ import {
 } from "./api.js";
 import { button, el, formatBytes, formatDuration, icon, iconButton, menu } from "./dom.js";
 import { EditorModel, MEDIA_TYPES, editable } from "./editor_model.js";
-import { msg, said, t, tn } from "./i18n.js";
+import { msg, said, t } from "./i18n.js";
 import { POOL_SIZE } from "./reconcile.js";
 
-const TYPES = [["text", msg("Text")], ["image", msg("Image")], ["video", msg("Video")], ["audio", msg("Audio")],
-    ["boolean", msg("Boolean")], ["int", msg("Integer")], ["float", msg("Float")]];
+const TYPES = [["text", msg("editor.type_text")], ["image", msg("editor.type_image")], ["video", msg("editor.type_video")],
+    ["audio", msg("editor.type_audio")], ["boolean", msg("editor.type_boolean")], ["int", msg("editor.type_integer")],
+    ["float", msg("editor.type_float")]];
 // A field's type on its badge: the type's own name in English.
-const BADGE = { text: msg("text"), image: msg("image"), video: msg("video"), audio: msg("audio"), boolean: msg("boolean"),
-    int: msg("int"), float: msg("float") };
+const BADGE = { text: msg("editor.badge_text"), image: msg("kind.image"), video: msg("kind.video"), audio: msg("kind.audio"),
+    boolean: msg("editor.badge_boolean"), int: msg("editor.badge_int"), float: msg("editor.badge_float") };
 // What a media field says, by its kind: whole sentences, so each language says them its own way.
 const MEDIA_TEXT = {
-    image: { choose: msg("Choose an image…"), drop: msg("Drop or paste an image here, or "),
-        replace: msg("Drop or paste an image to replace it."), uploaded: msg("Uploaded the image.") },
-    video: { choose: msg("Choose a video…"), drop: msg("Drop a video here, or "), replace: msg("Drop a video to replace it."),
-        uploaded: msg("Uploaded the video.") },
-    audio: { choose: msg("Choose an audio file…"), drop: msg("Drop an audio file here, or "),
-        replace: msg("Drop an audio file to replace it."), uploaded: msg("Uploaded the audio.") },
+    image: { choose: msg("editor.choose_image"), drop: msg("editor.drop_image"),
+        replace: msg("editor.drop_image_replace"), uploaded: msg("editor.uploaded_image") },
+    video: { choose: msg("editor.choose_video"), drop: msg("editor.drop_video"), replace: msg("editor.drop_video_replace"),
+        uploaded: msg("editor.uploaded_video") },
+    audio: { choose: msg("editor.choose_audio"), drop: msg("editor.drop_audio"),
+        replace: msg("editor.drop_audio_replace"), uploaded: msg("editor.uploaded_audio") },
 };
 const MAX_TEXT_HEIGHT = 320;
 const NEW_CATEGORY = "new"; // the "New category…" choice of the category select (ids are UUIDs)
 // What the editor says while one of its commands is out.
 const BUSY = {
-    save: [msg("Saving…"), msg("Wait until the bundle is saved.")],
-    duplicate: [msg("Duplicating…"), msg("Wait until the copy is made.")],
-    delete: [msg("Moving to the trash…"), msg("Wait until the bundle is in the trash.")],
+    save: [msg("editor.saving"), msg("editor.wait_save")],
+    duplicate: [msg("editor.duplicating"), msg("editor.wait_copy")],
+    delete: [msg("editor.moving_to_trash"), msg("editor.wait_trash")],
 };
 
 /** One line about a stored file: size, length, format. */
@@ -43,12 +44,12 @@ function describeAsset(kind, asset) {
     if (kind === "image") return `${asset.width} × ${asset.height} · ${size}`;
     const time = asset.duration != null ? formatDuration(asset.duration) : null;
     if (kind === "video") {
-        const sound = asset.has_audio ? (asset.audio_codec ?? t("sound")) : t("no sound");
+        const sound = asset.has_audio ? (asset.audio_codec ?? t("editor.sound")) : t("editor.no_sound");
         return [`${asset.width} × ${asset.height}`, asset.fps && `${asset.fps} fps`, time, size,
             `${asset.codec} + ${sound}`].filter(Boolean).join(" · ");
     }
-    const channels = asset.channels === 1 ? t("mono") : asset.channels === 2 ? t("stereo")
-        : t("{count} channels", { count: asset.channels });
+    const channels = asset.channels === 1 ? t("editor.mono") : asset.channels === 2 ? t("editor.stereo")
+        : t("editor.channels", { count: asset.channels });
     return [time, asset.sample_rate && `${asset.sample_rate / 1000} kHz`, channels, size, asset.codec]
         .filter(Boolean).join(" · ");
 }
@@ -121,7 +122,7 @@ export class BundleEditor {
     }
 
     noFields() {
-        return el("div", "bl-empty-state bl-no-fields", t("No fields yet. Add one below."));
+        return el("div", "bl-empty-state bl-no-fields", t("editor.no_fields_yet"));
     }
 
     /** Where the focus is in the editor: which card (by position) or none, which element, and the selection in it. */
@@ -163,7 +164,7 @@ export class BundleEditor {
         });
         this.nameInput = el("input", "bl-input bl-name-input");
         this.nameInput.value = this.draft.name;
-        this.nameInput.placeholder = t("Bundle name");
+        this.nameInput.placeholder = t("common.bundle_name");
         this.nameInput.maxLength = 120;
         this.nameInput.readOnly = !!this.readOnly; // a change could not be saved
         this.nameInput.addEventListener("input", () => {
@@ -172,26 +173,26 @@ export class BundleEditor {
         });
         this.stateMark = el("span", "bl-state");
         // Icons in the head (0.0.26): less to read. The words stay as the buttons' names and tooltips.
-        this.saveButton = iconButton("save", t("Save"), "primary bl-save");
-        this.saveButton.title = t("Save (Ctrl+S)");
+        this.saveButton = iconButton("save", t("common.save"), "primary bl-save");
+        this.saveButton.title = t("editor.save_title");
         this.saveButton.addEventListener("click", () => void this.save());
-        this.revertButton = iconButton("undo", t("Revert"), "bl-revert");
+        this.revertButton = iconButton("undo", t("editor.revert"), "bl-revert");
         this.revertButton.addEventListener("click", () => this.revert());
         const face = el("span", "bl-icon-menu");
         face.append(icon("copy"), " ▾");
         const duplicate = menu(face, [
-            [t("Duplicate with values"), () => void this.duplicate("values")],
-            [t("Duplicate structure only"), () => void this.duplicate("structure")],
-        ], { className: "bl-btn icon bl-duplicate", title: t("Duplicate"), label: t("Duplicate") });
+            [t("editor.duplicate_values"), () => void this.duplicate("values")],
+            [t("editor.duplicate_structure"), () => void this.duplicate("structure")],
+        ], { className: "bl-btn icon bl-duplicate", title: t("editor.duplicate"), label: t("editor.duplicate") });
         this.duplicateButton = duplicate.opener;
         this.exportButton = button("", "bl-btn icon bl-export");
-        this.exportButton.setAttribute("aria-label", t("Export this bundle as a ZIP"));
+        this.exportButton.setAttribute("aria-label", t("editor.export_title"));
         this.exportButton.append(icon("download"));
         this.exportButton.addEventListener("click", () => {
             const summary = this.model.summary();
             if (summary && !this.changed) void this.modal.runExport([summary]); // the bundle as saved
         });
-        this.deleteButton = iconButton("trash", t("Delete"), "danger bl-delete");
+        this.deleteButton = iconButton("trash", t("editor.delete"), "danger bl-delete");
         this.deleteButton.addEventListener("click", () => void this.remove());
         head.append(this.starButton, this.nameInput, this.stateMark, this.saveButton, this.revertButton, duplicate.root,
             this.exportButton, this.deleteButton);
@@ -215,14 +216,14 @@ export class BundleEditor {
         this.starButton.classList.toggle("on", favorite);
         this.starButton.setAttribute("aria-pressed", String(favorite));
         this.starButton.disabled = !summary || !!why;
-        this.starButton.title = !this.saved ? t("Save the bundle to add it to the favorites")
-            : why ?? (favorite ? t("Remove from the favorites") : t("Add to the favorites"));
+        this.starButton.title = !this.saved ? t("editor.favorite_needs_save")
+            : why ?? (favorite ? t("common.favorite_remove") : t("common.favorite_add"));
         const pending = this.model.pendingCategory;
         if (pending && !this.modal.categories.some((c) => c.id === pending)) {
             this.model.pendingCategory = null; // deleted meanwhile
         }
-        const options = [["", t("No category")], ...this.modal.categories.map((c) => [c.id, c.name])];
-        if (!why) options.push([NEW_CATEGORY, t("New category…")]);
+        const options = [["", t("common.no_category")], ...this.modal.categories.map((c) => [c.id, c.name])];
+        if (!why) options.push([NEW_CATEGORY, t("editor.new_category")]);
         const signature = JSON.stringify(options);
         if (this.categorySelect.dataset.options !== signature) { // rebuilding closes an open dropdown
             this.categorySelect.dataset.options = signature;
@@ -235,7 +236,7 @@ export class BundleEditor {
         this.categorySelect.value = this.category ?? "";
         // A new bundle's category is part of what its first save does, so it can be chosen even then.
         this.categorySelect.disabled = !!why && !!this.saved;
-        this.categorySelect.title = this.saved ? (why ?? "") : t("The category the bundle goes in when saved");
+        this.categorySelect.title = this.saved ? (why ?? "") : t("editor.category_title");
     }
 
     /** A choice in the category select: move the saved bundle at once, or remember it for the first save. */
@@ -261,11 +262,10 @@ export class BundleEditor {
         if (!this.saved) return null;
         const notes = [];
         if (this.readOnly) {
-            notes.push(t("This bundle {reason}. It can be used in workflows, but this version of Bundle Library does not change "
-                + "it, so that nothing is lost. Update the node pack to edit it.", { reason: this.readOnly }));
+            notes.push(t("editor.read_only_reason", { reason: this.readOnly }));
         }
         for (const warning of said(this.saved, "warnings") ?? []) {
-            notes.push(t("{warning} (allowed when it was saved). Fix this before saving.", { warning }));
+            notes.push(t("editor.warning_fix_before_save", { warning }));
         }
         if (!notes.length) return null;
         const box = el("div", "bl-editor-notes");
@@ -278,17 +278,17 @@ export class BundleEditor {
         // No labels in view (0.0.23): the select reads "No category" or a name, and the tags speak for themselves.
         const place = el("div", "bl-category-row");
         this.categorySelect = el("select", "bl-input bl-category-select");
-        this.categorySelect.setAttribute("aria-label", t("Category"));
-        this.categorySelect.title = t("Category");
+        this.categorySelect.setAttribute("aria-label", t("common.category"));
+        this.categorySelect.title = t("common.category");
         this.categorySelect.addEventListener("change", () => void this.chooseCategory(this.categorySelect.value));
         place.append(this.categorySelect);
         const tags = el("div", "bl-tags");
         tags.setAttribute("role", "group");
-        tags.setAttribute("aria-label", t("Tags"));
+        tags.setAttribute("aria-label", t("common.tags"));
         const renderTags = (focus) => {
             const input = el("input", "bl-input bl-tag-input");
-            input.placeholder = t("+ tag");
-            input.setAttribute("aria-label", t("Add a tag"));
+            input.placeholder = t("editor.tag_add");
+            input.setAttribute("aria-label", t("editor.add_tag"));
             input.maxLength = 40;
             input.value = this.tagText;
             input.addEventListener("input", () => {
@@ -304,7 +304,7 @@ export class BundleEditor {
             });
             tags.replaceChildren(...this.draft.tags.map((tag, i) => {
                 const chip = el("span", "bl-chip", tag);
-                const remove = button("×", "bl-chip-x", t("Remove the tag '{tag}'", { tag }));
+                const remove = button("×", "bl-chip-x", t("editor.remove_tag_title", { tag }));
                 remove.addEventListener("click", () => {
                     this.model.removeTag(i);
                     renderTags(true);
@@ -318,7 +318,7 @@ export class BundleEditor {
         renderTags();
         const note = el("textarea", "bl-textarea bl-note-input");
         note.rows = 2;
-        note.placeholder = t("Note (optional)");
+        note.placeholder = t("editor.note_placeholder");
         note.value = this.draft.note;
         note.addEventListener("input", () => {
             this.draft.note = note.value;
@@ -336,7 +336,7 @@ export class BundleEditor {
         const head = el("div", "bl-field-head");
         const name = el("input", "bl-input bl-field-name");
         name.value = field.name;
-        name.placeholder = t("Field name");
+        name.placeholder = t("editor.field_name");
         name.maxLength = 64;
         name.addEventListener("input", () => {
             field.name = name.value;
@@ -344,11 +344,11 @@ export class BundleEditor {
             this.refreshWarnings();
             this.refreshState();
         });
-        const up = button("▲", "bl-btn icon bl-move-up", t("Move up"));
+        const up = button("▲", "bl-btn icon bl-move-up", t("editor.move_up"));
         up.addEventListener("click", () => this.move(field, -1));
-        const down = button("▼", "bl-btn icon bl-move-down", t("Move down"));
+        const down = button("▼", "bl-btn icon bl-move-down", t("editor.move_down"));
         down.addEventListener("click", () => this.move(field, 1));
-        const remove = button("✕", "bl-btn icon danger", t("Remove the field"));
+        const remove = button("✕", "bl-btn icon danger", t("editor.remove_field_title"));
         remove.addEventListener("click", () => void this.removeField(field));
         head.append(name, el("span", "bl-badge", field.type in BADGE ? t(BADGE[field.type]) : field.type), up, down, remove);
         const warning = el("div", "bl-warn");
@@ -389,8 +389,8 @@ export class BundleEditor {
             area.spellcheck = false;
             const count = el("div", "bl-count");
             const counted = () => {
-                count.textContent = `${tn(field.value.length, "{count} character", "{count} characters")} · `
-                    + tn(field.value.split("\n").length, "{count} line", "{count} lines");
+                count.textContent = `${t("editor.characters", { count: field.value.length })} · `
+                    + t("editor.lines", { count: field.value.split("\n").length });
             };
             area.addEventListener("input", () => {
                 field.value = area.value;
@@ -446,14 +446,14 @@ export class BundleEditor {
             if (picker.files[0]) void this.setFile(field, picker.files[0]);
             picker.value = "";
         });
-        const choose = button(field.asset ? t("Replace…") : t(MEDIA_TEXT[kind].choose));
+        const choose = button(field.asset ? t("editor.replace") : t(MEDIA_TEXT[kind].choose));
         choose.addEventListener("click", () => picker.click());
         const upload = this.uploadStatus(card);
         if (field.asset) {
             const meta = el("div", "bl-media-meta");
             meta.append(el("div", null, describeAsset(kind, field.asset)));
             if (field.asset.original_name) meta.append(el("div", "bl-dim", field.asset.original_name));
-            const clear = button(t("Clear"));
+            const clear = button(t("editor.clear"));
             clear.addEventListener("click", () => {
                 this.model.clearAsset(field);
                 this.refreshField(field);
@@ -507,9 +507,9 @@ export class BundleEditor {
         bar.max = 1;
         bar.value = transfer.sent;
         card.bar = bar; // progress goes to the bar shown now
-        const cancel = button(t("Cancel upload"));
+        const cancel = button(t("common.cancel_upload"));
         cancel.addEventListener("click", () => this.cancelUpload(card.field));
-        status.append(el("div", null, t("Uploading {name}…", { name: transfer.name })), bar, cancel);
+        status.append(el("div", null, t("editor.uploading", { name: transfer.name })), bar, cancel);
         return status;
     }
 
@@ -519,7 +519,7 @@ export class BundleEditor {
             const img = el("img", "bl-image-thumb");
             img.src = thumbnailURL(asset.sha256, 256);
             img.alt = field.name;
-            img.title = t("Show at full size");
+            img.title = t("editor.show_full_size");
             img.addEventListener("click", () => this.modal.viewImage(
                 assetURL(asset.sha256), [field.name, asset.original_name].filter(Boolean).join(" · ")));
             return img;
@@ -546,7 +546,7 @@ export class BundleEditor {
         const transfer = this.model.startUpload(field, name);
         this.refreshField(field);
         this.refreshState();
-        this.modal.status(t("Uploading {name}…", { name }));
+        this.modal.status(t("editor.uploading", { name }));
         let asset = null;
         let error = null;
         try {
@@ -566,7 +566,7 @@ export class BundleEditor {
         this.refreshField(field);
         this.refreshState();
         if (error) this.modal.status(error, "error");
-        else this.modal.status(asset.original_name ? t("Uploaded {name}.", { name: asset.original_name }) : t(MEDIA_TEXT[kind].uploaded));
+        else this.modal.status(asset.original_name ? t("editor.uploaded_name", { name: asset.original_name }) : t(MEDIA_TEXT[kind].uploaded));
     }
 
     cancelUpload(field) {
@@ -574,7 +574,7 @@ export class BundleEditor {
         if (!transfer) return;
         this.refreshField(field);
         this.refreshState();
-        this.modal.status(t("Cancelled the upload of {name}.", { name: transfer.name }));
+        this.modal.status(t("common.upload_cancelled_name", { name: transfer.name }));
     }
 
     /** Stop everything still running; the modal calls this when it drops the editor. */
@@ -583,7 +583,7 @@ export class BundleEditor {
     }
 
     renderAdd() {
-        const add = menu(t("+ Add field ▾"), TYPES.map(([type, label]) => [t(label), () => this.addField(type)]));
+        const add = menu(t("editor.add_field_menu"), TYPES.map(([type, label]) => [t(label), () => this.addField(type)]));
         this.addButton = add.opener;
         const row = el("div", "bl-add-field");
         row.append(add.root);
@@ -594,7 +594,7 @@ export class BundleEditor {
     refreshAdd() {
         const full = this.draft.fields.length >= POOL_SIZE;
         this.addButton.disabled = full;
-        this.addButton.title = full ? t("A bundle has {max} fields at most.", { max: POOL_SIZE }) : "";
+        this.addButton.title = full ? t("editor.fields_max", { max: POOL_SIZE }) : "";
     }
 
     addField(type) {
@@ -611,10 +611,9 @@ export class BundleEditor {
     async removeField(field) {
         if (field.origin) {
             const confirmed = await this.modal.confirm(
-                t("Remove the field '{name}'?", { name: field.name }),
-                t("Workflows connected to '{origin}' will fail when they run, until they are reconnected. "
-                    + "Nothing changes until you save.", { origin: field.origin }),
-                t("Remove"), { danger: true });
+                t("editor.remove_field_confirm", { name: field.name }),
+                t("editor.connected_fail", { origin: field.origin }),
+                t("editor.remove"), { danger: true });
             if (!confirmed) return;
         }
         const index = this.draft.fields.indexOf(field);
@@ -672,23 +671,23 @@ export class BundleEditor {
     refreshState() {
         const { changed, dirty, blocker } = this.model;
         this.stateMark.textContent = this.busy ? t(BUSY[this.busy][0])
-            : !this.saved ? t("● New, not saved yet") : changed ? t("● Unsaved changes") : t("Saved");
+            : !this.saved ? t("editor.state_new") : changed ? t("editor.state_unsaved") : t("editor.state_saved");
         this.stateMark.classList.toggle("clean", !!this.saved && !changed && !this.busy);
         this.saveButton.disabled = !dirty || !!blocker || !!this.busy;
-        this.saveButton.title = blocker ?? t("Save (Ctrl+S)");
+        this.saveButton.title = blocker ?? t("editor.save_title");
         this.revertButton.disabled = !changed || !!this.busy;
-        const revert = this.saved ? t("Revert") : t("Discard");
+        const revert = this.saved ? t("editor.revert") : t("common.discard");
         if (this.revertButton.getAttribute("aria-label") !== revert) {
             this.revertButton.replaceChildren(icon(this.saved ? "undo" : "times"));
             this.revertButton.setAttribute("aria-label", revert);
         }
         this.revertButton.title = revert;
         this.duplicateButton.disabled = !this.saved || changed || !!this.readOnly || !!this.busy;
-        this.duplicateButton.title = this.readOnly ? blocker : changed ? t("Save or revert your changes first") : t("Duplicate");
+        this.duplicateButton.title = this.readOnly ? blocker : changed ? t("editor.save_or_revert_first") : t("editor.duplicate");
         this.exportButton.disabled = !this.saved || changed || !!this.busy;
-        this.exportButton.title = changed && this.saved ? t("Save or revert your changes first") : t("Export this bundle as a ZIP");
+        this.exportButton.title = changed && this.saved ? t("editor.save_or_revert_first") : t("editor.export_title");
         this.deleteButton.disabled = !this.saved || !!this.readOnly || !!this.busy;
-        this.deleteButton.title = this.readOnly ? blocker : t("Delete");
+        this.deleteButton.title = this.readOnly ? blocker : t("editor.delete");
         this.modal.editorChanged();
     }
 
@@ -747,11 +746,10 @@ export class BundleEditor {
                     await this.modal.reload();
                     return false;
                 }
-                await this.adopt(saved, t("Saved."), { reveal: created }); // a new row: the list shows where it went
+                await this.adopt(saved, t("editor.saved"), { reveal: created }); // a new row: the list shows where it went
                 if (saved.placement_error) {
                     // The bundle is made; only putting it in its category failed. Choosing it again retries that.
-                    this.modal.status(t("Saved, but not put in its category: {reason} Choose the category again.",
-                        { reason: said(saved, "placement_error") }), "error");
+                    this.modal.status(t("editor.saved_not_categorized", { reason: said(saved, "placement_error") }), "error");
                     return false;
                 }
                 return true;
@@ -775,21 +773,19 @@ export class BundleEditor {
     /** A save met a newer revision: Overwrite (true), Reload (the draft is dropped) or Cancel (it stays). */
     async resolveConflict(data, currentRevision) {
         const choice = await this.modal.choose(
-            t("This bundle was changed elsewhere"),
-            t("It was saved again (revision {revision}) after you opened it. Overwrite it with your version, or reload it and "
-                + "lose your changes? Overwriting puts back everything your version has, its tags too (a tag renamed or deleted "
-                + "elsewhere comes back).", { revision: currentRevision }),
-            [[t("Overwrite"), "overwrite", "danger"], [t("Reload"), "reload"], [t("Cancel"), null]]);
+            t("editor.changed_elsewhere"),
+            t("editor.conflict_overwrite", { revision: currentRevision }),
+            [[t("editor.overwrite"), "overwrite", "danger"], [t("editor.reload"), "reload"], [t("common.cancel"), null]]);
         try {
             if (choice === "overwrite") {
-                await this.adopt(await updateBundle(this.saved.id, data, currentRevision), t("Saved over the other change."));
+                await this.adopt(await updateBundle(this.saved.id, data, currentRevision), t("editor.saved_over"));
                 return true;
             }
             if (choice === "reload") {
                 this.model.load(await getBundle(this.saved.id));
                 this.render();
                 await this.modal.reload(); // the list and what "Use this bundle" hands over follow it
-                this.modal.status(t("Reloaded the saved version."));
+                this.modal.status(t("editor.reloaded"));
             }
         } catch (error) {
             this.modal.status(error.message, "error");
@@ -811,7 +807,7 @@ export class BundleEditor {
         this.model.revert(); // also stops the uploads for the dropped draft
         this.tagText = "";
         this.render();
-        this.modal.status(t("Changes discarded."));
+        this.modal.status(t("editor.changes_discarded"));
     }
 
     async duplicate(mode) {
@@ -825,10 +821,9 @@ export class BundleEditor {
                 }
                 await this.modal.bundleSaved(copy, { open: true, reveal: true });
                 if (copy.placement_error) {
-                    this.modal.status(t("Created '{name}', but not put in the category of the original: {reason} Choose the "
-                        + "category again.", { name: copy.name, reason: said(copy, "placement_error") }), "error");
+                    this.modal.status(t("editor.created_not_categorized", { name: copy.name, reason: said(copy, "placement_error") }), "error");
                 } else {
-                    this.modal.status(t("Created '{name}'.", { name: copy.name }));
+                    this.modal.status(t("editor.created", { name: copy.name }));
                 }
             } catch (error) {
                 this.modal.status(error.message, "error");
@@ -838,9 +833,9 @@ export class BundleEditor {
 
     async remove() {
         const confirmed = await this.modal.confirm(
-            t("Delete '{name}'?", { name: this.saved.name }),
-            t("The bundle moves to the trash, from where it can be restored. Until then, workflows that use it report it as missing."),
-            t("Delete"), { danger: true });
+            t("editor.delete_confirm", { name: this.saved.name }),
+            t("editor.delete_detail"),
+            t("editor.delete"), { danger: true });
         if (!confirmed) return;
         await this.command("delete", async (ticket) => {
             try {
@@ -849,7 +844,7 @@ export class BundleEditor {
                 else await this.modal.reload();
             } catch (error) {
                 this.modal.status(error.code === "revision_conflict"
-                    ? t("The bundle changed elsewhere. Reopen it before deleting.") : error.message, "error");
+                    ? t("editor.changed_elsewhere_reopen") : error.message, "error");
             }
         });
     }

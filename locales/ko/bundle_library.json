@@ -1,0 +1,2488 @@
+{
+  "api.unreachable": {
+    "en": "Could not reach ComfyUI.",
+    "text": "ComfyUI에 연결할 수 없습니다."
+  },
+  "api.unreachable_reason": {
+    "en": "Could not reach ComfyUI: {reason}",
+    "text": "ComfyUI에 연결할 수 없습니다: {reason}"
+  },
+  "batch.already": {
+    "en": "Already so",
+    "text": "이미 그 상태"
+  },
+  "batch.bundles_and_files": {
+    "en": "{bundles} and {files}",
+    "text": "{bundles}와 {files}"
+  },
+  "batch.category_deleted": {
+    "en": "The category chosen was deleted. Choose one again.",
+    "text": "고른 카테고리가 지워졌습니다. 다시 고르세요."
+  },
+  "batch.changed": {
+    "en": "Changed",
+    "text": "바뀜"
+  },
+  "batch.changed_elsewhere": {
+    "en": "Changed elsewhere since you selected it; not moved",
+    "text": "고른 뒤 다른 곳에서 바뀌어 옮기지 않았습니다"
+  },
+  "batch.choose_category_again": {
+    "en": "Choose a category (the one chosen was deleted)",
+    "text": "카테고리를 고르세요 (고른 카테고리가 지워졌습니다)"
+  },
+  "batch.clear_selection": {
+    "en": "Clear selection",
+    "text": "선택 해제"
+  },
+  "batch.count_already": {
+    "en": "{count} already so",
+    "text": "{count}개는 이미 그 상태"
+  },
+  "batch.count_changed": {
+    "en": "{count} changed",
+    "text": "{count}개 바뀜"
+  },
+  "batch.count_not_done": {
+    "en": "{count} not done",
+    "text": "{count}개 안 됨"
+  },
+  "batch.download_again": {
+    "en": "Download again",
+    "text": "다시 내려받기"
+  },
+  "batch.download_starts": {
+    "en": "The download starts by itself; the file can be downloaded again for an hour.",
+    "text": "내려받기가 저절로 시작됩니다. 1시간 동안 다시 내려받을 수 있습니다."
+  },
+  "batch.export": {
+    "en": "Export",
+    "text": "내보내기"
+  },
+  "batch.export_hint": {
+    "en": "The bundles and the files they use, to keep or to bring into another library.",
+    "text": "번들과 번들이 쓰는 파일을 ZIP 하나로. 보관하거나 다른 라이브러리로 가져갈 수 있습니다."
+  },
+  "batch.export_missing_files": {
+    "en": {
+      "one": "{count} file the bundles use is not in the library and is not in the ZIP: {names}.",
+      "other": "{count} files the bundles use are not in the library and are not in the ZIP: {names}."
+    },
+    "text": "번들이 쓰는 파일 {count}개가 라이브러리에 없어 ZIP에도 없습니다: {names}."
+  },
+  "batch.export_no_answer": {
+    "en": "No answer came back. The export may still be made on the server; export again to download it.",
+    "text": "답이 오지 않았습니다. 서버에서 내보내기가 만들어질 수도 있습니다. 내려받으려면 다시 내보내세요."
+  },
+  "batch.export_zip": {
+    "en": "Export ZIP",
+    "text": "ZIP으로 내보내기"
+  },
+  "batch.favorite_add": {
+    "en": "★ Add to favorites",
+    "text": "★ 즐겨찾기에 추가"
+  },
+  "batch.favorite_remove": {
+    "en": "☆ Remove from favorites",
+    "text": "☆ 즐겨찾기에서 빼기"
+  },
+  "batch.in_trash": {
+    "en": "In the trash",
+    "text": "휴지통에 있습니다"
+  },
+  "batch.left_out": {
+    "en": "Left out",
+    "text": "빠짐"
+  },
+  "batch.locked_item": {
+    "en": "🔒 cannot be changed by this version",
+    "text": "🔒 이 버전에서는 바꿀 수 없음"
+  },
+  "batch.locked_left": {
+    "en": "This version cannot change these; left as they are",
+    "text": "이 버전은 이 번들을 바꿀 수 없어 그대로 두었습니다"
+  },
+  "batch.locked_left_out": {
+    "en": {
+      "one": "{count} bundle this version cannot change will be left out.",
+      "other": "{count} bundles this version cannot change will be left out."
+    },
+    "text": "이 버전이 바꿀 수 없는 번들 {count}개는 빠집니다."
+  },
+  "batch.move": {
+    "en": "Move",
+    "text": "옮기기"
+  },
+  "batch.move_to_trash": {
+    "en": "Move to trash…",
+    "text": "휴지통으로 옮기기…"
+  },
+  "batch.no_answer_yet": {
+    "en": "No answer yet. You can stop waiting; the server may still finish it.",
+    "text": "아직 답이 없습니다. 기다리지 않아도 되지만, 서버는 작업을 마칠 수도 있습니다."
+  },
+  "batch.no_longer_in_library": {
+    "en": "No longer in the library",
+    "text": "이제 라이브러리에 없습니다"
+  },
+  "batch.not_done": {
+    "en": "Not done",
+    "text": "되지 않았습니다"
+  },
+  "batch.not_done_retry": {
+    "en": "Not done; trying again may work",
+    "text": "되지 않았습니다. 다시 시도하면 될 수 있습니다"
+  },
+  "batch.nothing_changed": {
+    "en": "Nothing was changed",
+    "text": "아무것도 바뀌지 않았습니다"
+  },
+  "batch.nothing_to_download": {
+    "en": "Nothing to download",
+    "text": "내려받을 것이 없습니다"
+  },
+  "batch.selected": {
+    "en": "{bundles} selected",
+    "text": "{bundles} 선택됨"
+  },
+  "batch.sent_no_answer": {
+    "en": "{what} was sent, but no answer came back. The server may have done all, some or none of it. Reload the list to see where things stand.",
+    "text": "{what} 요청을 보냈지만 답이 오지 않았습니다. 서버가 전부나 일부를 했거나 아무것도 하지 않았을 수 있습니다. 목록을 다시 읽어 상황을 확인하세요."
+  },
+  "batch.stop_waiting": {
+    "en": "Stop waiting",
+    "text": "기다리지 않기"
+  },
+  "batch.tag_add_all": {
+    "en": "+ tag for all",
+    "text": "+ 모두에 태그"
+  },
+  "batch.tag_remove_label": {
+    "en": "Remove the tag {tag} from the selected bundles",
+    "text": "고른 번들에서 {tag} 태그 떼기"
+  },
+  "batch.tag_remove_title": {
+    "en": "Remove '{tag}' from the selected bundles",
+    "text": "고른 번들에서 '{tag}' 태그 떼기"
+  },
+  "batch.try_again": {
+    "en": "Try again",
+    "text": "다시 시도"
+  },
+  "batch.try_again_with": {
+    "en": "Try again with {bundles}",
+    "text": "{bundles}로 다시 시도"
+  },
+  "category.name_reserved": {
+    "en": "Category name: '{name}' is the name of a view of the list.",
+    "text": "카테고리 이름: '{name}'은(는) 목록의 보기 이름입니다."
+  },
+  "category.name_taken": {
+    "en": "A category named '{name}' already exists.",
+    "text": "'{name}' 카테고리가 이미 있습니다."
+  },
+  "category.not_found": {
+    "en": "Category not found: {id}",
+    "text": "카테고리를 찾을 수 없습니다: {id}"
+  },
+  "check.asset_must_object": {
+    "en": "{label}: asset must be an object or null.",
+    "text": "{label}: asset은 객체나 null이어야 합니다."
+  },
+  "check.asset_name_string": {
+    "en": "{label}: asset.original_name must be a string.",
+    "text": "{label}: asset.original_name은 문자열이어야 합니다."
+  },
+  "check.asset_sha256": {
+    "en": "{label}: asset.sha256 is not a SHA-256 digest.",
+    "text": "{label}: asset.sha256이 SHA-256 값이 아닙니다."
+  },
+  "check.boolean": {
+    "en": "{label}: must be true or false.",
+    "text": "{label}: true나 false여야 합니다."
+  },
+  "check.bundle_object": {
+    "en": "A bundle must be a JSON object.",
+    "text": "번들은 JSON 객체여야 합니다."
+  },
+  "check.control_characters": {
+    "en": "{label}: line breaks and control characters are not allowed.",
+    "text": "{label}: 줄바꿈과 제어 문자는 쓸 수 없습니다."
+  },
+  "check.duplicate_field_name": {
+    "en": "Duplicate field name: '{name}'",
+    "text": "필드 이름이 겹칩니다: '{name}'"
+  },
+  "check.field_label": {
+    "en": "Field '{name}'",
+    "text": "필드 '{name}'"
+  },
+  "check.field_name_label": {
+    "en": "Field {n} name",
+    "text": "필드 {n}의 이름"
+  },
+  "check.field_name_reserved": {
+    "en": "Field '{name}': names starting with '@' are reserved.",
+    "text": "필드 '{name}': '@'로 시작하는 이름은 쓸 수 없습니다."
+  },
+  "check.field_object": {
+    "en": "Field {n}: must be an object.",
+    "text": "필드 {n}: 객체여야 합니다."
+  },
+  "check.field_type_unsupported": {
+    "en": "Field '{name}': unsupported type {field_type}. Supported types: {list}.",
+    "text": "필드 '{name}': 지원하지 않는 타입 {field_type}. 지원하는 타입: {list}."
+  },
+  "check.fields_array": {
+    "en": "Fields: must be an array.",
+    "text": "필드: 배열이어야 합니다."
+  },
+  "check.fields_max": {
+    "en": "Fields: at most {MAX_FIELDS}.",
+    "text": "필드: 최대 {MAX_FIELDS}개입니다."
+  },
+  "check.finite_number": {
+    "en": "{label}: must be a finite number.",
+    "text": "{label}: 유한한 숫자여야 합니다."
+  },
+  "check.int_range": {
+    "en": "{label}: must be between {INT_MIN} and {INT_MAX}.",
+    "text": "{label}: {INT_MIN}에서 {INT_MAX} 사이여야 합니다."
+  },
+  "check.integer": {
+    "en": "{label}: must be an integer.",
+    "text": "{label}: 정수여야 합니다."
+  },
+  "check.invalid_asset_id": {
+    "en": "Invalid asset id: {value}",
+    "text": "잘못된 파일 id: {value}"
+  },
+  "check.invalid_bundle_id": {
+    "en": "Invalid bundle id: {value}",
+    "text": "잘못된 번들 id: {value}"
+  },
+  "check.max_characters": {
+    "en": "{label}: at most {limit} characters.",
+    "text": "{label}: 최대 {limit}자입니다."
+  },
+  "check.not_empty": {
+    "en": "{label}: must not be empty.",
+    "text": "{label}: 비어 있으면 안 됩니다."
+  },
+  "check.note_max": {
+    "en": "Note: at most {MAX_NOTE} characters.",
+    "text": "메모: 최대 {MAX_NOTE}자입니다."
+  },
+  "check.note_string": {
+    "en": "Note: must be a string.",
+    "text": "메모: 문자열이어야 합니다."
+  },
+  "check.number": {
+    "en": "{label}: must be a number.",
+    "text": "{label}: 숫자여야 합니다."
+  },
+  "check.string": {
+    "en": "{label}: must be a string.",
+    "text": "{label}: 문자열이어야 합니다."
+  },
+  "check.tag_label": {
+    "en": "Tag",
+    "text": "태그"
+  },
+  "check.tags_array": {
+    "en": "Tags: must be an array of strings.",
+    "text": "태그: 문자열 배열이어야 합니다."
+  },
+  "check.tags_max": {
+    "en": "Tags: at most {MAX_TAGS}.",
+    "text": "태그: 최대 {MAX_TAGS}개입니다."
+  },
+  "check.text_max_mb": {
+    "en": "{label}: text is limited to {n} MB.",
+    "text": "{label}: 텍스트는 {n} MB까지입니다."
+  },
+  "check.text_string": {
+    "en": "{label}: a text value must be a string.",
+    "text": "{label}: 텍스트 값은 문자열이어야 합니다."
+  },
+  "check.value_missing": {
+    "en": "{label}: value is missing.",
+    "text": "{label}: 값이 없습니다."
+  },
+  "common.bundle_name": {
+    "en": "Bundle name",
+    "text": "번들 이름"
+  },
+  "common.cancel": {
+    "en": "Cancel",
+    "text": "취소"
+  },
+  "common.cancel_upload": {
+    "en": "Cancel upload",
+    "text": "업로드 취소"
+  },
+  "common.category": {
+    "en": "Category",
+    "text": "카테고리"
+  },
+  "common.delete_forever": {
+    "en": "Delete forever",
+    "text": "영구 삭제"
+  },
+  "common.delete_menu": {
+    "en": "Delete…",
+    "text": "삭제…"
+  },
+  "common.discard": {
+    "en": "Discard",
+    "text": "버리기"
+  },
+  "common.done": {
+    "en": "Done",
+    "text": "확인"
+  },
+  "common.exported": {
+    "en": "Exported",
+    "text": "내보냈습니다"
+  },
+  "common.favorite_add": {
+    "en": "Add to the favorites",
+    "text": "즐겨찾기에 추가"
+  },
+  "common.favorite_remove": {
+    "en": "Remove from the favorites",
+    "text": "즐겨찾기에서 빼기"
+  },
+  "common.favorites": {
+    "en": "Favorites",
+    "text": "즐겨찾기"
+  },
+  "common.ids_required": {
+    "en": "ids must be a non-empty list of bundle ids.",
+    "text": "ids는 비어 있지 않은 번들 id 목록이어야 합니다."
+  },
+  "common.invalid_schema_version": {
+    "en": "invalid schema_version {version}",
+    "text": "잘못된 schema_version {version}"
+  },
+  "common.loading": {
+    "en": "Loading…",
+    "text": "불러오는 중…"
+  },
+  "common.locked": {
+    "en": "🔒 Cannot be changed by this version",
+    "text": "🔒 이 버전에서는 바꿀 수 없음"
+  },
+  "common.new_bundle": {
+    "en": "New bundle",
+    "text": "새 번들"
+  },
+  "common.newer_schema": {
+    "en": "saved by a newer Bundle Library (schema version {version}; this one reads up to {SCHEMA_VERSION})",
+    "text": "더 새 버전의 Bundle Library가 저장함 (스키마 버전 {version}, 이 버전은 {SCHEMA_VERSION}까지 읽음)"
+  },
+  "common.no_category": {
+    "en": "No category",
+    "text": "카테고리 없음"
+  },
+  "common.not_checked": {
+    "en": "could not be checked ({name})",
+    "text": "확인할 수 없음 ({name})"
+  },
+  "common.not_read": {
+    "en": "could not be read ({reason})",
+    "text": "읽을 수 없음 ({reason})"
+  },
+  "common.nothing_to_choose": {
+    "en": "Nothing to choose.",
+    "text": "고를 것이 없습니다."
+  },
+  "common.other_format": {
+    "en": "another format ('{value}')",
+    "text": "다른 형식 ('{value}')"
+  },
+  "common.reload_list": {
+    "en": "Reload the list",
+    "text": "목록 다시 읽기"
+  },
+  "common.rename": {
+    "en": "Rename",
+    "text": "이름 바꾸기"
+  },
+  "common.rename_menu": {
+    "en": "Rename…",
+    "text": "이름 바꾸기…"
+  },
+  "common.revision_required": {
+    "en": "expected_revision (an integer) is required.",
+    "text": "expected_revision(정수)이 필요합니다."
+  },
+  "common.save": {
+    "en": "Save",
+    "text": "저장"
+  },
+  "common.select_bundle": {
+    "en": "Select a bundle.",
+    "text": "번들을 고르세요."
+  },
+  "common.tags": {
+    "en": "Tags",
+    "text": "태그"
+  },
+  "common.trash": {
+    "en": "Trash",
+    "text": "휴지통"
+  },
+  "common.uncategorized": {
+    "en": "Uncategorized",
+    "text": "미분류"
+  },
+  "common.unknown_data": {
+    "en": "has data this version does not know: {list}",
+    "text": "이 버전이 모르는 데이터가 있음: {list}"
+  },
+  "common.unknown_outcome": {
+    "en": "Could not tell whether it finished",
+    "text": "끝났는지 알 수 없습니다"
+  },
+  "common.upload_cancelled_name": {
+    "en": "Cancelled the upload of {name}.",
+    "text": "{name} 업로드를 취소했습니다."
+  },
+  "count.bundles": {
+    "en": {
+      "one": "{count} bundle",
+      "other": "{count} bundles"
+    },
+    "text": "번들 {count}개"
+  },
+  "count.fields": {
+    "en": {
+      "one": "{count} field",
+      "other": "{count} fields"
+    },
+    "text": "필드 {count}개"
+  },
+  "count.files": {
+    "en": {
+      "one": "{count} file",
+      "other": "{count} files"
+    },
+    "text": "파일 {count}개"
+  },
+  "count.new_files": {
+    "en": {
+      "one": "{count} new file",
+      "other": "{count} new files"
+    },
+    "text": "새 파일 {count}개"
+  },
+  "count.unused_files": {
+    "en": {
+      "one": "{count} unused file",
+      "other": "{count} unused files"
+    },
+    "text": "쓰이지 않는 파일 {count}개"
+  },
+  "editor.add_field_menu": {
+    "en": "+ Add field ▾",
+    "text": "+ 필드 추가 ▾"
+  },
+  "editor.add_tag": {
+    "en": "Add a tag",
+    "text": "태그 추가"
+  },
+  "editor.badge_boolean": {
+    "en": "boolean",
+    "text": "불리언"
+  },
+  "editor.badge_float": {
+    "en": "float",
+    "text": "실수"
+  },
+  "editor.badge_int": {
+    "en": "int",
+    "text": "정수"
+  },
+  "editor.badge_text": {
+    "en": "text",
+    "text": "텍스트"
+  },
+  "editor.category_title": {
+    "en": "The category the bundle goes in when saved",
+    "text": "저장할 때 번들이 들어갈 카테고리"
+  },
+  "editor.changed_elsewhere": {
+    "en": "This bundle was changed elsewhere",
+    "text": "이 번들이 다른 곳에서 바뀌었습니다"
+  },
+  "editor.changed_elsewhere_reopen": {
+    "en": "The bundle changed elsewhere. Reopen it before deleting.",
+    "text": "번들이 다른 곳에서 바뀌었습니다. 지우기 전에 다시 여세요."
+  },
+  "editor.changes_discarded": {
+    "en": "Changes discarded.",
+    "text": "변경을 버렸습니다."
+  },
+  "editor.channels": {
+    "en": "{count} channels",
+    "text": "{count}채널"
+  },
+  "editor.characters": {
+    "en": {
+      "one": "{count} character",
+      "other": "{count} characters"
+    },
+    "text": "{count}자"
+  },
+  "editor.choose_audio": {
+    "en": "Choose an audio file…",
+    "text": "오디오 파일 고르기…"
+  },
+  "editor.choose_image": {
+    "en": "Choose an image…",
+    "text": "이미지 고르기…"
+  },
+  "editor.choose_video": {
+    "en": "Choose a video…",
+    "text": "동영상 고르기…"
+  },
+  "editor.clear": {
+    "en": "Clear",
+    "text": "비우기"
+  },
+  "editor.conflict_overwrite": {
+    "en": "It was saved again (revision {revision}) after you opened it. Overwrite it with your version, or reload it and lose your changes? Overwriting puts back everything your version has, its tags too (a tag renamed or deleted elsewhere comes back).",
+    "text": "연 뒤에 다시 저장됐습니다(revision {revision}). 내 버전으로 덮어쓸까요, 아니면 다시 읽고 내 변경을 버릴까요? 덮어쓰면 내 버전의 모든 것이 돌아갑니다. 태그도 마찬가지입니다(다른 곳에서 이름을 바꾸거나 지운 태그가 돌아옵니다)."
+  },
+  "editor.connected_fail": {
+    "en": "Workflows connected to '{origin}' will fail when they run, until they are reconnected. Nothing changes until you save.",
+    "text": "'{origin}' 출력에 연결된 워크플로는 다시 연결할 때까지 실행하면 실패합니다. 저장하기 전에는 아무것도 바뀌지 않습니다."
+  },
+  "editor.created": {
+    "en": "Created '{name}'.",
+    "text": "'{name}' 번들을 만들었습니다."
+  },
+  "editor.created_not_categorized": {
+    "en": "Created '{name}', but not put in the category of the original: {reason} Choose the category again.",
+    "text": "'{name}' 번들을 만들었지만 원본의 카테고리에 넣지 못했습니다: {reason} 카테고리를 다시 고르세요."
+  },
+  "editor.delete": {
+    "en": "Delete",
+    "text": "삭제"
+  },
+  "editor.delete_confirm": {
+    "en": "Delete '{name}'?",
+    "text": "'{name}' 번들을 지울까요?"
+  },
+  "editor.delete_detail": {
+    "en": "The bundle moves to the trash, from where it can be restored. Until then, workflows that use it report it as missing.",
+    "text": "번들은 휴지통으로 옮겨지고, 휴지통에서 되살릴 수 있습니다. 그때까지 이 번들을 쓰는 워크플로는 번들이 없다고 알립니다."
+  },
+  "editor.drop_audio": {
+    "en": "Drop an audio file here, or ",
+    "text": "여기에 오디오 파일을 끌어다 놓기, 또는 "
+  },
+  "editor.drop_audio_replace": {
+    "en": "Drop an audio file to replace it.",
+    "text": "바꾸려면 오디오 파일을 끌어다 놓으세요."
+  },
+  "editor.drop_image": {
+    "en": "Drop or paste an image here, or ",
+    "text": "여기에 이미지를 끌어다 놓거나 붙여 넣기, 또는 "
+  },
+  "editor.drop_image_replace": {
+    "en": "Drop or paste an image to replace it.",
+    "text": "바꾸려면 이미지를 끌어다 놓거나 붙여 넣으세요."
+  },
+  "editor.drop_video": {
+    "en": "Drop a video here, or ",
+    "text": "여기에 동영상을 끌어다 놓기, 또는 "
+  },
+  "editor.drop_video_replace": {
+    "en": "Drop a video to replace it.",
+    "text": "바꾸려면 동영상을 끌어다 놓으세요."
+  },
+  "editor.duplicate": {
+    "en": "Duplicate",
+    "text": "복제"
+  },
+  "editor.duplicate_structure": {
+    "en": "Duplicate structure only",
+    "text": "구조만 복제"
+  },
+  "editor.duplicate_values": {
+    "en": "Duplicate with values",
+    "text": "값까지 복제"
+  },
+  "editor.duplicating": {
+    "en": "Duplicating…",
+    "text": "복제 중…"
+  },
+  "editor.enter_integer": {
+    "en": "Enter a whole number.",
+    "text": "정수를 입력하세요."
+  },
+  "editor.enter_number": {
+    "en": "Enter a number.",
+    "text": "숫자를 입력하세요."
+  },
+  "editor.export_title": {
+    "en": "Export this bundle as a ZIP",
+    "text": "이 번들을 ZIP으로 내보내기"
+  },
+  "editor.favorite_needs_save": {
+    "en": "Save the bundle to add it to the favorites",
+    "text": "즐겨찾기에 넣으려면 먼저 번들을 저장하세요"
+  },
+  "editor.field_name": {
+    "en": "Field name",
+    "text": "필드 이름"
+  },
+  "editor.field_name_required": {
+    "en": "A field needs a name.",
+    "text": "필드에 이름이 필요합니다."
+  },
+  "editor.field_name_reserved": {
+    "en": "Names starting with '@' are reserved.",
+    "text": "'@'로 시작하는 이름은 쓸 수 없습니다."
+  },
+  "editor.field_name_taken": {
+    "en": "Another field is also named '{name}'.",
+    "text": "같은 이름('{name}')의 필드가 또 있습니다."
+  },
+  "editor.fields_max": {
+    "en": "A bundle has {max} fields at most.",
+    "text": "번들의 필드는 최대 {max}개입니다."
+  },
+  "editor.fix_field_names": {
+    "en": "Fix the marked field names first.",
+    "text": "표시된 필드 이름을 먼저 고치세요."
+  },
+  "editor.fix_values": {
+    "en": "Fix the marked values first.",
+    "text": "표시된 값을 먼저 고치세요."
+  },
+  "editor.int_range": {
+    "en": "Whole numbers must be within ±{max}.",
+    "text": "정수는 ±{max} 안이어야 합니다."
+  },
+  "editor.int_range_fix": {
+    "en": "Whole numbers must be within ±{max}. Change this value before saving.",
+    "text": "정수는 ±{max} 안이어야 합니다. 저장하기 전에 이 값을 바꾸세요."
+  },
+  "editor.lines": {
+    "en": {
+      "one": "{count} line",
+      "other": "{count} lines"
+    },
+    "text": "{count}줄"
+  },
+  "editor.locked": {
+    "en": "This version of Bundle Library cannot change this bundle.",
+    "text": "이 버전의 Bundle Library는 이 번들을 바꿀 수 없습니다."
+  },
+  "editor.mono": {
+    "en": "mono",
+    "text": "모노"
+  },
+  "editor.move_down": {
+    "en": "Move down",
+    "text": "아래로"
+  },
+  "editor.move_up": {
+    "en": "Move up",
+    "text": "위로"
+  },
+  "editor.moving_to_trash": {
+    "en": "Moving to the trash…",
+    "text": "휴지통으로 옮기는 중…"
+  },
+  "editor.name_required": {
+    "en": "The bundle needs a name.",
+    "text": "번들에 이름이 필요합니다."
+  },
+  "editor.new_category": {
+    "en": "New category…",
+    "text": "새 카테고리…"
+  },
+  "editor.no_fields_yet": {
+    "en": "No fields yet. Add one below.",
+    "text": "아직 필드가 없습니다. 아래에서 더하세요."
+  },
+  "editor.no_sound": {
+    "en": "no sound",
+    "text": "소리 없음"
+  },
+  "editor.note_placeholder": {
+    "en": "Note (optional)",
+    "text": "메모 (선택)"
+  },
+  "editor.overwrite": {
+    "en": "Overwrite",
+    "text": "덮어쓰기"
+  },
+  "editor.read_only_reason": {
+    "en": "This bundle {reason}. It can be used in workflows, but this version of Bundle Library does not change it, so that nothing is lost. Update the node pack to edit it.",
+    "text": "이 번들: {reason}. 워크플로에서는 쓸 수 있지만, 아무것도 잃지 않도록 이 버전의 Bundle Library는 이 번들을 바꾸지 않습니다. 고치려면 노드 팩을 업데이트하세요."
+  },
+  "editor.reload": {
+    "en": "Reload",
+    "text": "다시 읽기"
+  },
+  "editor.reloaded": {
+    "en": "Reloaded the saved version.",
+    "text": "저장된 버전을 다시 읽었습니다."
+  },
+  "editor.remove": {
+    "en": "Remove",
+    "text": "빼기"
+  },
+  "editor.remove_field_confirm": {
+    "en": "Remove the field '{name}'?",
+    "text": "'{name}' 필드를 뺄까요?"
+  },
+  "editor.remove_field_title": {
+    "en": "Remove the field",
+    "text": "필드 빼기"
+  },
+  "editor.remove_tag_title": {
+    "en": "Remove the tag '{tag}'",
+    "text": "'{tag}' 태그 떼기"
+  },
+  "editor.renamed_from": {
+    "en": "Renamed from '{origin}': workflows connected to '{origin}' will show it as missing.",
+    "text": "'{origin}'에서 이름을 바꿨습니다. '{origin}' 출력에 연결된 워크플로에서는 이 출력이 없는 것으로 보입니다."
+  },
+  "editor.replace": {
+    "en": "Replace…",
+    "text": "바꾸기…"
+  },
+  "editor.revert": {
+    "en": "Revert",
+    "text": "되돌리기"
+  },
+  "editor.save_or_revert_first": {
+    "en": "Save or revert your changes first",
+    "text": "먼저 변경을 저장하거나 되돌리세요"
+  },
+  "editor.save_title": {
+    "en": "Save (Ctrl+S)",
+    "text": "저장 (Ctrl+S)"
+  },
+  "editor.saved": {
+    "en": "Saved.",
+    "text": "저장했습니다."
+  },
+  "editor.saved_not_categorized": {
+    "en": "Saved, but not put in its category: {reason} Choose the category again.",
+    "text": "저장했지만 카테고리에 넣지 못했습니다: {reason} 카테고리를 다시 고르세요."
+  },
+  "editor.saved_over": {
+    "en": "Saved over the other change.",
+    "text": "다른 변경 위에 저장했습니다."
+  },
+  "editor.saving": {
+    "en": "Saving…",
+    "text": "저장 중…"
+  },
+  "editor.show_full_size": {
+    "en": "Show at full size",
+    "text": "원래 크기로 보기"
+  },
+  "editor.sound": {
+    "en": "sound",
+    "text": "소리"
+  },
+  "editor.state_new": {
+    "en": "● New, not saved yet",
+    "text": "● 새 번들, 아직 저장 안 됨"
+  },
+  "editor.state_saved": {
+    "en": "Saved",
+    "text": "저장됨"
+  },
+  "editor.state_unsaved": {
+    "en": "● Unsaved changes",
+    "text": "● 저장하지 않은 변경"
+  },
+  "editor.stereo": {
+    "en": "stereo",
+    "text": "스테레오"
+  },
+  "editor.tag_add": {
+    "en": "+ tag",
+    "text": "+ 태그"
+  },
+  "editor.type_audio": {
+    "en": "Audio",
+    "text": "오디오"
+  },
+  "editor.type_boolean": {
+    "en": "Boolean",
+    "text": "불리언 (참/거짓)"
+  },
+  "editor.type_float": {
+    "en": "Float",
+    "text": "실수"
+  },
+  "editor.type_image": {
+    "en": "Image",
+    "text": "이미지"
+  },
+  "editor.type_integer": {
+    "en": "Integer",
+    "text": "정수"
+  },
+  "editor.type_text": {
+    "en": "Text",
+    "text": "텍스트"
+  },
+  "editor.type_video": {
+    "en": "Video",
+    "text": "동영상"
+  },
+  "editor.uploaded_audio": {
+    "en": "Uploaded the audio.",
+    "text": "오디오를 올렸습니다."
+  },
+  "editor.uploaded_image": {
+    "en": "Uploaded the image.",
+    "text": "이미지를 올렸습니다."
+  },
+  "editor.uploaded_name": {
+    "en": "Uploaded {name}.",
+    "text": "{name}을(를) 올렸습니다."
+  },
+  "editor.uploaded_video": {
+    "en": "Uploaded the video.",
+    "text": "동영상을 올렸습니다."
+  },
+  "editor.uploading": {
+    "en": "Uploading {name}…",
+    "text": "{name} 올리는 중…"
+  },
+  "editor.wait_copy": {
+    "en": "Wait until the copy is made.",
+    "text": "복사본이 만들어질 때까지 기다리세요."
+  },
+  "editor.wait_save": {
+    "en": "Wait until the bundle is saved.",
+    "text": "번들이 저장될 때까지 기다리세요."
+  },
+  "editor.wait_trash": {
+    "en": "Wait until the bundle is in the trash.",
+    "text": "번들이 휴지통으로 옮겨질 때까지 기다리세요."
+  },
+  "editor.wait_upload": {
+    "en": "Wait for the upload to finish.",
+    "text": "업로드가 끝날 때까지 기다리세요."
+  },
+  "editor.warning_fix_before_save": {
+    "en": "{warning} (allowed when it was saved). Fix this before saving.",
+    "text": "{warning} (저장할 때는 허용됐습니다). 저장하기 전에 고치세요."
+  },
+  "exchange.cannot_import": {
+    "en": "This version cannot import it: it {problem}.",
+    "text": "이 버전은 이 번들을 가져올 수 없습니다: {problem}."
+  },
+  "exchange.cannot_read": {
+    "en": "This version cannot read it: {problem}.",
+    "text": "이 버전은 이 번들을 읽을 수 없습니다: {problem}."
+  },
+  "exchange.cannot_unpack": {
+    "en": "{name} cannot be unpacked ({e})",
+    "text": "{name}: 풀 수 없음 ({e})"
+  },
+  "exchange.category_shape": {
+    "en": "category must be {shape}, with an id for \"one\".",
+    "text": "category는 {shape}이어야 하고, \"one\"이면 id가 있어야 합니다."
+  },
+  "exchange.conflict_choice": {
+    "en": "conflict must be one of {list}.",
+    "text": "conflict는 {list} 중 하나여야 합니다."
+  },
+  "exchange.encrypted": {
+    "en": "it is encrypted",
+    "text": "암호화되어 있음"
+  },
+  "exchange.export_expired": {
+    "en": "No such export; it may have expired. Export again.",
+    "text": "그런 내보내기가 없습니다. 만료됐을 수 있으니 다시 내보내세요."
+  },
+  "exchange.export_max": {
+    "en": "An export takes {MAX_EXPORT} bundles at most.",
+    "text": "내보내기는 번들 {MAX_EXPORT}개까지입니다."
+  },
+  "exchange.file_digest_manifest": {
+    "en": "The file is not what the manifest says (its SHA-256 differs).",
+    "text": "파일이 manifest에 적힌 것과 다릅니다 (SHA-256이 다름)."
+  },
+  "exchange.file_digest_name": {
+    "en": "the file is not what its name says (its SHA-256 differs)",
+    "text": "파일이 이름과 다름 (SHA-256이 다름)"
+  },
+  "exchange.file_not_imported": {
+    "en": "A file it uses could not be imported: {reason}",
+    "text": "이 번들이 쓰는 파일을 가져오지 못했습니다: {reason}"
+  },
+  "exchange.file_too_large_kind": {
+    "en": "{name} is larger than this kind of file may be.",
+    "text": "{name}: 이 종류의 파일로는 너무 큼"
+  },
+  "exchange.file_too_large_mb": {
+    "en": "{name} is larger than {n} MB",
+    "text": "{name}: {n} MB보다 큼"
+  },
+  "exchange.gone": {
+    "en": "No longer in the library.",
+    "text": "이제 라이브러리에 없습니다."
+  },
+  "exchange.import_expired": {
+    "en": "No such import; it may have expired.",
+    "text": "그런 가져오기가 없습니다. 만료됐을 수 있습니다."
+  },
+  "exchange.import_expired_upload": {
+    "en": "No such import; it may have expired. Upload the file again.",
+    "text": "그런 가져오기가 없습니다. 만료됐을 수 있으니 파일을 다시 올리세요."
+  },
+  "exchange.import_interrupted": {
+    "en": "This import was cut off: the server stopped while it ran. Reload the list to see what came in, and upload the file again for the rest.",
+    "text": "이 가져오기는 중단됐습니다. 진행 중에 서버가 멈췄습니다. 목록을 다시 읽어 들어온 것을 확인하고, 나머지는 파일을 다시 올리세요."
+  },
+  "exchange.import_running": {
+    "en": "This import is running; wait for it to finish.",
+    "text": "이 가져오기가 진행 중입니다. 끝날 때까지 기다리세요."
+  },
+  "exchange.in_trash": {
+    "en": "In the trash.",
+    "text": "휴지통에 있습니다."
+  },
+  "exchange.manifest_bad_bundle": {
+    "en": "a bundle in manifest.json is not described as it should be",
+    "text": "manifest.json의 번들 항목이 형식에 맞지 않음"
+  },
+  "exchange.manifest_bad_file": {
+    "en": "a file in manifest.json is not described as it should be",
+    "text": "manifest.json의 파일 항목이 형식에 맞지 않음"
+  },
+  "exchange.manifest_bundle_misplaced": {
+    "en": "bundle {id} is not where manifest.json says, or listed twice",
+    "text": "번들 {id}이(가) manifest.json에 적힌 자리에 없거나 두 번 적힘"
+  },
+  "exchange.manifest_bundles_max": {
+    "en": "manifest.json must list up to {MAX_EXPORT} bundles and their files",
+    "text": "manifest.json에는 번들 {MAX_EXPORT}개까지와 그 파일이 적혀야 함"
+  },
+  "exchange.manifest_missing": {
+    "en": "there is no manifest.json",
+    "text": "manifest.json이 없음"
+  },
+  "exchange.manifest_no_version": {
+    "en": "manifest.json has no version",
+    "text": "manifest.json에 판이 없음"
+  },
+  "exchange.manifest_not_format": {
+    "en": "manifest.json does not name the Bundle Library export format",
+    "text": "manifest.json에 Bundle Library 내보내기 형식이 적혀 있지 않음"
+  },
+  "exchange.manifest_not_json": {
+    "en": "manifest.json is not valid JSON",
+    "text": "manifest.json이 올바른 JSON이 아님"
+  },
+  "exchange.missing_in_zip": {
+    "en": "{file} is not in the ZIP",
+    "text": "ZIP에 {file}이(가) 없음"
+  },
+  "exchange.newer_format": {
+    "en": "This export was made by a newer Bundle Library (format version {version}); update the node pack to import it.",
+    "text": "더 새 버전의 Bundle Library가 만든 내보내기입니다(형식 판 {version}). 가져오려면 노드 팩을 업데이트하세요."
+  },
+  "exchange.no_such_export": {
+    "en": "No such export.",
+    "text": "그런 내보내기가 없습니다."
+  },
+  "exchange.no_such_import": {
+    "en": "No such import.",
+    "text": "그런 가져오기가 없습니다."
+  },
+  "exchange.not_readable_export": {
+    "en": "This is not an export this version can read: {message}",
+    "text": "이 버전이 읽을 수 있는 내보내기가 아닙니다: {message}"
+  },
+  "exchange.not_zip": {
+    "en": "not a ZIP file ({e})",
+    "text": "ZIP 파일이 아님 ({e})"
+  },
+  "exchange.nothing_exportable": {
+    "en": "None of these bundles can be exported.",
+    "text": "이 번들 중 내보낼 수 있는 것이 없습니다."
+  },
+  "exchange.zip_too_large": {
+    "en": "it unpacks to more than {n} GB",
+    "text": "풀면 {n} GB가 넘음"
+  },
+  "exchange.zip_too_many_entries": {
+    "en": "more than {MAX_ENTRIES} entries",
+    "text": "항목이 {MAX_ENTRIES}개보다 많음"
+  },
+  "file.audio_channels": {
+    "en": "The audio has {channels} channels; the limit is {channels2}.",
+    "text": "오디오의 채널이 {channels}개입니다. 최대 {channels2}개입니다."
+  },
+  "file.audio_sample_format": {
+    "en": "The audio's sample format ({name}) cannot be loaded; use 16-, 24- or 32-bit PCM, or floating point.",
+    "text": "오디오의 샘플 형식({name})은 불러올 수 없습니다. 16·24·32비트 PCM이나 부동소수점을 쓰세요."
+  },
+  "file.audio_sample_rate": {
+    "en": "The audio's sample rate is {n} kHz; the limit is {n2} kHz.",
+    "text": "오디오의 샘플 레이트가 {n} kHz입니다. 최대 {n2} kHz입니다."
+  },
+  "file.audio_too_large": {
+    "en": {
+      "one": "The audio is too large to load: with {count} channel at {rate} kHz it may last at most {length}.",
+      "other": "The audio is too large to load: with {count} channels at {rate} kHz it may last at most {length}."
+    },
+    "text": "오디오가 너무 커서 불러올 수 없습니다. {count}채널, {rate} kHz로는 최대 {length}입니다."
+  },
+  "file.audio_too_long": {
+    "en": "The audio is too long; the limit is {limit}.",
+    "text": "오디오가 너무 깁니다. 최대 {limit}입니다."
+  },
+  "file.audio_too_long_length": {
+    "en": "The audio is too long ({length}); the limit is {limit}.",
+    "text": "오디오가 너무 깁니다({length}). 최대 {limit}입니다."
+  },
+  "file.image_incomplete": {
+    "en": "The image could not be decoded completely; the file may be damaged.",
+    "text": "이미지를 끝까지 디코딩할 수 없습니다. 파일이 손상됐을 수 있습니다."
+  },
+  "file.image_too_large": {
+    "en": "The image is too large.",
+    "text": "이미지가 너무 큽니다."
+  },
+  "file.image_too_large_size": {
+    "en": "The image is too large ({width}×{height}); the limit is {limit} pixels.",
+    "text": "이미지가 너무 큽니다({width}×{height}). 최대 {limit}픽셀입니다."
+  },
+  "file.minutes": {
+    "en": {
+      "one": "{count} minute",
+      "other": "{count} minutes"
+    },
+    "text": "{count}분"
+  },
+  "file.not_decoded": {
+    "en": "The {kind} could not be decoded; the file may be damaged.",
+    "text": "{kind}을(를) 디코딩할 수 없습니다. 파일이 손상됐을 수 있습니다."
+  },
+  "file.only_audio": {
+    "en": "Only WAV, FLAC, MP3, OGG and M4A audio files are accepted.",
+    "text": "WAV·FLAC·MP3·OGG·M4A 오디오 파일만 올릴 수 있습니다."
+  },
+  "file.only_image": {
+    "en": "Only PNG, JPEG and WebP images are accepted.",
+    "text": "PNG·JPEG·WebP 이미지만 올릴 수 있습니다."
+  },
+  "file.only_video": {
+    "en": "Only MP4, WebM and MOV videos are accepted.",
+    "text": "MP4·WebM·MOV 동영상만 올릴 수 있습니다."
+  },
+  "file.seconds": {
+    "en": {
+      "one": "{count} second",
+      "other": "{count} seconds"
+    },
+    "text": "{count}초"
+  },
+  "file.thumb_size": {
+    "en": "Thumbnail size must be one of {list}.",
+    "text": "썸네일 크기는 {list} 중 하나여야 합니다."
+  },
+  "file.video_too_large": {
+    "en": "The video is too large ({width}×{height}); the limit is {pixels} pixels per frame.",
+    "text": "동영상이 너무 큽니다({width}×{height}). 프레임당 최대 {pixels}픽셀입니다."
+  },
+  "import.back_from_trash": {
+    "en": "back from the trash",
+    "text": "휴지통에서 되살아남"
+  },
+  "import.categories_made": {
+    "en": "Categories made: {names}.",
+    "text": "만든 카테고리: {names}."
+  },
+  "import.categories_title": {
+    "en": "Categories",
+    "text": "카테고리"
+  },
+  "import.category_as_file": {
+    "en": "As in the file (a category with the same name, made if it is not here)",
+    "text": "파일에 적힌 대로 (같은 이름의 카테고리, 없으면 만듦)"
+  },
+  "import.category_one": {
+    "en": "All into one category:",
+    "text": "모두 한 카테고리에:"
+  },
+  "import.category_warning": {
+    "en": "Their places in categories: {warning}",
+    "text": "카테고리 배치: {warning}"
+  },
+  "import.check_again": {
+    "en": "Check again",
+    "text": "다시 확인"
+  },
+  "import.conflict_leave": {
+    "en": "Leave them as they are",
+    "text": "그대로 두기"
+  },
+  "import.conflict_new": {
+    "en": "Import them as new bundles beside them",
+    "text": "새 번들로 따로 가져오기"
+  },
+  "import.conflict_replace": {
+    "en": "Replace them with the file's version (one in the trash comes back)",
+    "text": "파일의 내용으로 바꾸기 (휴지통에 있던 번들은 되살아남)"
+  },
+  "import.count_existing": {
+    "en": "{count} here already",
+    "text": "이미 있는 {count}개"
+  },
+  "import.count_imported": {
+    "en": "{count} imported",
+    "text": "{count}개 가져옴"
+  },
+  "import.count_left": {
+    "en": "{count} left as they are",
+    "text": "{count}개 그대로 둠"
+  },
+  "import.count_missing": {
+    "en": "{count} in neither the file nor the library",
+    "text": "파일에도 라이브러리에도 없는 {count}개"
+  },
+  "import.count_new": {
+    "en": "{count} new here",
+    "text": "새로 들어올 {count}개"
+  },
+  "import.count_not_importable": {
+    "en": "{count} cannot be imported",
+    "text": "가져올 수 없는 {count}개"
+  },
+  "import.count_not_imported": {
+    "en": "{count} not imported",
+    "text": "{count}개 가져오지 못함"
+  },
+  "import.cut_off": {
+    "en": "Cut off",
+    "text": "중단됨"
+  },
+  "import.existing": {
+    "en": "here already",
+    "text": "이미 있음"
+  },
+  "import.existing_in_trash": {
+    "en": "here already, in the trash",
+    "text": "이미 있음, 휴지통에"
+  },
+  "import.existing_left": {
+    "en": "Here already: left as they are",
+    "text": "이미 있어 그대로 둠"
+  },
+  "import.existing_title": {
+    "en": "Bundles here already",
+    "text": "이미 있는 번들"
+  },
+  "import.existing_unreadable": {
+    "en": "here already, as a file this version cannot read",
+    "text": "이미 있음, 이 버전이 읽지 못하는 파일로"
+  },
+  "import.exported_at": {
+    "en": "exported {time}",
+    "text": "{time}에 내보냄"
+  },
+  "import.files_failed": {
+    "en": {
+      "one": "{count} file could not be imported: {reasons}",
+      "other": "{count} files could not be imported: {reasons}"
+    },
+    "text": "파일 {count}개를 가져오지 못했습니다: {reasons}"
+  },
+  "import.hint": {
+    "en": "Favorites are not imported. Names may repeat; bundles are told apart by their ids.",
+    "text": "즐겨찾기는 가져오지 않습니다. 이름은 겹칠 수 있고, 번들은 id로 구별합니다."
+  },
+  "import.import": {
+    "en": "Import",
+    "text": "가져오기"
+  },
+  "import.import_bundles": {
+    "en": "Import {bundles}",
+    "text": "{bundles} 가져오기"
+  },
+  "import.import_name": {
+    "en": "Import {name}",
+    "text": "{name} 가져오기"
+  },
+  "import.imported_beside": {
+    "en": "Imported beside the bundles here",
+    "text": "따로 들어옴"
+  },
+  "import.imported_not_categorized": {
+    "en": "Imported, but not put in categories: {reason}",
+    "text": "가져왔지만 카테고리에 넣지 못했습니다: {reason}"
+  },
+  "import.in_category": {
+    "en": "in {category}",
+    "text": "{category} 카테고리"
+  },
+  "import.left_out": {
+    "en": "left out",
+    "text": "빠짐"
+  },
+  "import.locked_kept": {
+    "en": "One here that this version cannot read or change is never replaced.",
+    "text": "이 버전이 읽거나 바꿀 수 없는 번들은 바꾸지 않습니다."
+  },
+  "import.missing_files": {
+    "en": {
+      "one": "⚠ {count} file it uses is not in the file or the library",
+      "other": "⚠ {count} files it uses are not in the file or the library"
+    },
+    "text": "⚠ 이 번들이 쓰는 파일 {count}개가 ZIP에도 라이브러리에도 없습니다"
+  },
+  "import.new_here": {
+    "en": "new here",
+    "text": "새로 들어옴"
+  },
+  "import.new_title": {
+    "en": "New here",
+    "text": "새로 들어옴"
+  },
+  "import.no_answer_kept": {
+    "en": "No answer kept",
+    "text": "남은 답이 없음"
+  },
+  "import.not_imported": {
+    "en": "Not imported",
+    "text": "가져오지 못함"
+  },
+  "import.nothing_imported": {
+    "en": "Nothing was imported",
+    "text": "아무것도 가져오지 않았습니다"
+  },
+  "import.reload_hint": {
+    "en": "{message} Reload the list to see where things stand.",
+    "text": "{message} 목록을 다시 읽어 상황을 확인하세요."
+  },
+  "import.replaced": {
+    "en": "Replaced with the file's version",
+    "text": "파일의 내용으로 바뀜"
+  },
+  "import.replayed": {
+    "en": "This is the answer the server kept from when the import ran.",
+    "text": "가져오기가 실행됐을 때 서버가 남긴 답입니다."
+  },
+  "import.sent_no_answer": {
+    "en": "The import was sent, but no answer came back. The server may have imported all, some or none of it. Check again for its answer, or reload the list to see where things stand.",
+    "text": "가져오기 요청을 보냈지만 답이 오지 않았습니다. 서버가 전부나 일부를 가져왔거나 아무것도 가져오지 않았을 수 있습니다. 다시 확인해 서버의 답을 받거나, 목록을 다시 읽어 상황을 확인하세요."
+  },
+  "import.still_running": {
+    "en": "Still running",
+    "text": "아직 진행 중"
+  },
+  "import.uploaded_reading": {
+    "en": "Uploaded {name}; reading it…",
+    "text": "{name}을(를) 올렸습니다. 읽는 중…"
+  },
+  "import.uploading": {
+    "en": "Uploading {name} ({size})…",
+    "text": "{name}({size}) 올리는 중…"
+  },
+  "kind.a_video": {
+    "en": "a video",
+    "text": "동영상"
+  },
+  "kind.an_audio": {
+    "en": "an audio",
+    "text": "오디오"
+  },
+  "kind.an_image": {
+    "en": "an image",
+    "text": "이미지"
+  },
+  "kind.audio": {
+    "en": "audio",
+    "text": "오디오"
+  },
+  "kind.image": {
+    "en": "image",
+    "text": "이미지"
+  },
+  "kind.video": {
+    "en": "video",
+    "text": "동영상"
+  },
+  "library.attention_delete_confirm": {
+    "en": "Delete {file} for good?",
+    "text": "{file} 파일을 영구 삭제할까요?"
+  },
+  "library.attention_delete_detail": {
+    "en": "If a newer Bundle Library saved it, that version loses it too. Deleting cannot be undone.",
+    "text": "더 새 버전의 Bundle Library가 저장한 파일이라면 그 버전에서도 사라집니다. 지우면 되돌릴 수 없습니다."
+  },
+  "library.attention_deleted": {
+    "en": "Deleted {file} for good.",
+    "text": "{file} 파일을 영구 삭제했습니다."
+  },
+  "library.cannot_save": {
+    "en": "They cannot be saved as they are: {reason}",
+    "text": "지금 상태로는 저장할 수 없습니다: {reason}"
+  },
+  "library.category_created": {
+    "en": "Created the category '{name}'.",
+    "text": "'{name}' 카테고리를 만들었습니다."
+  },
+  "library.category_delete": {
+    "en": "Delete category",
+    "text": "카테고리 삭제"
+  },
+  "library.category_delete_confirm": {
+    "en": "Delete the category '{name}'?",
+    "text": "'{name}' 카테고리를 지울까요?"
+  },
+  "library.category_delete_detail": {
+    "en": {
+      "one": "Its bundle moves to Uncategorized. The bundles themselves are not changed.",
+      "other": "Its {count} bundles move to Uncategorized. The bundles themselves are not changed."
+    },
+    "text": "번들 {count}개가 미분류로 옮겨집니다. 번들 자체는 바뀌지 않습니다."
+  },
+  "library.category_deleted": {
+    "en": "Deleted the category '{name}'.",
+    "text": "'{name}' 카테고리를 지웠습니다."
+  },
+  "library.category_empty": {
+    "en": "It has no bundles.",
+    "text": "번들이 없습니다."
+  },
+  "library.category_group": {
+    "en": "Category {name}",
+    "text": "카테고리 {name}"
+  },
+  "library.category_hint": {
+    "en": "Each bundle sits in one category. Choose it in the editor, or drag the bundle onto the category.",
+    "text": "번들은 한 카테고리에 들어갑니다. 편집기에서 고르거나, 번들을 카테고리로 끌어다 놓으세요."
+  },
+  "library.category_menu_title": {
+    "en": "Rename or delete '{name}'",
+    "text": "'{name}' 이름 바꾸기나 삭제"
+  },
+  "library.category_name": {
+    "en": "Category name",
+    "text": "카테고리 이름"
+  },
+  "library.category_new": {
+    "en": "New category",
+    "text": "새 카테고리"
+  },
+  "library.category_rename_title": {
+    "en": "Rename '{name}'",
+    "text": "'{name}' 이름 바꾸기"
+  },
+  "library.category_renamed": {
+    "en": "Renamed the category to '{name}'.",
+    "text": "카테고리 이름을 '{name}'(으)로 바꿨습니다."
+  },
+  "library.clear_tag_filter": {
+    "en": "Clear the tag filter",
+    "text": "태그 필터 지우기"
+  },
+  "library.close": {
+    "en": "Close (Esc)",
+    "text": "닫기 (Esc)"
+  },
+  "library.collapse": {
+    "en": "Collapse",
+    "text": "접기"
+  },
+  "library.create": {
+    "en": "Create",
+    "text": "만들기"
+  },
+  "library.drop_uncategorize": {
+    "en": "Drop here to take it out of its category",
+    "text": "여기에 놓으면 카테고리에서 뺍니다"
+  },
+  "library.empty_group": {
+    "en": "No bundles yet.",
+    "text": "아직 번들이 없습니다."
+  },
+  "library.empty_library": {
+    "en": "No bundles yet. Create one with + New bundle.",
+    "text": "아직 번들이 없습니다. + 새 번들로 만드세요."
+  },
+  "library.expand": {
+    "en": "Expand",
+    "text": "펼치기"
+  },
+  "library.exporting": {
+    "en": "Exporting {bundles}",
+    "text": "{bundles} 내보내는 중"
+  },
+  "library.favorite_added": {
+    "en": "Added to the favorites",
+    "text": "즐겨찾기에 추가했습니다"
+  },
+  "library.favorite_adding": {
+    "en": "Adding {bundles} to the favorites",
+    "text": "{bundles}를 즐겨찾기에 추가하는 중"
+  },
+  "library.favorite_removed": {
+    "en": "Removed from the favorites",
+    "text": "즐겨찾기에서 뺐습니다"
+  },
+  "library.favorite_removing": {
+    "en": "Removing {bundles} from the favorites",
+    "text": "{bundles}를 즐겨찾기에서 빼는 중"
+  },
+  "library.favorites_hint": {
+    "en": "Star a bundle (☆) to list it here as well.",
+    "text": "번들에 별표(☆)를 하면 여기에도 보입니다."
+  },
+  "library.fields_count": {
+    "en": "{count} field(s)",
+    "text": "필드 {count}개"
+  },
+  "library.fix_before_saving": {
+    "en": "⚠ Fix before saving",
+    "text": "⚠ 저장하기 전에 고쳐야 함"
+  },
+  "library.group_empty_category": {
+    "en": "No bundles. Drag one here, or choose this category in the editor.",
+    "text": "번들이 없습니다. 여기로 끌어 오거나, 편집기에서 이 카테고리를 고르세요."
+  },
+  "library.import_asking": {
+    "en": "Asking the server for the import's answer",
+    "text": "서버에 가져오기의 답을 묻는 중"
+  },
+  "library.import_title": {
+    "en": "Import bundles from a ZIP",
+    "text": "ZIP에서 번들 가져오기"
+  },
+  "library.imported": {
+    "en": "Imported",
+    "text": "가져왔습니다"
+  },
+  "library.importing": {
+    "en": "Importing {bundles}",
+    "text": "{bundles} 가져오는 중"
+  },
+  "library.job_change": {
+    "en": "The change",
+    "text": "변경"
+  },
+  "library.job_export": {
+    "en": "The export",
+    "text": "내보내기"
+  },
+  "library.job_import": {
+    "en": "The import",
+    "text": "가져오기"
+  },
+  "library.job_move": {
+    "en": "The move",
+    "text": "이동"
+  },
+  "library.job_trash": {
+    "en": "The move to the trash",
+    "text": "휴지통으로 옮기기"
+  },
+  "library.keep_editing": {
+    "en": "Keep editing",
+    "text": "계속 편집"
+  },
+  "library.manage_tags": {
+    "en": "Manage tags…",
+    "text": "태그 관리…"
+  },
+  "library.move_to_trash": {
+    "en": "Move to trash",
+    "text": "휴지통으로 옮기기"
+  },
+  "library.moved_named": {
+    "en": "Moved '{name}' to {category}.",
+    "text": "'{name}' 번들을 {category}(으)로 옮겼습니다."
+  },
+  "library.moved_to": {
+    "en": "Moved to {category}",
+    "text": "{category}(으)로 옮겼습니다"
+  },
+  "library.moving": {
+    "en": "Moving {bundles} to {category}",
+    "text": "{bundles}를 {category}(으)로 옮기는 중"
+  },
+  "library.new_bundle_button": {
+    "en": "+ New bundle",
+    "text": "+ 새 번들"
+  },
+  "library.new_bundle_numbered": {
+    "en": "New bundle {n}",
+    "text": "새 번들 {n}"
+  },
+  "library.new_discarded": {
+    "en": "Discarded the new bundle.",
+    "text": "새 번들을 버렸습니다."
+  },
+  "library.no_favorite_match": {
+    "en": "No starred bundle matches.",
+    "text": "맞는 즐겨찾기 번들이 없습니다."
+  },
+  "library.no_match": {
+    "en": "No bundles match.",
+    "text": "맞는 번들이 없습니다."
+  },
+  "library.no_tag_match": {
+    "en": "No tags match.",
+    "text": "맞는 태그가 없습니다."
+  },
+  "library.node_output_missing": {
+    "en": "⚠ The node's connected output {name} is missing here or has another type; running would fail.",
+    "text": "⚠ 노드에 연결된 출력 {name}이(가) 여기 없거나 타입이 다릅니다. 실행하면 실패합니다."
+  },
+  "library.node_outputs_missing": {
+    "en": "⚠ The node's connected outputs {names} are missing here or have another type; running would fail.",
+    "text": "⚠ 노드에 연결된 출력 {names}이(가) 여기 없거나 타입이 다릅니다. 실행하면 실패합니다."
+  },
+  "library.none_listed": {
+    "en": "None of them is in the list any more; reload to see where things stand.",
+    "text": "그중 어느 것도 이제 목록에 없습니다. 다시 읽어 상황을 확인하세요."
+  },
+  "library.not_fully_read": {
+    "en": "This version of Bundle Library cannot fully read it: {reason}.",
+    "text": "이 버전의 Bundle Library는 이 파일을 온전히 읽을 수 없습니다: {reason}."
+  },
+  "library.nothing_imported": {
+    "en": "Nothing was imported.",
+    "text": "아무것도 가져오지 않았습니다."
+  },
+  "library.ok": {
+    "en": "OK",
+    "text": "확인"
+  },
+  "library.open": {
+    "en": "Open library",
+    "text": "라이브러리 열기"
+  },
+  "library.organization_locked": {
+    "en": "This version of Bundle Library cannot change the categories and favorites: see Needs attention.",
+    "text": "이 버전의 Bundle Library는 카테고리와 즐겨찾기를 바꿀 수 없습니다. 확인 필요를 보세요."
+  },
+  "library.read_failed": {
+    "en": "Could not read the library: {reason}",
+    "text": "라이브러리를 읽을 수 없습니다: {reason}"
+  },
+  "library.row_lacking": {
+    "en": "⚠ no {fields}",
+    "text": "⚠ {fields} 없음"
+  },
+  "library.row_lacking_title": {
+    "en": "No {fields}",
+    "text": "{fields} 없음"
+  },
+  "library.save_changes_confirm": {
+    "en": "Save your changes?",
+    "text": "변경을 저장할까요?"
+  },
+  "library.save_or_discard_first": {
+    "en": "Save or discard your changes first.",
+    "text": "먼저 변경을 저장하거나 버리세요."
+  },
+  "library.save_or_revert_first": {
+    "en": "Save or revert your changes first.",
+    "text": "먼저 변경을 저장하거나 되돌리세요."
+  },
+  "library.saved_elsewhere": {
+    "en": "'{name}' was saved elsewhere; the editor shows it as saved now.",
+    "text": "'{name}' 번들이 다른 곳에서 저장되어, 편집기가 저장된 내용을 보입니다."
+  },
+  "library.search_failed": {
+    "en": "Could not search: {reason}",
+    "text": "검색할 수 없습니다: {reason}"
+  },
+  "library.search_placeholder": {
+    "en": "Search names, tags, fields and text",
+    "text": "이름·태그·필드·텍스트 검색"
+  },
+  "library.select_hint": {
+    "en": "Select a bundle on the left, or create one with + New bundle.",
+    "text": "왼쪽에서 번들을 고르거나, + 새 번들로 만드세요."
+  },
+  "library.selection_hidden": {
+    "en": {
+      "one": "{count} selected bundle hidden by the search or filter was taken out of the selection.",
+      "other": "{count} selected bundles hidden by the search or filter were taken out of the selection."
+    },
+    "text": "검색이나 필터로 가려진, 고른 번들 {count}개를 선택에서 뺐습니다."
+  },
+  "library.sort_name": {
+    "en": "Name A→Z",
+    "text": "이름 A→Z"
+  },
+  "library.sort_name_desc": {
+    "en": "Name Z→A",
+    "text": "이름 Z→A"
+  },
+  "library.sort_name_desc_title": {
+    "en": "Sort: name Z→A",
+    "text": "정렬: 이름 Z→A"
+  },
+  "library.sort_name_title": {
+    "en": "Sort: name A→Z",
+    "text": "정렬: 이름 A→Z"
+  },
+  "library.sort_updated": {
+    "en": "Newest first",
+    "text": "최근 수정순"
+  },
+  "library.sort_updated_asc": {
+    "en": "Oldest first",
+    "text": "오래된 순"
+  },
+  "library.sort_updated_asc_title": {
+    "en": "Sort: oldest first",
+    "text": "정렬: 오래된 순"
+  },
+  "library.sort_updated_title": {
+    "en": "Sort: newest first",
+    "text": "정렬: 최근 수정순"
+  },
+  "library.tag_added": {
+    "en": "Added the tag '{tag}'",
+    "text": "'{tag}' 태그를 붙였습니다"
+  },
+  "library.tag_adding": {
+    "en": "Adding the tag '{tag}' to {bundles}",
+    "text": "{bundles}에 '{tag}' 태그를 붙이는 중"
+  },
+  "library.tag_all": {
+    "en": "All tags",
+    "text": "모든 태그"
+  },
+  "library.tag_deleted": {
+    "en": "Deleted the tag '{tag}' from {bundles}.",
+    "text": "{bundles}에서 '{tag}' 태그를 지웠습니다."
+  },
+  "library.tag_filter": {
+    "en": "Filter by tag",
+    "text": "태그로 거르기"
+  },
+  "library.tag_filter_label": {
+    "en": "Tag: {tag}",
+    "text": "태그: {tag}"
+  },
+  "library.tag_filter_now": {
+    "en": "Filter by tag (now: {tag})",
+    "text": "태그로 거르기 (지금: {tag})"
+  },
+  "library.tag_find": {
+    "en": "Find a tag",
+    "text": "태그 찾기"
+  },
+  "library.tag_kept": {
+    "en": "{bundles} kept '{tag}': {reasons}.",
+    "text": "{bundles}에는 '{tag}' 태그가 남았습니다: {reasons}."
+  },
+  "library.tag_removed": {
+    "en": "Removed the tag '{tag}'",
+    "text": "'{tag}' 태그를 뗐습니다"
+  },
+  "library.tag_removing": {
+    "en": "Removing the tag '{tag}' from {bundles}",
+    "text": "{bundles}에서 '{tag}' 태그를 떼는 중"
+  },
+  "library.tag_renamed": {
+    "en": "Renamed '{tag}' to '{to}' in {bundles}.",
+    "text": "{bundles}에서 '{tag}' 태그의 이름을 '{to}'(으)로 바꿨습니다."
+  },
+  "library.tag_renamed_merged": {
+    "en": "Renamed '{tag}' to '{to}' in {bundles} ({count} merged).",
+    "text": "{bundles}에서 '{tag}' 태그의 이름을 '{to}'(으)로 바꿨습니다({count}개 합침)."
+  },
+  "library.tag_show_all": {
+    "en": "Show every tag",
+    "text": "모든 태그 보기"
+  },
+  "library.this_bundle": {
+    "en": "this bundle",
+    "text": "이 번들"
+  },
+  "library.trash_confirm": {
+    "en": "Move {bundles} to the trash?",
+    "text": "{bundles}를 휴지통으로 옮길까요?"
+  },
+  "library.trash_count": {
+    "en": "Trash ({count})",
+    "text": "휴지통 ({count})"
+  },
+  "library.trash_detail": {
+    "en": "They can be restored from the trash. Until then, workflows that use them report them as missing.",
+    "text": "휴지통에서 되살릴 수 있습니다. 그때까지 이 번들들을 쓰는 워크플로는 번들이 없다고 알립니다."
+  },
+  "library.trash_moved": {
+    "en": "Moved to the trash",
+    "text": "휴지통으로 옮겼습니다"
+  },
+  "library.trash_moving": {
+    "en": "Moving {bundles} to the trash",
+    "text": "{bundles}를 휴지통으로 옮기는 중"
+  },
+  "library.trashed": {
+    "en": "Deleted '{name}'. It is in the trash.",
+    "text": "'{name}' 번들을 지웠습니다. 휴지통에 있습니다."
+  },
+  "library.trashed_warning": {
+    "en": "Deleted '{name}'. It is in the trash. {warning}",
+    "text": "'{name}' 번들을 지웠습니다. 휴지통에 있습니다. {warning}"
+  },
+  "library.uncategorized_done": {
+    "en": "Taken out of their categories",
+    "text": "카테고리에서 뺐습니다"
+  },
+  "library.uncategorized_named": {
+    "en": "'{name}' is uncategorized now.",
+    "text": "'{name}' 번들은 이제 미분류입니다."
+  },
+  "library.uncategorizing": {
+    "en": "Taking {bundles} out of their categories",
+    "text": "{bundles}를 카테고리에서 빼는 중"
+  },
+  "library.unknown_files_left_out": {
+    "en": {
+      "one": "{count} file this version cannot read was left out.",
+      "other": "{count} files this version cannot read were left out."
+    },
+    "text": "이 버전이 읽지 못하는 파일 {count}개는 빠졌습니다."
+  },
+  "library.unsaved_named": {
+    "en": "Your changes to '{name}' have not been saved.",
+    "text": "'{name}'의 변경을 저장하지 않았습니다."
+  },
+  "library.use_bundle": {
+    "en": "Use this bundle",
+    "text": "현재 번들 사용"
+  },
+  "library.use_one_only": {
+    "en": "Select only one bundle to use it.",
+    "text": "사용하려면 번들을 하나만 고르세요."
+  },
+  "library.wait_batch": {
+    "en": "Wait until the change to the selected bundles is done.",
+    "text": "고른 번들의 변경이 끝날 때까지 기다리세요."
+  },
+  "library.wait_export": {
+    "en": "Wait until the export is made.",
+    "text": "내보내기가 만들어질 때까지 기다리세요."
+  },
+  "library.wait_import": {
+    "en": "Wait until the bundles are imported.",
+    "text": "번들을 다 가져올 때까지 기다리세요."
+  },
+  "library.wait_import_answer": {
+    "en": "Wait for the import's answer.",
+    "text": "가져오기의 답을 기다리세요."
+  },
+  "library.wait_tag": {
+    "en": "Wait until the tag is changed in every bundle.",
+    "text": "모든 번들에서 태그가 바뀔 때까지 기다리세요."
+  },
+  "library.wait_upload": {
+    "en": "Wait until the file is uploaded, or cancel the upload.",
+    "text": "파일이 올라갈 때까지 기다리거나 업로드를 취소하세요."
+  },
+  "list.needs_attention": {
+    "en": "Needs attention",
+    "text": "확인 필요"
+  },
+  "node.bundle_missing": {
+    "en": "⚠ Bundle not found or in the trash: {name}",
+    "text": "⚠ 번들이 없거나 휴지통에 있습니다: {name}"
+  },
+  "node.choice_lacking": {
+    "en": "{label}  ⚠ no {fields}",
+    "text": "{label}  ⚠ {fields} 없음"
+  },
+  "node.choose_bundle": {
+    "en": "Select a bundle…",
+    "text": "번들 고르기…"
+  },
+  "node.empty": {
+    "en": "(empty)",
+    "text": "(비어 있음)"
+  },
+  "node.fields_changed": {
+    "en": "Bundle fields changed: ",
+    "text": "번들 필드가 바뀌었습니다: "
+  },
+  "node.list_failed": {
+    "en": "⚠ Could not load the bundle list: {reason}",
+    "text": "⚠ 번들 목록을 불러올 수 없습니다: {reason}"
+  },
+  "node.misplaced_links": {
+    "en": {
+      "one": "This workflow saved linked output {list} under another field than the node records. The links now carry the recorded fields; check them.",
+      "other": "This workflow saved linked outputs {list} under another field than the node records. The links now carry the recorded fields; check them."
+    },
+    "text": "이 워크플로에 저장된 연결된 출력 {list}의 필드가 노드의 기록과 다릅니다. 이제 연결은 기록된 필드를 전합니다. 확인하세요."
+  },
+  "node.newer_node": {
+    "en": "This node was saved by a newer Bundle Library. Its outputs and links are kept as they are; update the node pack to change its bundle.",
+    "text": "이 노드는 더 새 버전의 Bundle Library가 저장했습니다. 출력과 연결은 그대로 둡니다. 번들을 바꾸려면 노드 팩을 업데이트하세요."
+  },
+  "node.no_fields": {
+    "en": "This bundle has no fields.",
+    "text": "이 번들에는 필드가 없습니다."
+  },
+  "node.no_media": {
+    "en": "No {kind}",
+    "text": "{kind} 없음"
+  },
+  "node.no_media_fail": {
+    "en": "⚠ No {kind}; running will fail",
+    "text": "⚠ {kind} 없음. 실행하면 실패합니다"
+  },
+  "node.not_connected": {
+    "en": "{problem} (not connected)",
+    "text": "{problem} (연결 안 됨)"
+  },
+  "node.not_found": {
+    "en": "⚠ Not found: {name}",
+    "text": "⚠ 찾을 수 없음: {name}"
+  },
+  "node.not_in_bundle": {
+    "en": "not in this bundle",
+    "text": "이 번들에 없음"
+  },
+  "node.open_library": {
+    "en": "Open the Bundle Library",
+    "text": "Bundle Library 열기"
+  },
+  "node.other_type": {
+    "en": "another type in this bundle",
+    "text": "이 번들에서는 다른 타입"
+  },
+  "node.output_other_type": {
+    "en": "{output} ({field}, another type)",
+    "text": "{output} ({field}, 다른 타입)"
+  },
+  "node.outputs_max": {
+    "en": {
+      "one": "A node has {max} outputs at most, so {count} field is not shown.",
+      "other": "A node has {max} outputs at most, so {count} fields are not shown."
+    },
+    "text": "노드의 출력은 최대 {max}개라 필드 {count}개는 보이지 않습니다."
+  },
+  "node.play": {
+    "en": "Play",
+    "text": "재생"
+  },
+  "node.preview_enlarge": {
+    "en": "{caption} · click to enlarge",
+    "text": "{caption} · 눌러서 크게 보기"
+  },
+  "node.preview_hide": {
+    "en": "Hide the preview",
+    "text": "미리 보기 숨기기"
+  },
+  "node.preview_play": {
+    "en": "{caption} · click to play",
+    "text": "{caption} · 눌러서 재생"
+  },
+  "node.preview_show": {
+    "en": "Show the preview",
+    "text": "미리 보기 보이기"
+  },
+  "node.problem_fail": {
+    "en": "⚠ {problem}; running will fail",
+    "text": "⚠ {problem}. 실행하면 실패합니다"
+  },
+  "node.title": {
+    "en": "Load Bundle",
+    "text": "번들 불러오기"
+  },
+  "node.update_outputs": {
+    "en": "Update outputs",
+    "text": "출력 갱신"
+  },
+  "node.update_outputs_title": {
+    "en": "Add new fields, drop unconnected outputs that left the bundle, retype unconnected outputs",
+    "text": "새 필드를 더하고, 번들에서 빠진 연결 안 된 출력을 빼고, 연결 안 된 출력의 타입을 바꿉니다"
+  },
+  "request.file_empty": {
+    "en": "The file is empty.",
+    "text": "파일이 비어 있습니다."
+  },
+  "request.file_missing": {
+    "en": "The 'file' field is missing.",
+    "text": "'file' 필드가 없습니다."
+  },
+  "request.file_not_found": {
+    "en": "File not found.",
+    "text": "파일을 찾을 수 없습니다."
+  },
+  "request.internal": {
+    "en": "Server error; see the ComfyUI log for details.",
+    "text": "서버 오류입니다. 자세한 내용은 ComfyUI 로그를 보세요."
+  },
+  "request.io_error": {
+    "en": "The library folder could not be read or written ({value}).",
+    "text": "라이브러리 폴더를 읽거나 쓸 수 없었습니다({value})."
+  },
+  "request.json_invalid": {
+    "en": "The body is not valid JSON.",
+    "text": "본문이 올바른 JSON이 아닙니다."
+  },
+  "request.json_object": {
+    "en": "The body must be a JSON object.",
+    "text": "본문은 JSON 객체여야 합니다."
+  },
+  "request.json_type": {
+    "en": "The body must be JSON (application/json).",
+    "text": "본문은 JSON(application/json)이어야 합니다."
+  },
+  "request.json_unicode": {
+    "en": "The body has text that is not valid Unicode.",
+    "text": "본문에 올바른 유니코드가 아닌 글자가 있습니다."
+  },
+  "request.kind_invalid": {
+    "en": "kind must be image, video or audio.",
+    "text": "kind는 image, video, audio 중 하나여야 합니다."
+  },
+  "request.missing": {
+    "en": "Missing in the request: {list}.",
+    "text": "요청에 빠진 것: {list}."
+  },
+  "request.no_thumbnail": {
+    "en": "No thumbnail for this file.",
+    "text": "이 파일에는 썸네일이 없습니다."
+  },
+  "request.size_integer": {
+    "en": "size must be an integer.",
+    "text": "size는 정수여야 합니다."
+  },
+  "request.sort_invalid": {
+    "en": "sort must be 'name' or 'updated'.",
+    "text": "sort는 'name'이나 'updated'여야 합니다."
+  },
+  "request.too_large": {
+    "en": "Request too large; the limit is {n} MB.",
+    "text": "요청이 너무 큽니다. 최대 {n} MB입니다."
+  },
+  "request.upload_multipart": {
+    "en": "Upload files as multipart/form-data.",
+    "text": "파일은 multipart/form-data로 올리세요."
+  },
+  "request.version_mismatch": {
+    "en": "This page runs Bundle Library {value} but the server runs {VERSION}.",
+    "text": "이 페이지는 Bundle Library {value} 버전이지만 서버는 {VERSION} 버전입니다."
+  },
+  "request.write_guard": {
+    "en": "Changes to the library must come from the ComfyUI page.",
+    "text": "라이브러리의 변경은 ComfyUI 페이지에서 와야 합니다."
+  },
+  "request.zip_multipart": {
+    "en": "Upload the ZIP as multipart/form-data.",
+    "text": "ZIP은 multipart/form-data로 올리세요."
+  },
+  "schema.not_bundle_file": {
+    "en": "not a bundle file",
+    "text": "번들 파일이 아님"
+  },
+  "schema.not_json": {
+    "en": "not valid JSON",
+    "text": "올바른 JSON이 아님"
+  },
+  "schema.not_json_object": {
+    "en": "not a JSON object",
+    "text": "JSON 객체가 아님"
+  },
+  "schema.not_unicode": {
+    "en": "has text that is not valid Unicode",
+    "text": "올바른 유니코드가 아닌 글자가 있음"
+  },
+  "schema.too_deep": {
+    "en": "nested too deeply",
+    "text": "너무 깊이 중첩됨"
+  },
+  "store.batch_max": {
+    "en": "A batch takes {MAX_BATCH} bundles at most.",
+    "text": "일괄 작업은 번들 {MAX_BATCH}개까지입니다."
+  },
+  "store.batch_object": {
+    "en": "A batch is a JSON object.",
+    "text": "일괄 요청은 JSON 객체여야 합니다."
+  },
+  "store.bundle_newer": {
+    "en": "Bundle file {name} was saved by a newer Bundle Library; update the node to use it.",
+    "text": "번들 파일 {name}은(는) 더 새 버전의 Bundle Library가 저장했습니다. 쓰려면 노드를 업데이트하세요."
+  },
+  "store.bundle_not_found": {
+    "en": "Bundle not found: {bundle_id}",
+    "text": "번들을 찾을 수 없습니다: {bundle_id}"
+  },
+  "store.bundle_unusable": {
+    "en": "Bundle file {name} cannot be used by this version: {problem}.",
+    "text": "번들 파일 {name}은(는) 이 버전에서 쓸 수 없습니다: {problem}."
+  },
+  "store.categories_max": {
+    "en": "A library has {MAX_CATEGORIES} categories at most.",
+    "text": "라이브러리의 카테고리는 최대 {MAX_CATEGORIES}개입니다."
+  },
+  "store.category_nested": {
+    "en": "Categories cannot be put in other categories yet.",
+    "text": "카테고리 안에 카테고리는 아직 둘 수 없습니다."
+  },
+  "store.category_required": {
+    "en": "category is required: a category id, or null for no category.",
+    "text": "category가 필요합니다: 카테고리 id, 또는 카테고리 없음이면 null."
+  },
+  "store.cleanup_blocked": {
+    "en": "Unused files cannot be told apart while these bundle files cannot be fully read: {list}.",
+    "text": "이 번들 파일들을 온전히 읽을 수 없어 쓰이지 않는 파일을 가릴 수 없습니다: {list}."
+  },
+  "store.favorite_boolean": {
+    "en": "favorite must be true or false.",
+    "text": "favorite는 true나 false여야 합니다."
+  },
+  "store.file_gone_import": {
+    "en": "Field '{name}': its file is not in the library. The library changed while the import ran; import the file again.",
+    "text": "필드 '{name}': 파일이 라이브러리에 없습니다. 가져오는 동안 라이브러리가 바뀌었으니 파일을 다시 가져오세요."
+  },
+  "store.file_not_uploaded": {
+    "en": "Field '{name}': file {value}… has not been uploaded.",
+    "text": "필드 '{name}': 파일 {value}…이(가) 올라와 있지 않습니다."
+  },
+  "store.id_exists": {
+    "en": "a bundle with its id exists",
+    "text": "같은 id의 번들이 있음"
+  },
+  "store.import_category_deleted": {
+    "en": "The category chosen was deleted while the import ran, so the bundles were not put in it.",
+    "text": "가져오는 동안 고른 카테고리가 지워져, 번들을 그 카테고리에 넣지 못했습니다."
+  },
+  "store.in_trash": {
+    "en": "Bundle '{name}' is in the trash; restore it first.",
+    "text": "'{name}' 번들은 휴지통에 있습니다. 먼저 되살리세요."
+  },
+  "store.in_trash_use": {
+    "en": "Bundle '{name}' is in the trash; restore it to use it.",
+    "text": "'{name}' 번들은 휴지통에 있습니다. 쓰려면 되살리세요."
+  },
+  "store.invalid_category_id": {
+    "en": "Invalid category id: {value}",
+    "text": "잘못된 카테고리 id: {value}"
+  },
+  "store.legacy_trash": {
+    "en": "left in the old trash folder: {reason}",
+    "text": "옛 휴지통 폴더에 남음: {reason}"
+  },
+  "store.locked": {
+    "en": "Bundle '{name}' {problem}, so this version does not change it.",
+    "text": "'{name}' 번들: {problem}. 그래서 이 버전은 이 번들을 바꾸지 않습니다."
+  },
+  "store.mode_invalid": {
+    "en": "mode must be 'values' or 'structure'.",
+    "text": "mode는 'values'나 'structure'여야 합니다."
+  },
+  "store.not_in_trash": {
+    "en": "Bundle '{name}' is not in the trash.",
+    "text": "'{name}' 번들은 휴지통에 있지 않습니다."
+  },
+  "store.not_trash_file": {
+    "en": "not a trash file",
+    "text": "휴지통 파일이 아님"
+  },
+  "store.older_copy": {
+    "en": "an older copy of a bundle deleted again later",
+    "text": "나중에 다시 지운 번들의 옛 사본"
+  },
+  "store.organization_locked": {
+    "en": "{problem}; categories and favorites cannot be changed",
+    "text": "{problem}. 카테고리와 즐겨찾기를 바꿀 수 없음"
+  },
+  "store.organization_unsupported": {
+    "en": "organization.json {problem}; this version does not change categories or favorites.",
+    "text": "organization.json: {problem}. 이 버전은 카테고리와 즐겨찾기를 바꾸지 않습니다."
+  },
+  "store.organization_write_failed": {
+    "en": "organization.json could not be written: {reason}",
+    "text": "organization.json을 쓸 수 없었습니다: {reason}"
+  },
+  "store.read_failed": {
+    "en": "Cannot read bundle file {name}: {problem}",
+    "text": "번들 파일 {name}을(를) 읽을 수 없습니다: {problem}"
+  },
+  "store.revision_conflict": {
+    "en": "The bundle has changed since it was loaded (now revision {revision}).",
+    "text": "불러온 뒤 번들이 바뀌었습니다(지금 revision {revision})."
+  },
+  "store.revision_integer": {
+    "en": "expected_revisions: the revision of {bundle_id} must be an integer.",
+    "text": "expected_revisions: {bundle_id}의 revision은 정수여야 합니다."
+  },
+  "store.revision_missing": {
+    "en": "expected_revisions has no revision for {bundle_id}.",
+    "text": "expected_revisions에 {bundle_id}의 revision이 없습니다."
+  },
+  "store.revisions_map": {
+    "en": "expected_revisions must map each bundle id to the revision it was seen at.",
+    "text": "expected_revisions는 번들 id마다 본 때의 revision을 담아야 합니다."
+  },
+  "store.same_name": {
+    "en": "The new name is the same as the old one.",
+    "text": "새 이름이 원래 이름과 같습니다."
+  },
+  "store.sha256_list": {
+    "en": "sha256 must be a list of file ids.",
+    "text": "sha256은 파일 id 목록이어야 합니다."
+  },
+  "store.sync_warning": {
+    "en": "Saved, but the library folder could not be synced to the disk; a power loss could undo it.",
+    "text": "저장했지만 라이브러리 폴더를 디스크에 동기화하지 못했습니다. 전원이 나가면 되돌아갈 수 있습니다."
+  },
+  "store.tags_list": {
+    "en": "tags must be a list of 1 to {MAX_BATCH_TAGS} tags.",
+    "text": "tags는 태그 1~{MAX_BATCH_TAGS}개의 목록이어야 합니다."
+  },
+  "store.tags_max": {
+    "en": "Bundle '{name}' would have {count} tags; a bundle has {MAX_TAGS} at most.",
+    "text": "'{name}' 번들의 태그가 {count}개가 됩니다. 번들의 태그는 최대 {MAX_TAGS}개입니다."
+  },
+  "store.trash_changed": {
+    "en": "Bundle '{name}' changed since the trash was shown (now revision {revision}).",
+    "text": "휴지통을 보인 뒤 '{name}' 번들이 바뀌었습니다(지금 revision {revision})."
+  },
+  "store.trash_problem": {
+    "en": "Bundle '{name}' {problem}; delete it for good only if you are sure.",
+    "text": "'{name}' 번들: {problem}. 확실할 때만 영구 삭제하세요."
+  },
+  "store.trash_revisions": {
+    "en": "expected_revisions must map each bundle id shown in the trash to its revision.",
+    "text": "expected_revisions는 휴지통에 보인 번들 id마다 그 revision을 담아야 합니다."
+  },
+  "store.trash_unreadable": {
+    "en": "This version cannot fully read {bundle_id}.json ({problem}); delete it for good only if you are sure.",
+    "text": "이 버전은 {bundle_id}.json을 온전히 읽을 수 없습니다({problem}). 확실할 때만 영구 삭제하세요."
+  },
+  "store.unknown_batch_action": {
+    "en": "Unknown batch action: {action}.",
+    "text": "모르는 일괄 작업: {action}."
+  },
+  "store.unreadable_left": {
+    "en": "This version cannot fully read {bundle_id}.json; it is left alone.",
+    "text": "이 버전은 {bundle_id}.json을 온전히 읽을 수 없어 그대로 둡니다."
+  },
+  "store.write_failed": {
+    "en": "The bundle file could not be written: {reason}",
+    "text": "번들 파일을 쓸 수 없었습니다: {reason}"
+  },
+  "store.wrong_kind": {
+    "en": "Field '{name}': the file is {kind}, not {type}.",
+    "text": "필드 '{name}': 파일이 {type}이(가) 아니라 {kind}입니다."
+  },
+  "tags.also_spelled": {
+    "en": "also spelled {spellings}",
+    "text": "다른 표기: {spellings}"
+  },
+  "tags.count_locked": {
+    "en": "🔒 {count} this version cannot change",
+    "text": "🔒 바꿀 수 없는 {count}개"
+  },
+  "tags.count_trash": {
+    "en": "{count} in the trash",
+    "text": "휴지통의 {count}개"
+  },
+  "tags.count_used": {
+    "en": "{count} in use",
+    "text": "사용 중 {count}개"
+  },
+  "tags.delete": {
+    "en": "Delete tag",
+    "text": "태그 삭제"
+  },
+  "tags.delete_confirm": {
+    "en": "Delete the tag '{tag}'?",
+    "text": "'{tag}' 태그를 지울까요?"
+  },
+  "tags.delete_detail": {
+    "en": "It comes off every bundle that has it: it is on {reach}. The bundles stay.",
+    "text": "이 태그가 있는 모든 번들에서 태그를 뗍니다. 지금 {reach}에 있습니다. 번들은 그대로 남습니다."
+  },
+  "tags.hint": {
+    "en": "Renaming or deleting a tag changes every bundle that has it, in the trash too. Renaming it to a tag that is there already merges the two.",
+    "text": "태그의 이름을 바꾸거나 태그를 지우면, 휴지통을 포함해 그 태그가 있는 모든 번들이 바뀝니다. 이미 있는 태그의 이름으로 바꾸면 두 태그가 합쳐집니다."
+  },
+  "tags.legacy_unchanged": {
+    "en": {
+      "one": "{count} file in the old trash folder is not changed.",
+      "other": "{count} files in the old trash folder are not changed."
+    },
+    "text": "옛 휴지통 폴더의 파일 {count}개는 바꾸지 않습니다."
+  },
+  "tags.locked_keep": {
+    "en": {
+      "one": "{count} bundle this version cannot change keeps '{tag}'.",
+      "other": "{count} bundles this version cannot change keep '{tag}'."
+    },
+    "text": "이 버전이 바꿀 수 없는 번들 {count}개에는 '{tag}' 태그가 그대로 남습니다."
+  },
+  "tags.merge": {
+    "en": "Merge",
+    "text": "합치기"
+  },
+  "tags.merge_confirm": {
+    "en": "Merge '{tag}' into '{target}'?",
+    "text": "'{tag}' 태그를 '{target}' 태그로 합칠까요?"
+  },
+  "tags.merge_detail": {
+    "en": "'{tag}' is on {reach}. A bundle with both keeps one '{target}', where the first of them was.",
+    "text": "'{tag}' 태그는 {reach}에 있습니다. 두 태그가 모두 있는 번들에는 앞에 있던 자리에 '{target}' 하나만 남습니다."
+  },
+  "tags.name_required": {
+    "en": "A tag needs a name.",
+    "text": "태그에 이름이 필요합니다."
+  },
+  "tags.next": {
+    "en": "Next",
+    "text": "다음"
+  },
+  "tags.no_bundle": {
+    "en": "no bundle",
+    "text": "어느 번들에도 없음"
+  },
+  "tags.none": {
+    "en": "No bundle has a tag.",
+    "text": "태그가 있는 번들이 없습니다."
+  },
+  "tags.reach_used": {
+    "en": "{bundles} in use",
+    "text": "사용 중인 {bundles}"
+  },
+  "tags.reach_used_trash": {
+    "en": "{bundles} in use and {count} in the trash",
+    "text": "사용 중인 {bundles}와 휴지통의 {count}개"
+  },
+  "tags.rename_confirm": {
+    "en": "Rename '{tag}' to '{target}'?",
+    "text": "'{tag}' 태그의 이름을 '{target}'(으)로 바꿀까요?"
+  },
+  "tags.rename_detail": {
+    "en": "'{tag}' is on {reach}.",
+    "text": "'{tag}' 태그는 {reach}에 있습니다."
+  },
+  "tags.rename_hint": {
+    "en": "A new name, or the name of another tag to merge it into.",
+    "text": "새 이름, 또는 이 태그를 합칠 다른 태그의 이름."
+  },
+  "tags.rename_title": {
+    "en": "Rename '{tag}'",
+    "text": "'{tag}' 이름 바꾸기"
+  },
+  "tags.same_name": {
+    "en": "That is its name already.",
+    "text": "이미 그 이름입니다."
+  },
+  "tags.unknown_left_out": {
+    "en": {
+      "one": "{count} file this version cannot read is left out.",
+      "other": "{count} files this version cannot read are left out."
+    },
+    "text": "이 버전이 읽지 못하는 파일 {count}개는 빠집니다."
+  },
+  "tags.unreadable_left_out": {
+    "en": {
+      "one": "{count} bundle file this version cannot read is left out: whatever tags they have stay as they are.",
+      "other": "{count} bundle files this version cannot read are left out: whatever tags they have stay as they are."
+    },
+    "text": "이 버전이 읽지 못하는 번들 파일 {count}개는 빠집니다. 그 파일의 태그는 그대로 남습니다."
+  },
+  "trash.back_to": {
+    "en": "back to {category}",
+    "text": "되살리면 {category}(으)로"
+  },
+  "trash.cleanup_delete": {
+    "en": "Delete {files}",
+    "text": "{files} 삭제"
+  },
+  "trash.cleanup_detail": {
+    "en": {
+      "one": "{count} file ({size}) is used by no bundle, in the library or in the trash. Deleting cannot be undone: back up the library folder first if you may want them.",
+      "other": "{count} files ({size}) are used by no bundle, in the library or in the trash. Deleting cannot be undone: back up the library folder first if you may want them."
+    },
+    "text": "라이브러리와 휴지통의 어느 번들도 쓰지 않는 파일이 {count}개({size}) 있습니다. 지우면 되돌릴 수 없으니, 나중에 필요할 수 있다면 먼저 라이브러리 폴더를 백업하세요."
+  },
+  "trash.cleanup_done": {
+    "en": "Deleted {files} ({size}).",
+    "text": "{files}({size})를 지웠습니다."
+  },
+  "trash.cleanup_kept": {
+    "en": {
+      "one": "{count} file was kept: in use or uploaded again since.",
+      "other": "{count} files were kept: in use or uploaded again since."
+    },
+    "text": "파일 {count}개는 남겼습니다. 그사이 쓰이거나 다시 올라왔습니다."
+  },
+  "trash.cleanup_menu": {
+    "en": "Clean up unused files…",
+    "text": "쓰이지 않는 파일 정리…"
+  },
+  "trash.cleanup_nothing": {
+    "en": "There is nothing to clean up: every file is used by a bundle or by a bundle in the trash.",
+    "text": "정리할 것이 없습니다. 모든 파일을 번들이나 휴지통의 번들이 쓰고 있습니다."
+  },
+  "trash.cleanup_recent": {
+    "en": {
+      "one": "{count} unused file stored in the last {hours} hours is kept: changes that are not saved yet may use them.",
+      "other": "{count} unused files stored in the last {hours} hours are kept: changes that are not saved yet may use them."
+    },
+    "text": "최근 {hours}시간 안에 저장된 쓰이지 않는 파일 {count}개는 남깁니다. 아직 저장하지 않은 변경이 쓸 수 있습니다."
+  },
+  "trash.cleanup_title": {
+    "en": "Clean up unused files",
+    "text": "쓰이지 않는 파일 정리"
+  },
+  "trash.close": {
+    "en": "Close",
+    "text": "닫기"
+  },
+  "trash.delete_confirm": {
+    "en": "Delete {what} for good?",
+    "text": "{what} 번들을 영구 삭제할까요?"
+  },
+  "trash.delete_detail": {
+    "en": "It cannot be restored afterwards. The files it used stay in the library until you clean up unused files.",
+    "text": "영구 삭제한 번들은 되살릴 수 없습니다. 그 번들이 쓰던 파일은 쓰이지 않는 파일을 정리할 때까지 라이브러리에 남습니다."
+  },
+  "trash.deleted": {
+    "en": "Deleted {what} for good.",
+    "text": "{what} 번들을 영구 삭제했습니다."
+  },
+  "trash.deleted_at": {
+    "en": "Deleted {time}",
+    "text": "{time}에 지움"
+  },
+  "trash.emptied": {
+    "en": "Emptied the trash: {bundles} deleted for good.",
+    "text": "휴지통을 비웠습니다: {bundles}를 영구 삭제했습니다."
+  },
+  "trash.empty": {
+    "en": "Empty trash",
+    "text": "휴지통 비우기"
+  },
+  "trash.empty_confirm": {
+    "en": "Empty the trash?",
+    "text": "휴지통을 비울까요?"
+  },
+  "trash.empty_detail": {
+    "en": {
+      "one": "{count} deleted bundle will be gone for good.",
+      "other": "{count} deleted bundles will be gone for good."
+    },
+    "text": "지운 번들 {count}개가 영구히 사라집니다."
+  },
+  "trash.empty_files_note": {
+    "en": "The files they used stay in the library until you clean up unused files.",
+    "text": "그 번들들이 쓰던 파일은 쓰이지 않는 파일을 정리할 때까지 라이브러리에 남습니다."
+  },
+  "trash.empty_kept_changed": {
+    "en": {
+      "one": "{count} bundle changed or restored meanwhile was kept.",
+      "other": "{count} bundles changed or restored meanwhile were kept."
+    },
+    "text": "그사이 바뀌었거나 되살린 번들 {count}개는 남겼습니다."
+  },
+  "trash.empty_kept_locked": {
+    "en": {
+      "one": "{count} bundle this version cannot change was kept.",
+      "other": "{count} bundles this version cannot change were kept."
+    },
+    "text": "이 버전이 바꿀 수 없는 번들 {count}개는 남겼습니다."
+  },
+  "trash.empty_locked_detail": {
+    "en": {
+      "one": "{count} bundle this version cannot change stays, and files it cannot read are not touched.",
+      "other": "{count} bundles this version cannot change stay, and files it cannot read are not touched."
+    },
+    "text": "이 버전이 바꿀 수 없는 번들 {count}개는 남고, 읽지 못하는 파일은 건드리지 않습니다."
+  },
+  "trash.hint": {
+    "en": "Deleted bundles stay here until you delete them for good. The files they use are kept, so a restored bundle is whole.",
+    "text": "지운 번들은 영구 삭제할 때까지 여기 남습니다. 번들이 쓰는 파일도 남아 있어 되살린 번들은 온전합니다."
+  },
+  "trash.is_empty": {
+    "en": "The trash is empty.",
+    "text": "휴지통이 비어 있습니다."
+  },
+  "trash.locked": {
+    "en": "This version of Bundle Library cannot change this bundle. Update the node pack to restore it.",
+    "text": "이 버전의 Bundle Library는 이 번들을 바꿀 수 없습니다. 되살리려면 노드 팩을 업데이트하세요."
+  },
+  "trash.locked_all": {
+    "en": "This version cannot change the bundles in the trash.",
+    "text": "이 버전은 휴지통의 번들을 바꿀 수 없습니다."
+  },
+  "trash.not_fully_usable": {
+    "en": "This version of Bundle Library cannot fully use it: it {reason}. If a newer Bundle Library saved it, that version loses it too.",
+    "text": "이 버전의 Bundle Library는 이 번들을 온전히 쓸 수 없습니다({reason}). 더 새 버전의 Bundle Library가 저장한 번들이라면 그 버전에서도 사라집니다."
+  },
+  "trash.restore": {
+    "en": "Restore",
+    "text": "되살리기"
+  },
+  "trash.restored": {
+    "en": "Restored '{name}'.",
+    "text": "'{name}' 번들을 되살렸습니다."
+  },
+  "trash.unreadable_untouched": {
+    "en": "Files this version cannot read are not touched.",
+    "text": "이 버전이 읽지 못하는 파일은 건드리지 않습니다."
+  },
+  "upload.cancelled": {
+    "en": "Upload cancelled.",
+    "text": "업로드를 취소했습니다."
+  },
+  "upload.failed_http": {
+    "en": "Upload failed: HTTP {status}",
+    "text": "업로드 실패: HTTP {status}"
+  },
+  "upload.kinds_audio": {
+    "en": "WAV, FLAC, MP3, OGG and M4A audio files",
+    "text": "WAV·FLAC·MP3·OGG·M4A 오디오 파일"
+  },
+  "upload.kinds_image": {
+    "en": "PNG, JPEG and WebP images",
+    "text": "PNG·JPEG·WebP 이미지"
+  },
+  "upload.kinds_video": {
+    "en": "MP4, WebM and MOV videos",
+    "text": "MP4·WebM·MOV 동영상"
+  },
+  "upload.only_kinds": {
+    "en": "Only {kinds} are accepted.",
+    "text": "{kinds}만 올릴 수 있습니다."
+  },
+  "upload.too_large": {
+    "en": "The file is larger than {limit}.",
+    "text": "파일이 {limit}보다 큽니다."
+  },
+  "version.read_only": {
+    "en": "{detail} Until then the library cannot be changed from this page.",
+    "text": "{detail} 그때까지 이 페이지에서는 라이브러리를 바꿀 수 없습니다."
+  },
+  "version.reload_page": {
+    "en": "ComfyUI runs Bundle Library {server}, but this page has {page}. Reload the page.",
+    "text": "ComfyUI는 Bundle Library {server} 버전을 실행하고 있지만 이 페이지는 {page} 버전입니다. 페이지를 새로 고치세요."
+  },
+  "version.restart_comfyui": {
+    "en": "Bundle Library was updated to {page}, but ComfyUI still runs {server}. Restart ComfyUI to finish the update.",
+    "text": "Bundle Library가 새 버전({page})으로 바뀌었지만 ComfyUI는 아직 이전 버전({server})을 실행하고 있습니다. ComfyUI를 다시 시작해 업데이트를 마치세요."
+  }
+}

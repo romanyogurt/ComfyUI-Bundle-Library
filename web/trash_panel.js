@@ -4,15 +4,15 @@
 import {
     deleteUnusedFiles, emptyTrash, listTrash, listUnusedFiles, purgeBundle, restoreBundle, thumbnailURL,
 } from "./api.js";
-import { button, el, formatBytes, formatTime, kindName, plural } from "./dom.js";
-import { said, t, tn } from "./i18n.js";
+import { button, el, formatBytes, formatTime, kindName } from "./dom.js";
+import { said, t } from "./i18n.js";
 import { displayNames } from "./names.js";
 
 export class TrashPanel {
     constructor(modal) {
         this.modal = modal;
         this.root = el("div", "bl-trash");
-        this.root.append(el("div", "bl-empty-state", t("Loading…")));
+        this.root.append(el("div", "bl-empty-state", t("common.loading")));
         this.generation = 0;
         void this.refresh();
     }
@@ -34,18 +34,17 @@ export class TrashPanel {
 
     render({ trash }) {
         const head = el("div", "bl-trash-head");
-        const cleanup = button(t("Clean up unused files…"));
+        const cleanup = button(t("trash.cleanup_menu"));
         cleanup.addEventListener("click", () => void this.cleanup());
-        const empty = button(t("Empty trash"), "bl-btn danger");
+        const empty = button(t("trash.empty"), "bl-btn danger");
         const deletable = trash.filter((entry) => !entry.read_only); // emptying leaves the others alone
         empty.disabled = deletable.length === 0;
-        if (trash.length && !deletable.length) empty.title = t("This version cannot change the bundles in the trash.");
+        if (trash.length && !deletable.length) empty.title = t("trash.locked_all");
         empty.addEventListener("click", () => void this.empty(deletable, trash.length - deletable.length));
-        head.append(el("div", "bl-trash-title", t("Trash")), cleanup, empty);
-        const hint = el("div", "bl-hint", t("Deleted bundles stay here until you delete them for good. "
-            + "The files they use are kept, so a restored bundle is whole."));
+        head.append(el("div", "bl-trash-title", t("common.trash")), cleanup, empty);
+        const hint = el("div", "bl-hint", t("trash.hint"));
         const list = el("div", "bl-trash-list");
-        if (!trash.length) list.append(el("div", "bl-empty-state", t("The trash is empty.")));
+        if (!trash.length) list.append(el("div", "bl-empty-state", t("trash.is_empty")));
         const labels = displayNames(trash);
         list.append(...trash.map((entry) => this.renderEntry(entry, labels.get(entry.id))));
         this.root.replaceChildren(head, hint, list);
@@ -65,16 +64,16 @@ export class TrashPanel {
         const category = this.modal.categories.find((c) => c.id === entry.category)?.name;
         const text = el("div", "bl-list-text");
         text.append(el("div", "bl-list-name", label ?? entry.name),
-            el("div", "bl-list-sub", [t("Deleted {time}", { time: formatTime(entry.deleted_at) }), plural(entry.fields.length, "field"),
-                category ? t("back to {category}", { category }) : null, entry.favorite ? "★" : null].filter(Boolean).join(" · ")));
+            el("div", "bl-list-sub", [t("trash.deleted_at", { time: formatTime(entry.deleted_at) }),
+                t("count.fields", { count: entry.fields.length }), category ? t("trash.back_to", { category }) : null, entry.favorite ? "★" : null].filter(Boolean).join(" · ")));
         // A bundle this version cannot change (it holds data from a newer one)
         // cannot be restored by it; deleting it for good is asked for as such.
-        if (entry.read_only) text.append(el("div", "bl-list-warn", t("🔒 Cannot be changed by this version")));
-        const restore = button(t("Restore"));
+        if (entry.read_only) text.append(el("div", "bl-list-warn", t("common.locked")));
+        const restore = button(t("trash.restore"));
         restore.disabled = !!entry.read_only;
-        if (entry.read_only) restore.title = t("This version of Bundle Library cannot change this bundle. Update the node pack to restore it.");
+        if (entry.read_only) restore.title = t("trash.locked");
         restore.addEventListener("click", () => void this.restore(entry));
-        const purge = button(t("Delete forever"), "bl-btn danger");
+        const purge = button(t("common.delete_forever"), "bl-btn danger");
         purge.addEventListener("click", () => void this.purge(entry, `'${label ?? entry.name}'`));
         row.append(thumb, text, restore, purge);
         return row;
@@ -83,7 +82,7 @@ export class TrashPanel {
     async restore(entry) {
         try {
             const bundle = await restoreBundle(entry.id);
-            this.modal.status(t("Restored '{name}'.", { name: bundle.name }));
+            this.modal.status(t("trash.restored", { name: bundle.name }));
             await this.modal.reload();
         } catch (error) {
             this.modal.status(error.message, "error");
@@ -97,15 +96,14 @@ export class TrashPanel {
      * user confirms that as well.
      */
     async purge(entry, what) {
-        const confirmed = await this.modal.confirm(t("Delete {what} for good?", { what }), [
-            ...(entry.read_only ? [t("This version of Bundle Library cannot fully use it: it {reason}. "
-                + "If a newer Bundle Library saved it, that version loses it too.", { reason: said(entry, "read_only") })] : []),
-            t("It cannot be restored afterwards. The files it used stay in the library until you clean up unused files."),
-        ], t("Delete forever"), { danger: true });
+        const confirmed = await this.modal.confirm(t("trash.delete_confirm", { what }), [
+            ...(entry.read_only ? [t("trash.not_fully_usable", { reason: said(entry, "read_only") })] : []),
+            t("trash.delete_detail"),
+        ], t("common.delete_forever"), { danger: true });
         if (!confirmed) return;
         try {
             await purgeBundle(entry.id, { revision: entry.revision, unreadable: !!entry.read_only });
-            this.modal.status(t("Deleted {what} for good.", { what }));
+            this.modal.status(t("trash.deleted", { what }));
         } catch (error) {
             this.modal.status(error.message, "error");
         }
@@ -118,23 +116,20 @@ export class TrashPanel {
      */
     async empty(trash, locked = 0) {
         const count = trash.length;
-        const confirmed = await this.modal.confirm(t("Empty the trash?"), [
-            tn(count, "{count} deleted bundle will be gone for good.", "{count} deleted bundles will be gone for good."),
-            t("The files they used stay in the library until you clean up unused files."),
-            locked ? tn(locked, "{count} bundle this version cannot change stays, and files it cannot read are not touched.",
-                "{count} bundles this version cannot change stay, and files it cannot read are not touched.")
-                : t("Files this version cannot read are not touched."),
-        ].join(" "), t("Empty trash"), { danger: true });
+        const confirmed = await this.modal.confirm(t("trash.empty_confirm"), [
+            t("trash.empty_detail", { count }),
+            t("trash.empty_files_note"),
+            locked ? t("trash.empty_locked_detail", { count: locked })
+                : t("trash.unreadable_untouched"),
+        ].join(" "), t("trash.empty"), { danger: true });
         if (!confirmed) return;
         try {
             const { deleted, results } = await emptyTrash(Object.fromEntries(trash.map((e) => [e.id, e.revision])));
             const unchangeable = results.filter((r) => r.code === "unreadable_file").length;
             const left = results.length - deleted - unchangeable;
-            this.modal.status([t("Emptied the trash: {bundles} deleted for good.", { bundles: plural(deleted, "bundle") }),
-                left ? tn(left, "{count} bundle changed or restored meanwhile was kept.",
-                    "{count} bundles changed or restored meanwhile were kept.") : null,
-                unchangeable ? tn(unchangeable, "{count} bundle this version cannot change was kept.",
-                    "{count} bundles this version cannot change were kept.") : null].filter(Boolean).join(" "));
+            this.modal.status([t("trash.emptied", { bundles: t("count.bundles", { count: deleted }) }),
+                left ? t("trash.empty_kept_changed", { count: left }) : null,
+                unchangeable ? t("trash.empty_kept_locked", { count: unchangeable }) : null].filter(Boolean).join(" "));
         } catch (error) {
             this.modal.status(error.message, "error");
         }
@@ -152,26 +147,20 @@ export class TrashPanel {
         }
         const { assets, bytes, recent, grace_hours: hours } = unused;
         const notes = [assets.length
-            ? tn(assets.length, "{count} file ({size}) is used by no bundle, in the library or in the trash. Deleting cannot be "
-                + "undone: back up the library folder first if you may want them.", "{count} files ({size}) are used by no "
-                + "bundle, in the library or in the trash. Deleting cannot be undone: back up the library folder first if you may "
-                + "want them.", { size: formatBytes(bytes) })
-            : t("There is nothing to clean up: every file is used by a bundle or by a bundle in the trash.")];
+            ? t("trash.cleanup_detail", { count: assets.length, size: formatBytes(bytes) })
+            : t("trash.cleanup_nothing")];
         if (recent) {
-            notes.push(tn(recent, "{count} unused file stored in the last {hours} hours is kept: changes that are not saved yet "
-                + "may use them.", "{count} unused files stored in the last {hours} hours are kept: changes that are not saved "
-                + "yet may use them.", { hours }));
+            notes.push(t("trash.cleanup_recent", { count: recent, hours }));
         }
-        const choices = assets.length ? [[t("Delete {files}", { files: plural(assets.length, "file") }), true, "danger"],
-            [t("Cancel"), false]] : [[t("Close"), false]];
-        const confirmed = await this.modal.choose(t("Clean up unused files"), notes, choices,
+        const choices = assets.length ? [[t("trash.cleanup_delete", { files: t("count.files", { count: assets.length }) }), true, "danger"],
+            [t("common.cancel"), false]] : [[t("trash.close"), false]];
+        const confirmed = await this.modal.choose(t("trash.cleanup_title"), notes, choices,
             assets.length ? this.renderFiles(assets) : null);
         if (!confirmed) return;
         try {
             const report = await deleteUnusedFiles(assets.map((asset) => asset.sha256));
-            this.modal.status([t("Deleted {files} ({size}).", { files: plural(report.deleted, "unused file"),
-                size: formatBytes(report.bytes) }), report.kept ? tn(report.kept, "{count} file was kept: in use or uploaded again "
-                + "since.", "{count} files were kept: in use or uploaded again since.") : null].filter(Boolean).join(" "));
+            this.modal.status([t("trash.cleanup_done", { files: t("count.unused_files", { count: report.deleted }),
+                size: formatBytes(report.bytes) }), report.kept ? t("trash.cleanup_kept", { count: report.kept }) : null].filter(Boolean).join(" "));
         } catch (error) {
             this.modal.status(error.message, "error");
         }

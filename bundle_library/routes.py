@@ -18,7 +18,7 @@ from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
 from .exchange import MAX_IMPORT_BYTES, Exports, Imports, file_name
 from .model import LibraryError, check_bundle_id, check_sha256, lone_surrogates
 from .store import present
-from .text import Text, Word, said
+from .text import Text, catalogs, said
 
 CHUNK = 64 * 1024
 IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"}
@@ -63,11 +63,11 @@ def _api(handler):
             return _error_response(e)
         except OSError as e:  # the library folder could not be read or written; trying again may work
             logging.exception("[Bundle Library] %s %s failed", request.method, request.path)
-            return _error_response(LibraryError(500, "io_error", Text("The library folder could not be read or written ({value}).", value=e.strerror or type(e).__name__), retry=True))
+            return _error_response(LibraryError(500, "io_error", Text("request.io_error", value=e.strerror or type(e).__name__), retry=True))
         except Exception:
             logging.exception("[Bundle Library] %s %s failed", request.method, request.path)
             return _error_response(
-                LibraryError(500, "internal", Text("Server error; see the ComfyUI log for details.")))
+                LibraryError(500, "internal", Text("request.internal")))
     return wrapped
 
 
@@ -76,25 +76,25 @@ def _writes(handler):
     async def wrapped(request):
         problem = write_guard_error(request)
         if problem:
-            raise LibraryError(403, problem, Text("Changes to the library must come from the ComfyUI page."))
+            raise LibraryError(403, problem, Text("request.write_guard"))
         # The page sends the version of its scripts; files updated without a
         # restart (or a page left open across one) must not write.
         page = request.headers.get("X-Bundle-Library-Version")
         if page is not None and page != VERSION:
             raise LibraryError(409, "version_mismatch",
-                               Text("This page runs Bundle Library {value} but the server runs {VERSION}.", value=page[:20], VERSION=VERSION),
+                               Text("request.version_mismatch", value=page[:20], VERSION=VERSION),
                                page_version=page[:20], server_version=VERSION)
         return await handler(request)
     return wrapped
 
 
 def _too_large(limit):
-    return LibraryError(413, "too_large", Text("Request too large; the limit is {n} MB.", n=limit // (1024 * 1024)))
+    return LibraryError(413, "too_large", Text("request.too_large", n=limit // (1024 * 1024)))
 
 
 async def _read_json(request):
     if request.content_type != "application/json":
-        raise LibraryError(415, "unsupported_media_type", Text("The body must be JSON (application/json)."))
+        raise LibraryError(415, "unsupported_media_type", Text("request.json_type"))
     if request.content_length is not None and request.content_length > MAX_JSON_BODY:
         raise _too_large(MAX_JSON_BODY)
     chunks, total = [], 0
@@ -106,11 +106,11 @@ async def _read_json(request):
     try:
         data = json.loads(b"".join(chunks))
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
-        raise LibraryError(400, "invalid_json", Text("The body is not valid JSON.")) from None
+        raise LibraryError(400, "invalid_json", Text("request.json_invalid")) from None
     if not isinstance(data, dict):
-        raise LibraryError(400, "invalid", Text("The body must be a JSON object."))
+        raise LibraryError(400, "invalid", Text("request.json_object"))
     if lone_surrogates(data):
-        raise LibraryError(400, "invalid_json", Text("The body has text that is not valid Unicode."))
+        raise LibraryError(400, "invalid_json", Text("request.json_unicode"))
     return data
 
 
@@ -119,7 +119,7 @@ def _require(data, *keys):
     missing key is not taken for an empty or default value."""
     missing = [key for key in keys if key not in data]
     if missing:
-        raise LibraryError(400, "invalid", Text("Missing in the request: {list}.", list=', '.join(missing)))
+        raise LibraryError(400, "invalid", Text("request.missing", list=', '.join(missing)))
     return data
 
 
@@ -127,7 +127,7 @@ def _revision(query):
     try:
         return int(query["expected_revision"])
     except (KeyError, ValueError):
-        raise LibraryError(400, "invalid", Text("expected_revision (an integer) is required.")) from None
+        raise LibraryError(400, "invalid", Text("common.revision_required")) from None
 
 
 def register(routes, get_store):
@@ -140,12 +140,18 @@ def register(routes, get_store):
         report = await asyncio.to_thread(get_store().health)
         return _json({"version": VERSION, **report})
 
+    @routes.get(prefix + "/messages")
+    @_api
+    async def messages(request):
+        # The catalogs the page says its messages with (text.py): English and the language of ?lang=
+        return _json(await asyncio.to_thread(catalogs, request.query.get("lang", "")))
+
     @routes.get(prefix + "/bundles")
     @_api
     async def list_bundles(request):
         sort = request.query.get("sort", "name")
         if sort not in ("name", "updated"):
-            raise LibraryError(400, "invalid", Text("sort must be 'name' or 'updated'."))
+            raise LibraryError(400, "invalid", Text("request.sort_invalid"))
         listing = await asyncio.to_thread(
             get_store().list, request.query.get("q", ""), request.query.get("tag", ""), sort)
         return _json(listing)
@@ -233,7 +239,7 @@ def register(routes, get_store):
         """Receives an export ZIP (multipart field "file") and answers with what
         importing it would do (exchange.py); nothing in the library changes yet."""
         if not request.content_type.startswith("multipart/"):
-            raise LibraryError(415, "unsupported_media_type", Text("Upload the ZIP as multipart/form-data."))
+            raise LibraryError(415, "unsupported_media_type", Text("request.zip_multipart"))
         store = get_store()
         imports = Imports(store.tmp_dir)
         reader = await request.multipart()
@@ -242,7 +248,7 @@ def register(routes, get_store):
             await part.release()
             part = await reader.next()
         if part is None:
-            raise LibraryError(400, "invalid", Text("The 'file' field is missing."))
+            raise LibraryError(400, "invalid", Text("request.file_missing"))
         token, temp = await asyncio.to_thread(imports.new_part)
         total = 0
         try:
@@ -253,7 +259,7 @@ def register(routes, get_store):
                         raise _too_large(MAX_IMPORT_BYTES)
                     f.write(chunk)
             if total == 0:
-                raise LibraryError(400, "invalid", Text("The file is empty."))
+                raise LibraryError(400, "invalid", Text("request.file_empty"))
             path = temp.with_suffix(".zip")
             temp.replace(path)
         finally:
@@ -411,7 +417,7 @@ def register(routes, get_store):
         default) says what the file must be, and so which limit applies."""
         assets = get_store().assets
         if not request.content_type.startswith("multipart/"):
-            raise LibraryError(415, "unsupported_media_type", Text("Upload files as multipart/form-data."))
+            raise LibraryError(415, "unsupported_media_type", Text("request.upload_multipart"))
         reader = await request.multipart()
         kind = "image"
         part = await reader.next()
@@ -419,11 +425,11 @@ def register(routes, get_store):
             if getattr(part, "name", None) == "kind":
                 kind = (await part.read_chunk()).decode("utf-8", "replace").strip()  # one chunk at most
                 if kind not in MEDIA_TYPES:
-                    raise LibraryError(400, "invalid", Text("kind must be image, video or audio."))
+                    raise LibraryError(400, "invalid", Text("request.kind_invalid"))
             await part.release()
             part = await reader.next()
         if part is None:
-            raise LibraryError(400, "invalid", Text("The 'file' field is missing."))
+            raise LibraryError(400, "invalid", Text("request.file_missing"))
         limit = assets.limits[kind]["bytes"]
         temp = assets.temp_path()
         digest, total = hashlib.sha256(), 0
@@ -436,7 +442,7 @@ def register(routes, get_store):
                     digest.update(chunk)
                     f.write(chunk)
             if total == 0:
-                raise LibraryError(400, "invalid", Text("The file is empty."))
+                raise LibraryError(400, "invalid", Text("request.file_empty"))
             info, created = await asyncio.to_thread(assets.finalize, temp, digest.hexdigest(), part.filename, kind)
         finally:
             temp.unlink(missing_ok=True)
@@ -448,7 +454,7 @@ def register(routes, get_store):
         sha256 = check_sha256(request.match_info["sha256"])
         path = await asyncio.to_thread(get_store().assets.path, sha256)
         if path is None:
-            raise LibraryError(404, "not_found", Text("File not found."))
+            raise LibraryError(404, "not_found", Text("request.file_not_found"))
         return web.FileResponse(path, headers={"Content-Type": MIME_TYPES[path.suffix[1:]], **IMMUTABLE})
 
     @routes.get(prefix + "/assets/{sha256}/thumb")
@@ -458,8 +464,8 @@ def register(routes, get_store):
         try:
             size = int(request.query.get("size", "256"))
         except ValueError:
-            raise LibraryError(400, "invalid", Text("size must be an integer.")) from None
+            raise LibraryError(400, "invalid", Text("request.size_integer")) from None
         path = await asyncio.to_thread(get_store().assets.thumbnail, sha256, size)
         if path is None:
-            raise LibraryError(404, "not_found", Text("No thumbnail for this file."))
+            raise LibraryError(404, "not_found", Text("request.no_thumbnail"))
         return web.FileResponse(path, headers={"Content-Type": "image/webp", **IMMUTABLE})

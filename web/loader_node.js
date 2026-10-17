@@ -2,7 +2,7 @@ import { app } from "../../scripts/app.js";
 import { CHANGED_EVENT, assetURL, forgetBundles, listBundles, listLibrary, thumbnailURL } from "./api.js";
 import { code, el, formatDuration, kindName } from "./dom.js";
 import { compactGroups, groupLabel } from "./groups.js";
-import { msg, t, tn } from "./i18n.js";
+import { msg, t } from "./i18n.js";
 import { openLibrary } from "./library_modal.js";
 import { displayNames } from "./names.js";
 import { COMFY_TYPES, misplacedOutputs, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
@@ -16,7 +16,7 @@ const GAP = 6; // between the bar and the preview, and between the preview's par
 const PADDING = 6; // inside the preview (bundle_library.css)
 const MAX_PREVIEW = 560; // a taller preview scrolls
 const TEXT_PREVIEW = 200; // characters of a text field in the bundle list (bundle_library/store.py)
-const PROBLEMS = { missing: msg("not in this bundle"), type_mismatch: msg("another type in this bundle") };
+const PROBLEMS = { missing: msg("node.not_in_bundle"), type_mismatch: msg("node.other_type") };
 
 // Nodes showing a panel, for the refreshes that concern them all.
 const panels = new Set();
@@ -52,12 +52,11 @@ function unreadableSpec(node) {
     return !!text && parseSpec(text) === null;
 }
 
-const unreadable = () => t("This node was saved by a newer Bundle Library. Its outputs and links are kept as they are; "
-    + "update the node pack to change its bundle.");
+const unreadable = () => t("node.newer_node");
 
 function refuseUnreadable(node) {
     if (!unreadableSpec(node)) return false;
-    app.extensionManager?.toast?.add({ severity: "warn", summary: t("Load Bundle"), detail: unreadable(), life: 6000 });
+    app.extensionManager?.toast?.add({ severity: "warn", summary: t("node.title"), detail: unreadable(), life: 6000 });
     return true;
 }
 
@@ -135,14 +134,12 @@ function restoreOutputs(node, saved) {
 /** Say which linked outputs the workflow saved under another field than the node records (they carry the recorded one). */
 function warnMisplaced(misplaced) {
     if (!misplaced.length) return;
-    const list = misplaced.map(({ index, was, now }) => (was === now ? t("{output} ({field}, another type)",
+    const list = misplaced.map(({ index, was, now }) => (was === now ? t("node.output_other_type",
         { output: index + 1, field: now }) : `${index + 1} (${was} → ${now})`)).join(", ");
     app.extensionManager?.toast?.add({
         severity: "warn",
-        summary: t("Load Bundle"),
-        detail: tn(misplaced.length, "This workflow saved linked output {list} under another field than the node records. "
-            + "The links now carry the recorded fields; check them.", "This workflow saved linked outputs {list} under another "
-            + "field than the node records. The links now carry the recorded fields; check them.", { list }),
+        summary: t("node.title"),
+        detail: t("node.misplaced_links", { count: misplaced.length, list }),
         life: 10000,
     });
 }
@@ -183,9 +180,8 @@ export function selectBundle(node, bundle) {
     if (overflow) {
         app.extensionManager?.toast?.add({
             severity: "warn",
-            summary: t("Load Bundle"),
-            detail: tn(overflow, "A node has {max} outputs at most, so {count} field is not shown.",
-                "A node has {max} outputs at most, so {count} fields are not shown.", { max: slots.length }),
+            summary: t("node.title"),
+            detail: t("node.outputs_max", { count: overflow, max: slots.length }),
             life: 6000,
         });
     }
@@ -209,8 +205,8 @@ function item(tag, className, slot) {
 function problemLine(slot, status, linked) {
     const line = item("div", `bl-problem ${linked ? "bl-bad" : "bl-dim"}`, slot);
     line.append(el("span", "bl-problem-name", slot.name),
-        el("span", null, linked ? t("⚠ {problem}; running will fail", { problem: t(PROBLEMS[status]) })
-            : t("{problem} (not connected)", { problem: t(PROBLEMS[status]) })));
+        el("span", null, linked ? t("node.problem_fail", { problem: t(PROBLEMS[status]) })
+            : t("node.not_connected", { problem: t(PROBLEMS[status]) })));
     return line;
 }
 
@@ -237,11 +233,11 @@ function mediaTile(slot, field, linked) {
         } else {
             tile.addEventListener("click", () => showImage(assetURL(media.sha256), caption));
         }
-        tile.title = slot.type === "video" ? t("{caption} · click to play", { caption }) : t("{caption} · click to enlarge", { caption });
+        tile.title = slot.type === "video" ? t("node.preview_play", { caption }) : t("node.preview_enlarge", { caption });
     } else {
         tile.classList.add("empty");
         tile.append(el("div", `bl-tile-empty${linked ? " bl-bad" : ""}`,
-            linked ? t("⚠ No {kind}; running will fail", { kind: kindName(slot.type) }) : t("No {kind}", { kind: kindName(slot.type) })));
+            linked ? t("node.no_media_fail", { kind: kindName(slot.type) }) : t("node.no_media", { kind: kindName(slot.type) })));
     }
     tile.append(el("div", "bl-tile-name", slot.name));
     return tile;
@@ -274,13 +270,13 @@ function audioChip(slot, field, linked) {
     const media = field.preview;
     chip.append(el("span", "bl-value-name", slot.name));
     if (!media) {
-        chip.append(el("span", `bl-value ${linked ? "bl-bad" : "bl-dim"}`, linked ? t("⚠ No {kind}; running will fail", { kind: kindName("audio") })
-            : t("No {kind}", { kind: kindName("audio") })));
+        chip.append(el("span", `bl-value ${linked ? "bl-bad" : "bl-dim"}`, linked ? t("node.no_media_fail", { kind: kindName("audio") })
+            : t("node.no_media", { kind: kindName("audio") })));
         return chip;
     }
     const play = el("button", "bl-play", "▶");
     play.type = "button";
-    play.title = t("Play");
+    play.title = t("node.play");
     play.addEventListener("click", () => {
         if (playing === play) {
             player.pause();
@@ -303,7 +299,7 @@ function textBlock(slot, field) {
     const text = field.preview;
     block.append(el("div", "bl-text-name", slot.name), text
         ? el("div", "bl-text", text.length >= TEXT_PREVIEW ? `${text}…` : text)
-        : el("div", "bl-text bl-dim", t("(empty)")));
+        : el("div", "bl-text bl-dim", t("node.empty")));
     return block;
 }
 
@@ -323,10 +319,10 @@ function renderNotice(node, bundle) {
     notice.replaceChildren();
     notice.hidden = parts.length === 0;
     if (notice.hidden) return;
-    const update = el("button", "bl-update", t("Update outputs"));
-    update.title = t("Add new fields, drop unconnected outputs that left the bundle, retype unconnected outputs");
+    const update = el("button", "bl-update", t("node.update_outputs"));
+    update.title = t("node.update_outputs_title");
     update.addEventListener("click", () => selectBundle(node, bundle));
-    const text = el("span", "bl-notice-text", t("Bundle fields changed: "));
+    const text = el("span", "bl-notice-text", t("node.fields_changed"));
     parts.forEach(([sign, name], i) => text.append(...(i ? [", "] : []), sign, code(name)));
     notice.append(text, update);
 }
@@ -344,7 +340,7 @@ function renderPreview(node, bundle) {
     rows.replaceChildren();
     notice.hidden = true;
     if (!widget(node, "bundle_id")?.value) {
-        rows.append(el("div", "bl-note", t("Select a bundle.")));
+        rows.append(el("div", "bl-note", t("common.select_bundle")));
         return;
     }
     if (unreadableSpec(node)) {
@@ -353,7 +349,7 @@ function renderPreview(node, bundle) {
     }
     if (!bundle) {
         const name = node.properties.bundle_name ?? widget(node, "bundle_id").value;
-        rows.append(el("div", "bl-note bl-bad", t("⚠ Bundle not found or in the trash: {name}", { name })));
+        rows.append(el("div", "bl-note bl-bad", t("node.bundle_missing", { name })));
         return;
     }
     const slots = specOf(node);
@@ -371,7 +367,7 @@ function renderPreview(node, bundle) {
         else parts.values.append(valueChip(slot, field));
     });
     rows.append(...Object.values(parts).filter((part) => part.childElementCount));
-    if (!slots.length) rows.append(el("div", "bl-note", t("This bundle has no fields.")));
+    if (!slots.length) rows.append(el("div", "bl-note", t("node.no_fields")));
     renderNotice(node, bundle);
 }
 
@@ -385,15 +381,15 @@ function fillSelect(node, bundles, categories) {
         const lacking = linked.filter((s) => slotStatuses([s], bundle.fields)[0] !== "ok");
         const label = labels.get(bundle.id);
         // An <option> holds plain text only, so the names are set apart by quotes.
-        return [bundle.id, lacking.length ? t("{label}  ⚠ no {fields}", { label, fields: lacking.map((s) => `'${s.name}'`).join(", ") })
+        return [bundle.id, lacking.length ? t("node.choice_lacking", { label, fields: lacking.map((s) => `'${s.name}'`).join(", ") })
             : label];
     };
     const groups = compactGroups(bundles, categories);
     // [value, label] for an option, {group, options} for an <optgroup>.
-    const entries = [["", t("Select a bundle…")],
+    const entries = [["", t("node.choose_bundle")],
         ...(groups ? groups.map((g) => ({ group: groupLabel(g), options: g.bundles.map(optionOf) })) : bundles.map(optionOf))];
     if (selected && !bundles.some((b) => b.id === selected)) {
-        entries.push([selected, t("⚠ Not found: {name}", { name: node.properties.bundle_name ?? selected })]);
+        entries.push([selected, t("node.not_found", { name: node.properties.bundle_name ?? selected })]);
     }
     // Rebuilding the options of an open dropdown closes it, so only rebuild on a real change.
     const signature = JSON.stringify(entries);
@@ -428,7 +424,7 @@ async function refreshPanel(node, { fresh = false } = {}) {
         node.bundlePanel.previewSignature = null;
         stopSoundIn(node.bundlePanel.rows); // the message takes the preview's place, its sound too (R19-05)
         node.bundlePanel.rows.replaceChildren(
-            el("div", "bl-note bl-bad", t("⚠ Could not load the bundle list: {reason}", { reason: error.message })));
+            el("div", "bl-note bl-bad", t("node.list_failed", { reason: error.message })));
         return;
     }
     if (!latest()) return;
@@ -446,7 +442,7 @@ function setCollapsed(node, collapsed) {
     const { preview, toggle } = node.bundlePanel;
     preview.hidden = collapsed;
     toggle.textContent = collapsed ? "▸" : "▾";
-    toggle.title = collapsed ? t("Show the preview") : t("Hide the preview");
+    toggle.title = collapsed ? t("node.preview_show") : t("node.preview_hide");
 }
 
 function addPanel(node) {
@@ -455,7 +451,7 @@ function addPanel(node) {
     const toggle = el("button", "bl-toggle");
     const select = el("select", "bl-select");
     const open = el("button", "bl-open", "📚");
-    open.title = t("Open the Bundle Library");
+    open.title = t("node.open_library");
     const preview = el("div", "bl-preview");
     const rows = el("div", "bl-rows");
     const notice = el("div", "bl-notice");

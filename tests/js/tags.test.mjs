@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import "./english.mjs"; // the English catalog, as the page has it
+
 import { compareText, sameTag, tagCounts, tagKey } from "../../web/tags.js";
 
 const FIXTURE = JSON.parse(readFileSync(new URL("../fixtures/tag_keys.json", import.meta.url), "utf8"));

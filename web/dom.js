@@ -3,7 +3,7 @@
 
 import { msg, t } from "./i18n.js";
 
-const KINDS = { image: msg("image"), video: msg("video"), audio: msg("audio") };
+const KINDS = { image: msg("kind.image"), video: msg("kind.video"), audio: msg("kind.audio") };
 
 /** A file's kind in words: "image", "video" or "audio" in English. */
 export const kindName = (kind) => (kind in KINDS ? t(KINDS[kind]) : kind);
@@ -61,7 +61,7 @@ export function codeList(names) {
  * The library modal also closes it on a click elsewhere (closeMenus()).
  */
 export function menu(content, items, { className = "bl-btn", title, label, up = false, search = null,
-    empty = t("Nothing to choose.") } = {}) {
+    empty = t("common.nothing_to_choose") } = {}) {
     const root = el("span", "bl-menu-wrap");
     const opener = button(typeof content === "string" ? content : "", className, title);
     if (typeof content !== "string") opener.append(content);
@@ -178,7 +178,6 @@ export function closeMenus(root, except = null) {
     return closed;
 }
 
-export { plural } from "./i18n.js"; // "3 bundles", "번들 3개"
 
 /** "2026-10-15 07:45", in the browser's time zone. */
 export function formatTime(iso) {

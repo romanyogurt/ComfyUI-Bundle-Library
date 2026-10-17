@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
+import "./english.mjs"; // the English catalog, as the page has it
 import { displayNames } from "../../web/names.js";
 
 test("a name of its own is shown as it is", () => {

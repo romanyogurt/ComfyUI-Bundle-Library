@@ -13,7 +13,7 @@ import re
 
 from .constants import MEDIA_TYPES
 from .model import UUID_RE, LibraryError, lone_surrogates, read_bundle_content
-from .text import Text, Word
+from .text import Text
 
 FORMAT = "comfyui-bundle-library/bundle"
 SCHEMA_VERSION = 2
@@ -114,23 +114,23 @@ def read(text, file_id=None):
     try:
         data = json.loads(text)
     except ValueError:  # includes text that is not UTF-8
-        return Loaded(CORRUPT, problem=Text("not valid JSON"))
+        return Loaded(CORRUPT, problem=Text("schema.not_json"))
     except RecursionError:
-        return Loaded(CORRUPT, problem=Text("nested too deeply"))
+        return Loaded(CORRUPT, problem=Text("schema.too_deep"))
     if not isinstance(data, dict):
-        return Loaded(CORRUPT, problem=Text("not a JSON object"))
+        return Loaded(CORRUPT, problem=Text("schema.not_json_object"))
     if lone_surrogates(data):
-        return Loaded(CORRUPT, problem=Text("has text that is not valid Unicode"))
+        return Loaded(CORRUPT, problem=Text("schema.not_unicode"))
     form = data.get("format")
     if form != FORMAT:
         if isinstance(form, str) and form:
-            return Loaded(UNSUPPORTED, problem=Text("another format ('{value}')", value=form[:60]))
-        return Loaded(CORRUPT, problem=Text("not a bundle file"))
+            return Loaded(UNSUPPORTED, problem=Text("common.other_format", value=form[:60]))
+        return Loaded(CORRUPT, problem=Text("schema.not_bundle_file"))
     version = data.get("schema_version")
     if type(version) is not int or version < 1:  # not bool, not 1.0
-        return Loaded(CORRUPT, problem=Text("invalid schema_version {version}", version=repr(version)))
+        return Loaded(CORRUPT, problem=Text("common.invalid_schema_version", version=repr(version)))
     if version > SCHEMA_VERSION:
-        return Loaded(NEWER, problem=Text("saved by a newer Bundle Library (schema version {version}; this one reads up to {SCHEMA_VERSION})", version=version, SCHEMA_VERSION=SCHEMA_VERSION))
+        return Loaded(NEWER, problem=Text("common.newer_schema", version=version, SCHEMA_VERSION=SCHEMA_VERSION))
     refs = _refs(data)
     unknown = _unknown_keys(data, version)
     data = migrate(data, version)
@@ -144,7 +144,7 @@ def read(text, file_id=None):
         return Loaded(state, problem=e.message, refs=refs)
     bundle = {**data, **content}
     if unknown:
-        return Loaded(READ_ONLY, bundle, Text("has data this version does not know: {list}", list=", ".join(unknown[:5])),
+        return Loaded(READ_ONLY, bundle, Text("common.unknown_data", list=", ".join(unknown[:5])),
                       warnings, refs)
     return Loaded(WARNING if warnings else OK, bundle, warnings=warnings, refs=refs)
 
@@ -172,7 +172,7 @@ def read_file(path, file_id=None):
         with open(path, "rb") as f:
             text = f.read()
     except OSError as e:
-        return Loaded(CORRUPT, problem=Text("could not be read ({reason})", reason=e.strerror or type(e).__name__), io_error=True)
+        return Loaded(CORRUPT, problem=Text("common.not_read", reason=e.strerror or type(e).__name__), io_error=True)
     return read_checked(text, file_id, getattr(path, "name", path))
 
 
@@ -184,4 +184,4 @@ def read_checked(data, file_id=None, name=None):
         # A file must never take down the list of all the others; the cause is
         # logged, since it may be a fault in this code rather than in the file.
         logging.exception("[Bundle Library] could not check %s", name or file_id)
-        return Loaded(CORRUPT, problem=Text("could not be checked ({name})", name=type(e).__name__))
+        return Loaded(CORRUPT, problem=Text("common.not_checked", name=type(e).__name__))

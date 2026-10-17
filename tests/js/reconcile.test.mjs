@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import "./english.mjs"; // the English catalog, as the page has it
+
 import {
     COMFY_TYPES, POOL_SIZE, misplacedOutputs, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses,
 } from "../../web/reconcile.js";

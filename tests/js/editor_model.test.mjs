@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import "./english.mjs"; // the English catalog, as the page has it
+
 import { EditorModel, editable, numberProblem, summaryOf, tooLarge } from "../../web/editor_model.js";
 
 const SHA = "a".repeat(64);
