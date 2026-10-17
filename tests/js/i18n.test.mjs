@@ -199,6 +199,28 @@ test("a message of the server: its id and values, a message among them, a name a
         "The audio is too large to load: with 2 channels at 48 kHz it may last at most 1:00.");
 });
 
+test("what is wrong with a file is said in the page's language too (R31-04, 0.0.32)", () => {
+    // As tests/test_routes.py has the server send them
+    const none = {};
+    const cases = [
+        [{ id: "check.not_empty", values: { label: { id: "category.name_label", values: none } } },
+            "Category name: must not be empty.", "카테고리 이름: 비어 있으면 안 됩니다."],
+        [{ id: "common.invalid_revision", values: none }, "invalid revision", "잘못된 revision"],
+        [{ id: "store.organization_locked", values: { problem: { id: "common.not_json", values: none } } },
+            "not valid JSON; categories and favorites cannot be changed", "올바른 JSON이 아님. 카테고리와 즐겨찾기를 바꿀 수 없음"],
+        [{ id: "file.no_video_use_audio", values: none }, "This file has no video; use an audio field for it.",
+            "이 파일에는 영상이 없습니다. 오디오 필드에 넣으세요."],
+    ];
+    for (const [info, english] of cases) assert.equal(serverText("", info), english);
+    try {
+        useCatalogs({ messages: { ko: sent(read("ko")) } });
+        useLocale(() => "ko");
+        for (const [info, , korean] of cases) assert.equal(serverText("", info), korean);
+    } finally {
+        useLocale(() => "en");
+    }
+});
+
 // Last: the loader stays set for the rest of this file.
 test("a language chosen later is fetched once when first used, and shows from then on", async () => {
     const asked = [];
@@ -206,7 +228,8 @@ test("a language chosen later is fetched once when first used, and shows from th
     const load = async (wanted) => {
         asked.push(wanted);
         const lang = wanted.split("-")[0];
-        return { languages: [...LANGUAGES, "ja"], messages: lang === "ja" ? { ja: { "trash.empty_confirm": "ゴミ箱を空にしますか?" } } : {} };
+        return { languages: [...LANGUAGES, "ja"], messages: { en: ENGLISH,
+            ...(lang === "ja" ? { ja: { "trash.empty_confirm": "ゴミ箱を空にしますか?" } } : {}) } };
     };
     let code = "en";
     useLocale(() => code);

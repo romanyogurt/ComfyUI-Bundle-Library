@@ -11,15 +11,24 @@
 // through useLoader(); main.js waits for them before anything is drawn). The
 // language is read whenever text is made (useLocale(); main.js passes ComfyUI's
 // Language setting): a language chosen later is fetched when first used and
-// shows from what is drawn after it came. No DOM and no ComfyUI import: it runs
-// under `node --test`, with catalogs given by useCatalogs().
+// shows from what is drawn after it came. Catalogs that could not be had are
+// asked for again until they come (0.0.32), and onCatalogs() listeners draw
+// again what they keep on screen. No DOM and no ComfyUI import: it runs under
+// `node --test`, with catalogs given by useCatalogs().
 
 const catalogs = {}; // language -> {id: text, or {category: text}}
 let languages = ["en"]; // the languages the server has a catalog for
 let readLocale = () => "en";
 let loader = null;
-const asked = new Set();
+const asking = {}; // language code -> the promise of its first tries, until its catalogs are in
+const came = new Set(); // the codes whose catalogs are in
+const listeners = new Set();
 const rules = {};
+// After the n-th failure the catalogs are asked for again this many milliseconds later; after the
+// last, every that many on (0.0.32). The first two are the page's start (QUICK, within main.js's 5 seconds).
+const WAITS = [500, 1500, 5000, 15000, 30000, 60000];
+const QUICK = 2;
+let pause = (ms) => new Promise((done) => setTimeout(done, ms));
 
 /** Where the language comes from: a function returning a code such as "ko" or "en-US". */
 export function useLocale(read) {
@@ -35,20 +44,61 @@ export function useCatalogs(answer) {
 /**
  * Where catalogs come from: `load(code)` resolves to the server's answer for
  * a language code. Asks for the language set now; resolves when that answer
- * is in (or could not be had: English, or the ids, are shown then).
+ * is in, or when it could not be had in its first tries (English, or the ids,
+ * are shown then, and it is asked for again later). `sleep(ms)`, a promise,
+ * is how a wait between tries is made (the tests make it short).
  */
-export function useLoader(load) {
+export function useLoader(load, sleep = pause) {
     loader = load;
+    pause = sleep;
     return ask(code()) ?? Promise.resolve();
 }
 
-/** The catalogs for `code`, asked for once in a page's life. */
+/** Call `listener` whenever catalogs come, so that what is on screen can be drawn again in their language. */
+export function onCatalogs(listener) {
+    listeners.add(listener);
+}
+
+/** Whether the English catalog is in: without it the page shows message ids. */
+export function hasEnglish() {
+    return "en" in catalogs;
+}
+
+/**
+ * The catalogs for `wanted`, asked for until they come: one request at a
+ * time, and after a failure again only when its wait is over, not whenever
+ * text is made. The promise of the first tries, or null when they are in.
+ */
 function ask(wanted) {
     const key = wanted.toLowerCase();
-    if (!loader || asked.has(key)) return null;
-    asked.add(key);
-    return Promise.resolve().then(() => loader(key)).then(useCatalogs)
-        .catch((error) => console.warn(`[Bundle Library] no messages for '${key}':`, error?.message ?? error));
+    if (!loader || came.has(key)) return null;
+    return (asking[key] ??= new Promise((started) => void fetchCatalogs(key, started)));
+}
+
+async function fetchCatalogs(key, started) {
+    for (let failures = 0; ;) {
+        try {
+            const answer = await loader(key);
+            if (!answer?.messages?.en) throw new Error("the answer has no English catalog");
+            useCatalogs(answer);
+            break;
+        } catch (error) {
+            failures += 1;
+            console.warn(`[Bundle Library] no messages for '${key}' (try ${failures}):`, error?.message ?? error);
+            if (failures > QUICK) started();
+            await pause(WAITS[Math.min(failures, WAITS.length) - 1]);
+        }
+    }
+    came.add(key);
+    delete asking[key];
+    started();
+    for (const listener of listeners) {
+        try {
+            listener();
+        } catch (error) {
+            console.error("[Bundle Library] could not draw again in the new language:", error);
+        }
+    }
 }
 
 function code() {

@@ -72,18 +72,18 @@ def read(text):
     try:
         data = json.loads(text)
     except ValueError:
-        return Organization(schema.CORRUPT, "not valid JSON")
+        return Organization(schema.CORRUPT, Text("common.not_json"))
     except RecursionError:
-        return Organization(schema.CORRUPT, "nested too deeply")
+        return Organization(schema.CORRUPT, Text("common.too_deep"))
     if not isinstance(data, dict):
-        return Organization(schema.CORRUPT, "not a JSON object")
+        return Organization(schema.CORRUPT, Text("common.not_json_object"))
     if lone_surrogates(data):
-        return Organization(schema.CORRUPT, "has text that is not valid Unicode")
+        return Organization(schema.CORRUPT, Text("common.not_unicode"))
     form = data.get("format")
     if form != FORMAT:
         if isinstance(form, str) and form:
             return Organization(schema.UNSUPPORTED, Text("common.other_format", value=form[:60]))
-        return Organization(schema.CORRUPT, "not an organization file")
+        return Organization(schema.CORRUPT, Text("organization.not_organization_file"))
     version = data.get("schema_version")
     if type(version) is not int or version < 1:
         return Organization(schema.CORRUPT, Text("common.invalid_schema_version", version=repr(version)))
@@ -105,28 +105,28 @@ def read(text):
 def _shape_problem(data):
     revision = data.get("revision")
     if type(revision) is not int or revision < 0:
-        return "invalid revision"
+        return Text("common.invalid_revision")
     categories = data.get("categories")
     if not isinstance(categories, list):
-        return "categories must be a list"
+        return Text("organization.categories_list")
     ids = set()
     for category in categories:
         if not isinstance(category, dict):
-            return "a category is not an object"
+            return Text("organization.category_object")
         category_id, name = category.get("id"), category.get("name")
         if not isinstance(category_id, str) or not UUID_RE.match(category_id) or category_id in ids:
-            return "a category has an invalid or repeated id"
+            return Text("organization.category_id")
         ids.add(category_id)
         if not isinstance(name, str) or not name.strip():
-            return "a category has no name"
+            return Text("organization.category_no_name")
         if category.get("parent") is not None:  # nesting is designed in but not open in version 1
-            return "nested categories are not supported"
+            return Text("organization.nested_categories")
     placement = data.get("placement")
     if not isinstance(placement, dict) or not all(isinstance(k, str) and isinstance(v, str) for k, v in placement.items()):
-        return "placement must map bundle ids to category ids"
+        return Text("organization.placement_map")
     favorites = data.get("favorites")
     if not isinstance(favorites, list) or not all(isinstance(f, str) for f in favorites):
-        return "favorites must be a list of bundle ids"
+        return Text("organization.favorites_list")
     return None
 
 
@@ -150,7 +150,7 @@ def category_name(value, organization, own_id=None):
     """A category name checked and normalized for saving: the rules of bundle
     names, at most MAX_CATEGORY_NAME characters, not a special view's name,
     and unique (regardless of case) among the categories."""
-    name = _name(value, "Category name", MAX_CATEGORY_NAME, _Rules(strict=True))
+    name = _name(value, Text("category.name_label"), MAX_CATEGORY_NAME, _Rules(strict=True))
     if name.casefold() in (special.casefold() for special in SPECIAL_NAMES):
         raise invalid(Text("category.name_reserved", name=name))
     for category in organization.categories:

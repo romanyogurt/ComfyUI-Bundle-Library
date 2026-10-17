@@ -173,6 +173,10 @@
     "en": "Try again with {bundles}",
     "text": "{bundles}로 다시 시도"
   },
+  "category.name_label": {
+    "en": "Category name",
+    "text": "카테고리 이름"
+  },
   "category.name_reserved": {
     "en": "Category name: '{name}' is the name of a view of the list.",
     "text": "카테고리 이름: '{name}'은(는) 목록의 보기 이름입니다."
@@ -365,6 +369,10 @@
     "en": "ids must be a non-empty list of bundle ids.",
     "text": "ids는 비어 있지 않은 번들 id 목록이어야 합니다."
   },
+  "common.invalid_revision": {
+    "en": "invalid revision",
+    "text": "잘못된 revision"
+  },
   "common.invalid_schema_version": {
     "en": "invalid schema_version {version}",
     "text": "잘못된 schema_version {version}"
@@ -393,9 +401,21 @@
     "en": "could not be checked ({name})",
     "text": "확인할 수 없음 ({name})"
   },
+  "common.not_json": {
+    "en": "not valid JSON",
+    "text": "올바른 JSON이 아님"
+  },
+  "common.not_json_object": {
+    "en": "not a JSON object",
+    "text": "JSON 객체가 아님"
+  },
   "common.not_read": {
     "en": "could not be read ({reason})",
     "text": "읽을 수 없음 ({reason})"
+  },
+  "common.not_unicode": {
+    "en": "has text that is not valid Unicode",
+    "text": "올바른 유니코드가 아닌 글자가 있음"
   },
   "common.nothing_to_choose": {
     "en": "Nothing to choose.",
@@ -432,6 +452,10 @@
   "common.tags": {
     "en": "Tags",
     "text": "태그"
+  },
+  "common.too_deep": {
+    "en": "nested too deeply",
+    "text": "너무 깊이 중첩됨"
   },
   "common.trash": {
     "en": "Trash",
@@ -1093,12 +1117,20 @@
     "en": "The image is too large ({width}×{height}); the limit is {limit} pixels.",
     "text": "이미지가 너무 큽니다({width}×{height}). 최대 {limit}픽셀입니다."
   },
+  "file.is_video_use_video": {
+    "en": "This file is a video; use a video field for it.",
+    "text": "이 파일은 동영상입니다. 동영상 필드에 넣으세요."
+  },
   "file.minutes": {
     "en": {
       "one": "{count} minute",
       "other": "{count} minutes"
     },
     "text": "{count}분"
+  },
+  "file.no_video_use_audio": {
+    "en": "This file has no video; use an audio field for it.",
+    "text": "이 파일에는 영상이 없습니다. 오디오 필드에 넣으세요."
   },
   "file.not_decoded": {
     "en": "The {kind} could not be decoded; the file may be damaged.",
@@ -1948,6 +1980,38 @@
     "en": "Add new fields, drop unconnected outputs that left the bundle, retype unconnected outputs",
     "text": "새 필드를 더하고, 번들에서 빠진 연결 안 된 출력을 빼고, 연결 안 된 출력의 타입을 바꿉니다"
   },
+  "organization.categories_list": {
+    "en": "categories must be a list",
+    "text": "categories가 목록이 아님"
+  },
+  "organization.category_id": {
+    "en": "a category has an invalid or repeated id",
+    "text": "id가 잘못됐거나 겹치는 카테고리가 있음"
+  },
+  "organization.category_no_name": {
+    "en": "a category has no name",
+    "text": "이름이 없는 카테고리가 있음"
+  },
+  "organization.category_object": {
+    "en": "a category is not an object",
+    "text": "객체가 아닌 카테고리가 있음"
+  },
+  "organization.favorites_list": {
+    "en": "favorites must be a list of bundle ids",
+    "text": "favorites가 번들 id의 목록이 아님"
+  },
+  "organization.nested_categories": {
+    "en": "nested categories are not supported",
+    "text": "카테고리 안의 카테고리는 지원하지 않음"
+  },
+  "organization.not_organization_file": {
+    "en": "not an organization file",
+    "text": "정리 파일이 아님"
+  },
+  "organization.placement_map": {
+    "en": "placement must map bundle ids to category ids",
+    "text": "placement가 번들 id에서 카테고리 id로의 대응이 아님"
+  },
   "picker.current": {
     "en": "Current",
     "text": "지금 파일"
@@ -2079,25 +2143,25 @@
     "en": "Upload the ZIP as multipart/form-data.",
     "text": "ZIP은 multipart/form-data로 올리세요."
   },
+  "schema.id_not_file_name": {
+    "en": "the file name and the id differ",
+    "text": "파일 이름과 id가 다름"
+  },
+  "schema.invalid_deleted_at": {
+    "en": "invalid deleted_at",
+    "text": "잘못된 deleted_at"
+  },
+  "schema.invalid_id": {
+    "en": "invalid id",
+    "text": "잘못된 id"
+  },
   "schema.not_bundle_file": {
     "en": "not a bundle file",
     "text": "번들 파일이 아님"
   },
-  "schema.not_json": {
-    "en": "not valid JSON",
-    "text": "올바른 JSON이 아님"
-  },
-  "schema.not_json_object": {
-    "en": "not a JSON object",
-    "text": "JSON 객체가 아님"
-  },
-  "schema.not_unicode": {
-    "en": "has text that is not valid Unicode",
-    "text": "올바른 유니코드가 아닌 글자가 있음"
-  },
-  "schema.too_deep": {
-    "en": "nested too deeply",
-    "text": "너무 깊이 중첩됨"
+  "schema.time_missing": {
+    "en": "{key} is missing",
+    "text": "{key}가 없음"
   },
   "store.batch_max": {
     "en": "A batch takes {MAX_BATCH} bundles at most.",

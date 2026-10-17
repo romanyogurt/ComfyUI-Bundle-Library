@@ -241,6 +241,13 @@ class TrashTest(unittest.TestCase):
             "a newer version": lambda base: {**base, "schema_version": 99, "resources": [{"sha256": sha}]},
             "another format": lambda base: {**base, "format": "someone-else/bundle"},
             "unknown keys": lambda base: {**base, "extra": {"sha256": sha}},
+            # Broken (revision 0) and not fully understood either (0.0.32)
+            "unknown keys in a broken file": lambda base: {**base, "revision": 0, "extra": {"sha256": sha}},
+            "an unknown field type in a broken file": lambda base: {
+                **base, "revision": 0, "fields": [{"name": "a", "type": "model", "value": {"sha256": sha}}]},
+            "a field that is not an object": lambda base: {**base, "revision": 0, "fields": [[sha]]},
+            "a file not named by its SHA-256": lambda base: {
+                **base, "revision": 0, "fields": [{"name": "a", "type": "image", "asset": sha}]},
         }
         for label, make in cases.items():
             with self.subTest(label):

@@ -1055,8 +1055,9 @@ class BundleStore:
         files = [(f"bundles/{name}", loaded) for name, loaded in self._files()]
         files += [(f"trash/{path.name}", schema.read_file(path)) for path in self._legacy_trash_files()]
         for name, loaded in files:
-            # Fully read, or broken in a way that still shows its fields of a known version.
-            if loaded.refs is not None and (loaded.writable or loaded.state == schema.CORRUPT):
+            # Every file it can point at is known: fully read, or broken elsewhere with no
+            # unknown key or field type (0.0.32; a read-only file is never trusted).
+            if loaded.refs is not None and loaded.refs_complete:
                 used |= loaded.refs
             else:
                 unclear.append(name)

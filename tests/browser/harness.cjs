@@ -230,7 +230,10 @@ async function waitForApp(page) {
         for (let i = 0; i < 100; i++) {
             try {
                 await window.__bl.init();
-                if (window.__bl.app.graph && window.__bl.app.canvas) return;
+                // Ready once the extensions' setup() ran (the pack's tab is there): before that a key ComfyUI
+                // handles fails, and a slow init leaves the canvas without the nodes (R31-02, 0.0.32)
+                const tabs = window.__bl.app.extensionManager?.sidebarTab?.sidebarTabs ?? [];
+                if (window.__bl.app.graph && window.__bl.app.canvas && tabs.some((tab) => tab.id === "bundle-library")) return;
             } catch {}
             await window.__bl.sleep(200);
         }

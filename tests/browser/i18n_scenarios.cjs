@@ -6,13 +6,17 @@
 // not in the text, nor in a title, aria-label or placeholder. ComfyUI's own
 // translations of the pack (locales/ko) name the node and the command. Checked
 // as DOM text: headless Chromium has no Korean font. The English screens are
-// the other suites'. Set-up and safety notes are in harness.cjs.
+// the other suites'. Last, the catalogs when the server does not give them at
+// first (R31-02). Set-up and safety notes are in harness.cjs.
 const fs = require("fs");
 const path = require("path");
 const { startSession } = require("./harness.cjs");
 
 const PREFIX = "[test] I18n";
 const MODULE = "/extensions/ComfyUI-Bundle-Library";
+// The requests for the catalogs refused on purpose (R31-02)
+const BUSY = { text: /^Failed to load resource: the server responded with a status of 503 /,
+    url: /\/api\/bundle-library\/v1\/messages/ };
 
 (async () => {
     const read = (lang) => JSON.parse(fs.readFileSync(path.join(__dirname, `../../locales/${lang}/bundle_library.json`), "utf8"));
@@ -27,7 +31,7 @@ const MODULE = "/extensions/ComfyUI-Bundle-Library";
         .map((k) => new RegExp(`^${k.trim().split(/\{\w+\}/).map(escape).join(".+?")}$`, "s"));
     const isEnglish = (text) => exact.has(text) || patterns.some((p) => p.test(text));
 
-    const session = await startSession("i18n");
+    const session = await startSession("i18n", { expectedErrors: [BUSY] });
     const { page, ev, check, finish } = session;
     const overlay = page.locator(".bl-overlay");
     const button = (name, scope = overlay) => scope.getByRole("button", { name, exact: true });
@@ -78,11 +82,12 @@ const MODULE = "/extensions/ComfyUI-Bundle-Library";
     await api("PUT", `/bundles/${ids.A}/favorite`, { favorite: true });
     // ComfyUI in Korean from the start, as a user's own setting has it: the page reads its settings with the
     // language set (writes of settings stay blocked), so ComfyUI names the nodes in Korean as it loads them.
-    await page.route("**/api/settings", async (route) => {
+    const speak = (lang) => page.route("**/api/settings", async (route) => {
         if (route.request().method() !== "GET") return route.fallback();
         const response = await route.fetch();
-        return route.fulfill({ response, json: { ...(await response.json()), "Comfy.Locale": "ko" } });
+        return route.fulfill({ response, json: { ...(await response.json()), "Comfy.Locale": lang } });
     });
+    await speak("ko");
     await session.reload();
     const locale = await ev(async (module) => (await import(`${module}/i18n.js`)).locale(), MODULE);
     check("the pack follows ComfyUI's language setting", locale === "ko", locale);
@@ -207,6 +212,68 @@ const MODULE = "/extensions/ComfyUI-Bundle-Library";
 
     await page.keyboard.press("Escape");
     await ev(() => window.__bl.app.graph.clear());
+
+    // ---- the catalogs when the server does not give them at first (R31-02, 0.0.32) ---------------------------
+    let outage = 0; // how many of the next requests for catalogs to refuse
+    let turnedAway = 0;
+    await page.route("**/api/bundle-library/v1/messages*", (route) => {
+        if (outage <= 0) return route.fallback();
+        outage -= 1;
+        turnedAway += 1;
+        return route.fulfill({ status: 503, contentType: "text/plain", body: "busy" });
+    });
+    const NOTICE = "Could not load the messages of Bundle Library";
+    const notices = () => ev(() => [...document.querySelectorAll(".p-toast-message")].map((e) => e.textContent).join(" | "));
+    const sidebarButton = () => ev(() => document.querySelector(".bl-sidebar .bl-btn.primary")?.textContent);
+    const sidebarSays = (text, timeout) => until((t) => document.querySelector(".bl-sidebar .bl-btn.primary")?.textContent === t,
+        text, timeout);
+    outage = 1;
+    await session.reload();
+    await command("BundleLibrary.Open");
+    await overlay.waitFor();
+    const newButton = await ev(() => document.querySelector(".bl-overlay .bl-new")?.textContent);
+    check("one request for the catalogs refused at the start: asked again there, the text as always",
+        turnedAway === 1 && newButton === "+ 새 번들" && !(await notices()).includes(NOTICE), { turnedAway, newButton });
+    await page.keyboard.press("Escape");
+
+    outage = Infinity; // until the page has drawn without them
+    turnedAway = 0;
+    await session.reload();
+    const told = await notices();
+    check("refused through the start: the page says so, once (in English: its catalog is what did not come)",
+        turnedAway >= 3 && told.split(NOTICE).length === 2, { turnedAway, told });
+    await ev(() => {
+        window.__node = window.__bl.add("BundleLibraryLoad", [80, 80]);
+    });
+    await ev((id) => window.__bl.pick(window.__node, id), ids.A);
+    await until(() => window.__node.bundlePanel.root.querySelector(".bl-tile"));
+    await command("Workspace.ToggleSidebarTab.bundle-library");
+    await until(() => document.querySelector(".bl-sidebar-group"));
+    const meanwhile = [await sidebarButton(), await ev(() => window.__node.bundlePanel.toggle.title)];
+    outage = 0;
+    const came = await sidebarSays("라이브러리 열기", 40000); // the next try is 5, 15 or 30 seconds after the last
+    check("meanwhile the ids show; asked again later, the catalogs are drawn without a reload",
+        meanwhile.join() === "library.open,node.preview_hide" && came, { meanwhile, turnedAway });
+    await korean("the node's panel when the catalogs came", "node", ["미리 보기 숨기기", "Bundle Library 열기"]);
+    await korean("the sidebar when the catalogs came", ".bl-sidebar", ["★ 즐겨찾기", "라이브러리 열기"]);
+    await command("Workspace.ToggleSidebarTab.bundle-library");
+    await ev(() => window.__bl.app.graph.clear());
+
+    // A language chosen later comes the same way: the page in English, then Korean while it is refused twice
+    await page.unroute("**/api/settings");
+    await speak("en");
+    await session.reload();
+    outage = 2;
+    turnedAway = 0;
+    await ev(async (module) => (await import(`${module}/i18n.js`)).useLocale(() => "ko"), MODULE);
+    await command("Workspace.ToggleSidebarTab.bundle-library");
+    await until(() => document.querySelector(".bl-sidebar-group"));
+    const first = await sidebarButton();
+    const cameLater = await sidebarSays("라이브러리 열기", 15000);
+    check("a language chosen later: English until its catalog came, asked again, then the tab in it",
+        first === "Open library" && cameLater && turnedAway === 2, { first, turnedAway });
+    await command("Workspace.ToggleSidebarTab.bundle-library");
+
     await finish({ expectRemoved: 1 }); // B is in the trash: its entry is removed there
 })().catch((e) => {
     console.error(e);

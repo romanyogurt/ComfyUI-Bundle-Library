@@ -15,6 +15,7 @@ from bundle_library import store as store_module
 from bundle_library.exchange import EXPORT_TTL, FORMAT, Exports, Imports, file_name
 from bundle_library.model import LibraryError
 from bundle_library.store import BundleStore
+from bundle_library.text import said
 from tests import helpers
 
 
@@ -512,6 +513,48 @@ class ImportTest(unittest.TestCase):
         with self.assertRaises(LibraryError) as ctx:
             apply()
         self.assertEqual(ctx.exception.status, 404)
+
+    def test_a_finished_import_answers_again_whatever_its_choices_are_by_then(self):
+        # R31-03: its category was deleted after it ran; a new import is still checked
+        box = self.target.create_category("Box")["id"]
+        a = self.make(self.source, "A")
+        imports = Imports(self.target.tmp_dir)
+        token = self.receive(self.target, self.export(self.source, [a]))
+        choice = {"mode": "one", "id": box}
+        first = imports.apply(self.target, token, "skip", choice)
+        self.target.delete_category(box)
+        for conflict, category in (("skip", choice), ("copy", {"mode": "none"})):
+            again = imports.apply(self.target, token, conflict, category)
+            self.assertEqual((again["replayed"], again["results"]), (True, said(first)["results"]))
+        self.assertEqual(len(self.target.list()["bundles"]), 1, "it did not run again")
+        token = self.receive(self.target, self.export(self.source, [a]))
+        with self.assertRaises(LibraryError) as ctx:
+            imports.apply(self.target, token, "skip", choice)
+        self.assertEqual((ctx.exception.status, ctx.exception.code), (404, "not_found"))
+        self.assertNotIn("replayed", imports.apply(self.target, token, "skip", {"mode": "none"}), "still ready")
+
+    def test_a_replay_has_the_message_ids_of_the_first_answer(self):
+        # R31-06: nested messages and warnings too; an answer kept by 0.0.31 (English only) still reads
+        a, b = self.make(self.source, "A", self.red), self.make(self.source, "B")
+        c = self.make(self.source, "C")
+        tampered = self.rewrite_zip(self.export(self.source, [a, b, c]), lambda name, data: data.replace(
+            b'"B"', b'"X"') if name == f"bundles/{b}.json" else helpers.png("blue") if name.startswith("assets/") else data)
+        imports = Imports(self.target.tmp_dir)
+        token = self.receive(self.target, tampered)
+        write = store_module._write_file
+        with mock.patch.object(store_module, "_write_file", lambda *args: write(*args) and False):
+            first = said(imports.apply(self.target, token, "skip", {"mode": "zip"}))
+        self.assertEqual([r["message_i18n"]["id"] for r in first["results"][:2]],
+                         ["exchange.file_not_imported", "exchange.file_digest_manifest"])
+        self.assertIn("warning_i18n", first["results"][2])
+        self.assertIn("reason_i18n", first["files"]["failed"][0])
+        again = said(imports.apply(self.target, token, "skip", {"mode": "zip"}))
+        self.assertTrue(again.pop("replayed"))
+        self.assertEqual(again, first)
+        kept = imports.folder / f"{token}.json"
+        kept.write_text(json.dumps({"results": [{"message": "English only"}]}), encoding="utf-8")
+        self.assertEqual(imports.apply(self.target, token, "skip", {"mode": "zip"})["results"],
+                         [{"message": "English only"}])
 
     def test_an_import_cut_off_says_so_and_one_failing_early_can_run_again(self):
         a = self.make(self.source, "A", self.red)

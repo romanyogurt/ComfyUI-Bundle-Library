@@ -11,7 +11,7 @@ import json
 import logging
 import re
 
-from .constants import MEDIA_TYPES
+from .constants import FIELD_TYPES, MEDIA_TYPES
 from .model import UUID_RE, LibraryError, lone_surrogates, read_bundle_content
 from .text import Text
 
@@ -73,9 +73,11 @@ class Loaded:
     """One bundle file as read: its `state`, the `bundle` in the current
     version (when readable), why it is not fully usable (`problem`), the
     writing rules it breaks (`warnings`), and the files it points at
-    (`refs`; None when that cannot be told)."""
+    (`refs`; None when that cannot be told). `refs_complete` tells that no
+    other place in the file can point at one (0.0.32)."""
 
-    def __init__(self, state, bundle=None, problem=None, warnings=(), refs=None, io_error=False):
+    def __init__(self, state, bundle=None, problem=None, warnings=(), refs=None, io_error=False,
+                 refs_complete=False):
         self.state = state
         # The file could not be read at all (permissions, I/O): not a fact about
         # its content, so it is reported apart and read again next time.
@@ -84,6 +86,7 @@ class Loaded:
         self.problem = problem
         self.warnings = list(warnings)
         self.refs = refs
+        self.refs_complete = refs_complete
 
     @property
     def readable(self):
@@ -123,19 +126,31 @@ def _refs(data):
             and isinstance(field["asset"].get("sha256"), str)}
 
 
+def _refs_known(data):
+    """Whether `_refs` saw every place `data` (with no unknown keys) can point
+    at a file: each field is an object of a known type, and a media field's
+    file is empty or named by its SHA-256 (0.0.32)."""
+    fields = data.get("fields")
+    return isinstance(fields, list) and all(
+        isinstance(field, dict) and field.get("type") in FIELD_TYPES
+        and (field["type"] not in MEDIA_TYPES or field.get("asset") is None
+             or isinstance(field["asset"], dict) and isinstance(field["asset"].get("sha256"), str))
+        for field in fields)
+
+
 def read(text, file_id=None):
     """Sort the content of a bundle file into a Loaded. `file_id` is the id its
     file name gives, which the bundle must have."""
     try:
         data = json.loads(text)
     except ValueError:  # includes text that is not UTF-8
-        return Loaded(CORRUPT, problem=Text("schema.not_json"))
+        return Loaded(CORRUPT, problem=Text("common.not_json"))
     except RecursionError:
-        return Loaded(CORRUPT, problem=Text("schema.too_deep"))
+        return Loaded(CORRUPT, problem=Text("common.too_deep"))
     if not isinstance(data, dict):
-        return Loaded(CORRUPT, problem=Text("schema.not_json_object"))
+        return Loaded(CORRUPT, problem=Text("common.not_json_object"))
     if lone_surrogates(data):
-        return Loaded(CORRUPT, problem=Text("schema.not_unicode"))
+        return Loaded(CORRUPT, problem=Text("common.not_unicode"))
     form = data.get("format")
     if form != FORMAT:
         if isinstance(form, str) and form:
@@ -148,39 +163,40 @@ def read(text, file_id=None):
         return Loaded(NEWER, problem=Text("common.newer_schema", version=version, SCHEMA_VERSION=SCHEMA_VERSION))
     refs = _refs(data)
     unknown = _unknown_keys(data, version)
+    complete = not unknown and _refs_known(data)
     data = migrate(data, version)
     problem = _shape_problem(data, file_id)
     if problem:
-        return Loaded(CORRUPT, problem=problem, refs=refs)
+        return Loaded(CORRUPT, problem=problem, refs=refs, refs_complete=complete)
     try:
         content, warnings = read_bundle_content(data)
     except LibraryError as e:
         state = UNSUPPORTED if e.code == "unsupported_type" else CORRUPT
-        return Loaded(state, problem=e.message, refs=refs)
+        return Loaded(state, problem=e.message, refs=refs, refs_complete=complete)
     # Read into the current version, it says the version it is written in: the lowest that holds it (0.0.30).
     bundle = {**data, **content}
     bundle["schema_version"] = version_for(bundle)
     if unknown:
         return Loaded(READ_ONLY, bundle, Text("common.unknown_data", list=", ".join(unknown[:5])),
                       warnings, refs)
-    return Loaded(WARNING if warnings else OK, bundle, warnings=warnings, refs=refs)
+    return Loaded(WARNING if warnings else OK, bundle, warnings=warnings, refs=refs, refs_complete=complete)
 
 
 def _shape_problem(data, file_id):
     bundle_id = data.get("id")
     if not isinstance(bundle_id, str) or not UUID_RE.match(bundle_id):
-        return "invalid id"
+        return Text("schema.invalid_id")
     if file_id is not None and bundle_id != file_id:
-        return "the file name and the id differ"
+        return Text("schema.id_not_file_name")
     revision = data.get("revision")
     if type(revision) is not int or revision < 1:
-        return "invalid revision"
+        return Text("common.invalid_revision")
     for key in ("created_at", "updated_at"):
         if not isinstance(data.get(key), str):
-            return f"{key} is missing"
+            return Text("schema.time_missing", key=key)
     deleted_at = data.get("deleted_at", "missing")
     if deleted_at is not None and not (isinstance(deleted_at, str) and _TIME_RE.match(deleted_at)):
-        return "invalid deleted_at"
+        return Text("schema.invalid_deleted_at")
     return None
 
 

@@ -101,7 +101,9 @@ const LIB_HELPERS = () => {
 };
 
 (async () => {
-    const session = await startSession("library");
+    // A pick of a stored file refused on purpose (R31-05)
+    const session = await startSession("library", { expectedErrors: [{
+        text: /^Failed to load resource: the server responded with a status of 503 /, url: /\/assets\/[0-9a-f]{64}\/use$/ }] });
     const { page, ev, check, shot, finish } = session;
     await page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(page.url()).origin });
     const ids = await ev(() => window.__bl.createTestBundles());
@@ -840,7 +842,32 @@ const LIB_HELPERS = () => {
     await page.keyboard.press("Escape");
     await picker.waitFor({ state: "detached", timeout: 5000 });
     check("Escape closes the picker; the field keeps its file", (await state()).state === "Saved");
+    // While a pick is sent the tiles are inert: Tab goes round the filter and Cancel only (R31-05). Refused, the
+    // picker says why and the tiles can be chosen again.
     await openPicker(0);
+    let release;
+    const held = new Promise((resolve) => {
+        release = resolve;
+    });
+    await page.route("**/api/bundle-library/v1/assets/*/use", async (route) => {
+        await held;
+        return route.fulfill({ status: 503, json: { error: { code: "busy", message: "Busy." } } });
+    });
+    await tileFor(bRef.sha256).click();
+    await page.locator(".bl-overlay .bl-picker-filter").focus();
+    const inert = await lib(() => document.querySelector(".bl-overlay .bl-picker-grid").inert);
+    const tabs = [];
+    for (const key of ["Tab", "Tab", "Shift+Tab", "Shift+Tab"]) {
+        await page.keyboard.press(key);
+        tabs.push(await lib(() => (document.activeElement.classList.contains("bl-picker-filter") ? "filter"
+            : document.activeElement.textContent)));
+    }
+    release();
+    const freed = await until(() => document.querySelector(".bl-overlay .bl-picker-grid")?.inert === false
+        && document.querySelector(".bl-overlay .bl-picker .bl-error")?.textContent === "Busy.");
+    await page.unroute("**/api/bundle-library/v1/assets/*/use");
+    check("while a pick is sent, Tab goes round the filter and Cancel only; refused, it says why and frees the tiles",
+        inert && tabs.join() === "Cancel,filter,Cancel,filter" && freed, { inert, tabs, freed });
     await tileFor(bRef.sha256).click();
     await picker.waitFor({ state: "detached", timeout: 5000 });
     st = await state();

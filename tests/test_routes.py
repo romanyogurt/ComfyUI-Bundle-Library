@@ -90,6 +90,26 @@ class RoutesTest(AioHTTPTestCase):
         result = answer["results"][0]
         self.assertEqual((result["code"], result["message_i18n"]["id"]), ("revision_conflict", "store.revision_conflict"), result)
 
+    async def test_what_is_wrong_with_a_file_comes_with_its_id_too(self):
+        # R31-04 (0.0.32): a label in a message, a bundle file of a bad shape, organization.json, a file of
+        # another kind
+        error = await self.error(await self.client.post(P + "/categories", json={"name": " "}, headers=WRITE),
+                                 400, "invalid")
+        self.assertEqual(error["message_i18n"]["values"]["label"], {"id": "category.name_label", "values": {}})
+        bundle_id = str(uuid.uuid4())
+        (self.root / "bundles").mkdir(exist_ok=True)
+        (self.root / "bundles" / f"{bundle_id}.json").write_text(json.dumps({
+            "format": "comfyui-bundle-library/bundle", "schema_version": 2, "id": bundle_id, "revision": 0,
+            "name": "x", "tags": [], "note": "", "fields": [], "created_at": "2026-10-17T00:00:00Z",
+            "updated_at": "2026-10-17T00:00:00Z", "deleted_at": None}), encoding="utf-8")
+        (self.root / "organization.json").write_text("{broken", encoding="utf-8")
+        errors = {e["file"]: e for e in (await self.body(await self.client.get(P + "/bundles"), 200))["errors"]}
+        self.assertEqual(errors[f"bundles/{bundle_id}.json"]["error_i18n"], {"id": "common.invalid_revision", "values": {}})
+        self.assertEqual(errors["organization.json"]["error_i18n"], {"id": "store.organization_locked", "values": {
+            "problem": {"id": "common.not_json", "values": {}}}})
+        error = await self.error(await self.upload(helpers.audio(), kind="video"), 415, "unsupported_format")
+        self.assertEqual(error["message_i18n"], {"id": "file.no_video_use_audio", "values": {}})
+
     async def test_the_page_gets_the_catalogs_of_english_and_its_language(self):
         # GET /messages needs no write header: what the page says its messages with (text.catalogs).
         answer = await self.body(await self.client.get(P + "/messages?lang=ko-KR"), 200)

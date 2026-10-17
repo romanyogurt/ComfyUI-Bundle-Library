@@ -37,7 +37,7 @@ from . import schema
 from .constants import VERSION
 from .model import LibraryError, check_bundle_id, invalid
 from .store import kind_problem
-from .text import Text
+from .text import Text, said
 
 FORMAT = "comfyui-bundle-library/export"
 FORMAT_VERSION = 1
@@ -190,9 +190,10 @@ def _check_choices(store, conflict, category):
 
 
 def _keep(path, answer):
-    """Write an import's answer for a request that asks again (not synced: it is only a convenience)."""
+    """Write an import's answer for a request that asks again (not synced: it is only a convenience),
+    with the ids of its messages, so that the page says it in its language again (R31-06)."""
     part = path.with_name(path.name + ".part")
-    part.write_text(json.dumps(answer), encoding="utf-8")
+    part.write_text(json.dumps(said(answer)), encoding="utf-8")
     os.replace(part, path)
 
 
@@ -393,20 +394,23 @@ class Imports:
         """Import an uploaded export, once (R22-02). The first request takes it:
         its ZIP becomes <token>.applying. A request while it runs is refused
         (409 import_running); one after it is done gets the answer it gave,
-        kept as <token>.json for an hour, without running again ("replayed").
+        kept as <token>.json for an hour, without running again ("replayed"),
+        whatever its choices are by then (R31-03: its category may be gone).
         Its files come first, then the bundles that can come and whose files
         came, then their places. A failure before any bundle is written leaves
         it ready to apply again; one cut off after that (the server stopped)
         is told so (409 import_interrupted)."""
-        _check_choices(store, conflict, category)
         _check_token(token)
         self.forget_old()
         ready, taken = self.folder / f"{token}.zip", self.folder / f"{token}.applying"
         with _APPLYING_LOCK:
             if token in _APPLYING:
                 raise _running()
+            if not ready.exists():
+                return self._after(token)
             _APPLYING.add(token)
         try:
+            _check_choices(store, conflict, category)
             try:
                 ready.rename(taken)  # atomic: one request takes it
             except FileNotFoundError:

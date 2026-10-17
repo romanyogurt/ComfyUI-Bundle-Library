@@ -89,9 +89,17 @@ class TextTest(unittest.TestCase):
         self.assertEqual(wrong, [])
 
     def test_every_message_the_server_raises_is_a_text(self):
+        def written(value):  # a str in the code, not a Text
+            return isinstance(value, (ast.JoinedStr, ast.BinOp)) or (
+                isinstance(value, ast.Constant) and isinstance(value.value, str))
         plain = []
         for path in sorted(PACKAGE.glob("*.py")):
             for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+                # What is wrong with a file, which the page shows (0.0.32); not a node's error at run
+                # time (slots.field_problem), which ComfyUI shows as it is.
+                if isinstance(node, ast.FunctionDef) and node.name.endswith("_problem") and node.name != "field_problem":
+                    plain += [f"{path.name}:{r.lineno}" for r in ast.walk(node) if isinstance(r, ast.Return)
+                              and written(r.value)]
                 if not isinstance(node, ast.Call):
                     continue
                 name = getattr(node.func, "id", getattr(node.func, "attr", None))
@@ -99,4 +107,9 @@ class TextTest(unittest.TestCase):
                            else node.args[0] if name in ("invalid", "_bad") and node.args else None)
                 if isinstance(message, (ast.Constant, ast.JoinedStr, ast.BinOp)):
                     plain.append(f"{path.name}:{node.lineno}")
+                problems = [k.value for k in node.keywords if k.arg == "problem"]
+                place = {"Loaded": 2, "Organization": 1}.get(name)
+                if place is not None and len(node.args) > place:
+                    problems.append(node.args[place])
+                plain += [f"{path.name}:{node.lineno}" for problem in problems if written(problem)]
         self.assertEqual(plain, [], "a message the page cannot translate: make it a Text (bundle_library/text.py)")

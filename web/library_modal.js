@@ -13,7 +13,7 @@ import { ATTENTION, CATEGORY, FAVORITES, UNCATEGORIZED, compactGroups, groupBund
 import { ImportPanel, ImportResult } from "./import_panel.js";
 import { displayNames } from "./names.js";
 import { slotStatuses } from "./reconcile.js";
-import { around, msg, said, t } from "./i18n.js";
+import { around, msg, onCatalogs, said, t } from "./i18n.js";
 import { compareText, sameTag, tagCounts } from "./tags.js";
 import { TagsPanel } from "./tags_panel.js";
 import { TrashPanel } from "./trash_panel.js";
@@ -257,10 +257,10 @@ class LibraryModal {
         }
     }
 
-    /** What Tab moves through in the open question. */
+    /** What Tab moves through in the open question: not what is inert there (R31-05: a grid while its pick is sent). */
     layerStops() {
         return [...this.layer.element.querySelectorAll("button, input, select, textarea, a[href], [tabindex]")]
-            .filter((e) => !e.disabled && e.tabIndex >= 0 && e.getClientRects().length > 0);
+            .filter((e) => !e.disabled && e.tabIndex >= 0 && e.getClientRects().length > 0 && !e.closest("[inert]"));
     }
 
     /** Tab and Shift+Tab go round the open question instead of leaving it. */
@@ -1742,7 +1742,8 @@ class LibraryModal {
     }
 }
 
-// The list of the sidebar tab while it is shown.
+// The sidebar tab and its list while it is shown.
+let sidebarTab = null;
 let sidebarList = null;
 let sidebarGeneration = 0;
 
@@ -1768,9 +1769,15 @@ function fillSidebar(list, fresh = false) {
 window.addEventListener(CHANGED_EVENT, () => {
     if (sidebarList?.isConnected) fillSidebar(sidebarList);
 });
+// Catalogs that came late (0.0.32): the tab drawn again in their language. The library window
+// shows them when it opens next (an editor there may hold changes not saved).
+onCatalogs(() => {
+    if (sidebarList?.isConnected) renderSidebar(sidebarTab);
+});
 
 /** The sidebar tab: the bundle names by category, each opening the library at that bundle. */
 export function renderSidebar(container) {
+    sidebarTab = container;
     const root = el("div", "bl-sidebar");
     const open = button(t("library.open"), "bl-btn primary");
     open.addEventListener("click", () => openLibrary());

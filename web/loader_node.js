@@ -2,7 +2,7 @@ import { app } from "../../scripts/app.js";
 import { CHANGED_EVENT, assetURL, forgetBundles, listBundles, listLibrary, thumbnailURL } from "./api.js";
 import { code, el, formatDuration, kindName } from "./dom.js";
 import { compactGroups, groupLabel } from "./groups.js";
-import { msg, t } from "./i18n.js";
+import { msg, onCatalogs, t } from "./i18n.js";
 import { openLibrary } from "./library_modal.js";
 import { displayNames } from "./names.js";
 import { COMFY_TYPES, misplacedOutputs, parseSpec, planChanges, planSlots, serializeSpec, slotStatuses } from "./reconcile.js";
@@ -33,6 +33,16 @@ document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") refreshAllPanels();
 });
 window.addEventListener(CHANGED_EVENT, refreshAllPanels);
+// Catalogs that came late (0.0.32): each panel drawn again in their language.
+onCatalogs(() => {
+    for (const node of panels) {
+        if (!node.bundlePanel) continue;
+        node.bundlePanel.previewSignature = null; // its signature holds no text
+        node.bundlePanel.open.title = t("node.open_library");
+        setCollapsed(node, !!node.properties.preview_collapsed); // its title
+    }
+    refreshAllPanels();
+});
 
 function widget(node, name) {
     return node.widgets?.find((w) => w.name === name);
@@ -459,7 +469,7 @@ function addPanel(node) {
     preview.append(rows, notice);
     bar.append(toggle, select, open);
     root.append(bar, preview);
-    node.bundlePanel = { root, bar, toggle, select, preview, rows, notice };
+    node.bundlePanel = { root, bar, toggle, select, open, preview, rows, notice };
     setCollapsed(node, !!node.properties.preview_collapsed);
 
     toggle.addEventListener("click", () => {

@@ -303,8 +303,8 @@ def _describe(container, kind):
         ext = None
     found = KINDS.get(ext)
     if found != kind:
-        message = {("video", "audio"): "This file has no video; use an audio field for it.",
-                   ("audio", "video"): "This file is a video; use a video field for it."}.get(
+        message = {("video", "audio"): Text("file.no_video_use_audio"),
+                   ("audio", "video"): Text("file.is_video_use_video")}.get(
             (kind, found), _REFUSED[kind])
         raise LibraryError(415, "unsupported_format", message)
     duration = _duration(container, video or audio)
