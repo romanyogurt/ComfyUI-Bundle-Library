@@ -309,6 +309,25 @@ const LIB_HELPERS = () => {
     check("Ctrl+S saves the new bundle and selects it in the list",
         saved && st.buttons.Revert === false && st.buttons["Duplicate ▾"] && st.buttons.Delete && !!uiId, { state: st.state, uiId });
     check("after the save re-rendered the editor the focus is still in the modal", await lib(() => window.__lib.focusInside()));
+    const head = () => lib(() => {
+        const editor = document.querySelector(".bl-overlay .bl-editor");
+        const mark = editor.querySelector(".bl-state").getBoundingClientRect();
+        return { labels: [...editor.querySelectorAll(".bl-editor-meta .bl-label")].map((l) => l.textContent),
+            names: [editor.querySelector(".bl-category-select").getAttribute("aria-label"),
+                editor.querySelector(".bl-tags").getAttribute("aria-label"),
+                editor.querySelector(".bl-tag-input").getAttribute("aria-label")],
+            state: editor.querySelector(".bl-state").textContent, inView: mark.width > 1 && mark.height > 1 };
+    });
+    let headNow = await head();
+    check("the editor head shows no Category or Tags label; the controls carry those names (0.0.23)",
+        headNow.labels.length === 0 && JSON.stringify(headNow.names) === JSON.stringify(["Category", "Tags", "Add a tag"]), headNow);
+    check("a saved bundle shows no Saved: the word is there for screen readers only (0.0.23)",
+        headNow.state === "Saved" && !headNow.inView, headNow);
+    await page.locator(".bl-overlay .bl-note-input").fill(`${NOTE} (changed)`);
+    headNow = await head();
+    check("a change shows Unsaved changes, in view", headNow.state === "● Unsaved changes" && headNow.inView, headNow);
+    await page.locator(".bl-overlay .bl-note-input").fill(NOTE);
+    await savedState();
     const made = await api("GET", `/bundles/${uiId}`);
     const pasted = made.fields.find((f) => f.name === "ref_paste")?.asset;
     check("API: name, tags and note as entered",

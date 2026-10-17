@@ -258,14 +258,20 @@ export class BundleEditor {
 
     renderMeta() {
         const meta = el("div", "bl-editor-meta");
-        const place = el("label", "bl-category-row");
+        // No labels in view (0.0.23): the select reads "No category" or a name, and the tags speak for themselves.
+        const place = el("div", "bl-category-row");
         this.categorySelect = el("select", "bl-input bl-category-select");
+        this.categorySelect.setAttribute("aria-label", "Category");
+        this.categorySelect.title = "Category";
         this.categorySelect.addEventListener("change", () => void this.chooseCategory(this.categorySelect.value));
-        place.append(el("span", "bl-label", "Category"), this.categorySelect);
+        place.append(this.categorySelect);
         const tags = el("div", "bl-tags");
+        tags.setAttribute("role", "group");
+        tags.setAttribute("aria-label", "Tags");
         const renderTags = (focus) => {
             const input = el("input", "bl-input bl-tag-input");
             input.placeholder = "+ tag";
+            input.setAttribute("aria-label", "Add a tag");
             input.maxLength = 40;
             input.value = this.tagText;
             input.addEventListener("input", () => {
@@ -279,7 +285,7 @@ export class BundleEditor {
                 renderTags(true);
                 this.refreshState();
             });
-            tags.replaceChildren(el("span", "bl-label", "Tags"), ...this.draft.tags.map((tag, i) => {
+            tags.replaceChildren(...this.draft.tags.map((tag, i) => {
                 const chip = el("span", "bl-chip", tag);
                 const remove = button("×", "bl-chip-x", `Remove the tag '${tag}'`);
                 remove.addEventListener("click", () => {
@@ -709,6 +715,7 @@ export class BundleEditor {
             return false;
         }
         const data = editable(this.draft);
+        const created = !this.saved;
         const outcome = await this.command("save", async (ticket) => {
             try {
                 const saved = this.saved
@@ -718,7 +725,7 @@ export class BundleEditor {
                     await this.modal.reload();
                     return false;
                 }
-                await this.adopt(saved, "Saved.");
+                await this.adopt(saved, "Saved.", { reveal: created }); // a new row: the list shows where it went
                 if (saved.placement_error) {
                     // The bundle is made; only putting it in its category failed. Choosing it again retries that.
                     this.modal.status(`Saved, but not put in its category: ${saved.placement_error} `
@@ -736,10 +743,10 @@ export class BundleEditor {
     }
 
     /** The draft is now `saved`: draw it, and let the list catch up before the window is free again. */
-    async adopt(saved, message) {
+    async adopt(saved, message, { reveal = false } = {}) {
         this.model.load(saved);
         this.render();
-        await this.modal.bundleSaved(saved);
+        await this.modal.bundleSaved(saved, { reveal });
         this.modal.status(message);
     }
 
@@ -794,7 +801,7 @@ export class BundleEditor {
                     await this.modal.reload();
                     return;
                 }
-                await this.modal.bundleSaved(copy, { open: true });
+                await this.modal.bundleSaved(copy, { open: true, reveal: true });
                 if (copy.placement_error) {
                     this.modal.status(`Created '${copy.name}', but not put in the category of the original: `
                         + `${copy.placement_error} Choose the category again.`, "error");

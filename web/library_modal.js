@@ -437,6 +437,7 @@ class LibraryModal {
         // another bundle or anything else begun before the list came in stays (R19-01).
         if (select && this.commands.pane.shows(select.view) && !this.unsaved && this.all.some((b) => b.id === select.id)) {
             await this.open(select.id, { force: true });
+            if (this.selection.has(select.id) && this.selection.size === 1) this.revealRow(select.id);
         }
     }
 
@@ -1428,10 +1429,39 @@ class LibraryModal {
     }
 
     // Called by the editor.
-    async bundleSaved(bundle, { open = false } = {}) {
+    async bundleSaved(bundle, { open = false, reveal = false } = {}) {
         this.selection = new Set([bundle.id]);
         await this.reload();
         if (open) await this.open(bundle.id, { force: true });
+        if (reveal && this.selection.has(bundle.id) && this.selection.size === 1) this.revealRow(bundle.id);
+    }
+
+    /**
+     * Bring the row of the bundle `id` into the list's view when it is out of
+     * it, in the middle: the first row that shows it (a starred bundle is in
+     * Favorites and its category). When none shows, its category (or
+     * Uncategorized) was collapsed: it is expanded, and stays so, as if the
+     * user had opened it. For a bundle the window selects by itself: the one
+     * it opens at, a new bundle's first save, a duplicate.
+     */
+    revealRow(id) {
+        const shown = () => [...this.list.querySelectorAll(`.bl-list-item[data-id="${CSS.escape(id)}"]`)]
+            .find((row) => !row.closest("[hidden]"));
+        let row = shown();
+        if (!row) {
+            if (this.matches || this.tag) return; // filtered out, not collapsed: groups do not collapse then
+            const category = this.summary(id)?.category;
+            const key = category && this.categories.some((c) => c.id === category) ? `${CATEGORY}:${category}` : UNCATEGORIZED;
+            if (!this.collapsed.delete(key)) return; // not in the list as it is filtered
+            remember(COLLAPSED_KEY, [...this.collapsed]);
+            this.renderList();
+            row = shown();
+            if (!row) return;
+        }
+        const list = this.list.getBoundingClientRect();
+        const box = row.getBoundingClientRect();
+        if (box.top >= list.top && box.bottom <= list.bottom) return; // in view already
+        this.list.scrollTop += box.top - list.top - (list.height - box.height) / 2;
     }
 
     /** The bundle went to the trash: read the list again, then show both (the pane and the list change together). */

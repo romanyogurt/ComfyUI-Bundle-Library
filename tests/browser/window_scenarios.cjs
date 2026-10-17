@@ -595,11 +595,70 @@ const WINDOW_HELPERS = () => {
         failedStopped && !(await playing()), { failedStopped });
     await ev(() => window.__bl.app.graph.clear());
 
+    // ---- the list shows the bundle the window selects by itself (0.0.23) -------------------------
+    const many = [];
+    for (let i = 0; i < 28; i++) many.push(await make(`${PREFIX} scroll ${String(i).padStart(2, "0")}`, [text("prompt", "s")]));
+    const last = many[many.length - 1]; // Uncategorized comes last, and in it this bundle
+    const openAt = async (selected) => {
+        await ev(async ([module, selected]) => {
+            const { openLibrary } = await import(`${module}/library_modal.js`);
+            openLibrary({ selected });
+        }, [MODULE, selected]);
+        await overlay.waitFor();
+        await page.evaluate(WINDOW_HELPERS);
+    };
+    const place = (id) => w((id) => {
+        const list = document.querySelector(".bl-overlay .bl-modal-list");
+        const box = list.getBoundingClientRect();
+        const rows = [...list.querySelectorAll(`.bl-list-item[data-id="${id}"]`)].filter((r) => !r.closest("[hidden]"));
+        const rect = rows[0]?.getBoundingClientRect();
+        return { inView: !!rect && rect.top >= box.top && rect.bottom <= box.bottom, top: list.scrollTop,
+            scrolls: list.scrollHeight > list.clientHeight };
+    }, id);
+    const toTop = () => w(() => { document.querySelector(".bl-overlay .bl-modal-list").scrollTop = 0; });
+    await openAt(last);
+    await opened(`${PREFIX} scroll 27`);
+    let at = await place(last);
+    check("a window opened at a bundle shows its row in the list, scrolled there (0.0.23)", at.scrolls && at.inView && at.top > 0, at);
+    await page.locator('.bl-overlay .bl-group[data-group="uncategorized"] .bl-group-toggle').click();
+    await closeLibrary();
+    await openAt(last);
+    await opened(`${PREFIX} scroll 27`);
+    at = await place(last);
+    const expanded = await w(() => !document.querySelector('.bl-overlay .bl-group[data-group="uncategorized"] .bl-group-rows').hidden);
+    check("its group, collapsed, is expanded so the row shows", expanded && at.inView, { expanded, ...at });
+    await toTop();
+    await page.locator(".bl-overlay .bl-note-input").fill("saved where it is");
+    await page.keyboard.press("Control+s");
+    await until(() => window.__win.editor()?.state === "Saved");
+    await page.waitForTimeout(300);
+    at = await place(last);
+    check("saving a bundle that was there already leaves the list where it is", at.top === 0, at);
+    await button("+ New bundle").click();
+    await page.locator(".bl-overlay .bl-name-input").fill(`${PREFIX} scroll zz new`);
+    await toTop();
+    await page.keyboard.press("Control+s");
+    await until(() => window.__win.editor()?.state === "Saved");
+    const made = await w(() => window.__win.editor()?.name && document.querySelector(".bl-overlay .bl-list-item.selected")?.dataset.id);
+    at = await place(made);
+    check("a new bundle's first save shows its row", !!made && at.inView && at.top > 0, at);
+    await row(many[0]).click();
+    await opened(`${PREFIX} scroll 00`);
+    await w(() => { const list = document.querySelector(".bl-overlay .bl-modal-list"); list.scrollTop = list.scrollHeight; });
+    await button("Duplicate ▾").click();
+    await menuItem("Duplicate with values").click();
+    await opened(`${PREFIX} scroll 00 copy`);
+    const copy = await w(() => document.querySelector(".bl-overlay .bl-list-item.selected")?.dataset.id);
+    at = await place(copy);
+    check("a duplicate shows its row", !!copy && copy !== many[0] && at.inView, at);
+    await closeLibrary();
+
     if (CONTAINER && LIBRARY) { // in case the trash part stopped before deleting it
         execFileSync("docker", ["exec", CONTAINER, "python", "-c",
             "import os, sys\nif os.path.exists(sys.argv[1]): os.remove(sys.argv[1])", lockedPath]);
     }
-    await finish({ expectRemoved: 7 }); // the copy deleted above is removed from the trash
+    await finish({ expectRemoved: 37 }); // with the 28 to scroll to, a new one and a copy; the copy deleted above
+    // is removed from the trash
 })().catch((e) => {
     console.error(e);
     process.exit(1);

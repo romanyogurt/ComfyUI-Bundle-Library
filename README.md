@@ -40,7 +40,14 @@
 - 상단 메뉴: Extensions → Open Bundle Library
 - 왼쪽 사이드바의 Bundle Library 탭: 번들이 라이브러리와 같은 묶음으로 보이고, 번들 이름을 누르면
   라이브러리가 그 번들을 연 채로 열린다.
+
+번들을 연 채로 열리면(번들이 골라진 노드의 📚 버튼, 사이드바) 목록이 그 번들의 행으로 스크롤한다. 행이 접힌
+카테고리 안이면 그 카테고리를 펼친다. 새 번들을 처음 저장했을 때와 복제했을 때도 그 행으로 간다. 이미 있는
+번들을 저장하면 목록은 그대로다(0.0.23부터).
 - 명령 `BundleLibrary.Open`: 기본 단축키는 없다. 설정의 Keybinding에서 지정할 수 있다.
+
+편집기 머리에는 저장하지 않은 변경이 있을 때만 상태가 보인다("● Unsaved changes", 새 번들은 "● New, not
+saved yet", 저장 중에는 "Saving…"). 카테고리 선택과 태그 칸에는 이름표를 두지 않는다(0.0.23부터).
 
 창 안에서 Ctrl+S는 저장, Esc는 닫기다. 열린 메뉴나 확인 창이 있으면 Esc는 그것만 닫고, 번들을 여러 개
 골라 두었으면 먼저 그 선택을 푼다.
@@ -210,7 +217,7 @@ scripts/bundle-library-test-server.sh stop
 | `tests/e2e/cache_race.py` | ComfyUI의 실행기를 프로세스 안에서 돌려 캐시를 확인한다: 캐시 키를 정한 뒤 바뀐 번들, 빈 미디어 필드의 캐시, 나중에 연결한 문제 슬롯 |
 | `tests/e2e/media_smoke.py` | 비디오·오디오 필드로 Load Bundle을 실행해 VIDEO·AUDIO 출력을 확인한다 |
 | `tests/e2e/security_smoke.py` | 쓰기 보호와 제한값 (거부되는 요청만 보낸다) |
-| `tests/browser/*_scenarios.cjs` | 헤드리스 Chromium으로 노드, 라이브러리, 비디오·오디오 화면을 조작한다. `race_scenarios.cjs`는 응답을 늦추거나 순서를 뒤집어 열기·검색·저장·업로드를, `trash_scenarios.cjs`는 휴지통과 파일 정리를, `compat_scenarios.cjs`는 옛 워크플로·큰 정수·읽지 못하는 파일·버전 불일치를, `category_scenarios.cjs`는 카테고리·즐겨찾기·끌어다 놓기·묶인 목록을, `list_scenarios.cjs`는 목록 도구줄·메뉴의 키보드 조작·빈 묶음·끌기 뒤의 정리·코드 글꼴 이름을, `batch_scenarios.cjs`는 여러 번들 선택·일괄 작업과 결과·느리거나 답이 없는 요청·편집 중 잠금을, `window_scenarios.cjs`는 취소한 질문의 늦은 답·질문 뒤의 창·일괄 화면의 선택 유지·목록 읽기 실패·다시 그린 뒤의 숫자 입력과 초점·복제와 삭제의 대기·고르기가 넘기는 번들·휴지통의 읽기 전용 번들·노드 소리의 정리를, `tags_scenarios.cjs`는 일괄 화면의 태그·Tags 칸의 이름 바꾸기·합치기·지우기·태그 필터·다른 곳에서 저장된 번들의 편집기·대소문자만 다른 태그를, `export_scenarios.cjs`는 일괄 화면과 편집기의 내보내기·내려받은 ZIP의 내용·빠진 번들의 이유를, `import_scenarios.cjs`는 가져오기의 올리기와 취소·미리 보기·건너뛰기·덮어쓰기·복사·카테고리 선택·떠난 미리 보기의 정리·받지 않는 ZIP을 확인한다 |
+| `tests/browser/*_scenarios.cjs` | 헤드리스 Chromium으로 노드, 라이브러리, 비디오·오디오 화면을 조작한다. `race_scenarios.cjs`는 응답을 늦추거나 순서를 뒤집어 열기·검색·저장·업로드를, `trash_scenarios.cjs`는 휴지통과 파일 정리를, `compat_scenarios.cjs`는 옛 워크플로·큰 정수·읽지 못하는 파일·버전 불일치를, `category_scenarios.cjs`는 카테고리·즐겨찾기·끌어다 놓기·묶인 목록을, `list_scenarios.cjs`는 목록 도구줄·메뉴의 키보드 조작·빈 묶음·끌기 뒤의 정리·코드 글꼴 이름을, `batch_scenarios.cjs`는 여러 번들 선택·일괄 작업과 결과·느리거나 답이 없는 요청·편집 중 잠금을, `window_scenarios.cjs`는 취소한 질문의 늦은 답·질문 뒤의 창·일괄 화면의 선택 유지·목록 읽기 실패·다시 그린 뒤의 숫자 입력과 초점·복제와 삭제의 대기·고르기가 넘기는 번들·휴지통의 읽기 전용 번들·노드 소리의 정리·창이 고른 번들로의 목록 스크롤을, `tags_scenarios.cjs`는 일괄 화면의 태그·Tags 칸의 이름 바꾸기·합치기·지우기·태그 필터·다른 곳에서 저장된 번들의 편집기·대소문자만 다른 태그를, `export_scenarios.cjs`는 일괄 화면과 편집기의 내보내기·내려받은 ZIP의 내용·빠진 번들의 이유·닫힌 창의 늦은 답을, `import_scenarios.cjs`는 가져오기의 올리기와 취소·미리 보기·건너뛰기·덮어쓰기·복사·카테고리 선택·떠난 미리 보기의 정리·잃어버린 답과 Check again·동기화 경고·받지 않는 ZIP을 확인한다 |
 | `tests/e2e/bench_store.py --count 100 --count 1000` | 번들 수에 따른 저장소 속도 (임시 폴더, `run`에는 없음) |
 
 - e2e 스크립트와 브라우저 시나리오의 기본 주소는 테스트 서버다. 다른 서버는 Python 스크립트의
