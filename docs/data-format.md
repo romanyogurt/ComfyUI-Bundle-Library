@@ -237,6 +237,9 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | POST | `/bundles/batch` | `{"ids", "action", 작업별 인수}` | 여러 번들에 한 작업 (아래 "여러 번들에 한 번에", 0.0.14부터) |
 | POST | `/export` | `{"ids"}` (필수, 1~1000개) | 201, `{"token", "file_name", "bytes", "bundles", "assets", "skipped", "missing"}`. 고른 번들의 ZIP을 만든다. 아래 "내보내기" (0.0.21부터) |
 | GET | `/export/{token}?name=` | — | 그 ZIP. `Content-Disposition: attachment`(이름은 `name`을 다시 안전하게 고친 것), 1시간 동안 |
+| POST | `/import` | multipart의 `file` (4 GiB까지) | 201, 미리 보기 `{"token", "file_name", "exported_at", "generator", "bundles", "assets"}`. 라이브러리는 아직 바뀌지 않는다. 아래 "가져오기" (0.0.22부터) |
+| POST | `/import/{token}` | `{"conflict", "category"}` (둘 다 필수) | `{"results", "categories_created", "placement_error"?, "files", "imported", "skipped", "failed"}`. 올린 ZIP을 가져오고 지운다 |
+| DELETE | `/import/{token}` | — | `{"discarded": true}`. 가져오지 않고 올린 ZIP을 지운다 |
 | GET | `/tags` | — | `{"tags": [{"name", "spellings", "active", "trash", "protected"}], "unreadable", "legacy"}`. 아래 "태그" (0.0.19부터) |
 | POST | `/tags/rename` | `{"from", "to"}` (둘 다 필수) | `{"changed", "merged", "excluded", "unknown", "legacy", "warning"?}`. 쓰는 번들과 휴지통의 번들 모두에서 태그 이름을 바꾸고, `to`가 이미 있으면 합친다 |
 | POST | `/tags/delete` | `{"tag"}` (필수) | `{"changed", "excluded", "unknown", "legacy", "warning"?}`. 쓰는 번들과 휴지통의 번들 모두에서 태그를 뗀다 |
@@ -322,7 +325,7 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 
 ### 내보내기
 
-(0.0.21부터) 고른 번들을 ZIP 하나로 내보낸다(`bundle_library/exchange.py`). 가져오기(Phase 8b)는 이 형식을 읽는다.
+(0.0.21부터) 고른 번들을 ZIP 하나로 내보낸다(`bundle_library/exchange.py`). 가져오기(0.0.22부터)는 이 형식을 읽는다.
 
 ```
 manifest.json
@@ -352,6 +355,65 @@ assets/<SHA-256>.<ext>    번들들이 쓰는 파일의 원본 (썸네일은 넣
   내용 주소라 ZIP을 쓰는 동안 바뀌지 않는다.
 - 내려받는 이름은 번들 하나면 그 이름(`<이름>.zip`), 여럿이면 `bundle-library-<날짜>-<시각>.zip`이다. 글자·숫자와
   ` -_.()[]`만 남기고 나머지는 `_`로 바꾼다.
+
+### 가져오기
+
+(0.0.22부터) 내보내기 ZIP을 올려 미리 본 뒤 가져온다(`bundle_library/exchange.py`의 `Imports`, 쓰기는 저장소의
+`import_bundles`).
+
+1. `POST /import`는 ZIP을 라이브러리의 `tmp/imports/`에 받아 검사하고, 가져오면 어떻게 되는지 답한다. 라이브러리는
+   바뀌지 않는다.
+
+   ```json
+   {"token": "…", "file_name": "export.zip", "exported_at": "…", "generator": "Bundle Library 0.0.21",
+    "bundles": [{"id", "name", "category", "importable", "reason", "conflict", "missing_files", "tags", "fields"}],
+    "assets": {"new", "present", "missing", "bytes"}}
+   ```
+
+   `conflict`는 그 id가 여기 어떻게 있는지다: `none`(없음), `active`(쓰는 번들), `trash`(휴지통),
+   `unreadable`(이 버전이 읽지 못하는 파일). `importable`이 거짓이면 `reason`이 그 이유다. `assets`는 번들들이 쓰는
+   파일 중 ZIP에서 들어올 것(`new`, 그 크기 합 `bytes`), 이미 있는 것, ZIP에도 라이브러리에도 없는 것의 수다.
+2. `POST /import/{token}`으로 가져오거나 `DELETE /import/{token}`으로 버린다. 둘 다 하지 않으면 1시간 뒤에
+   지운다(다음 가져오기나 내보내기 때 정리). 화면은 미리 보기를 떠나면(Cancel, 다른 번들 열기, 창 닫기) 버린다.
+
+선택:
+
+- `conflict`는 id가 이미 있는 번들에 대한 것이다. `skip`은 그대로 두고, `overwrite`는 그 id에 파일의 내용을
+  쓰며(revision은 여기 것 + 1, `created_at`은 여기 것, 휴지통에 있었으면 되살린다: `restored`), `copy`는 새 id로
+  따로 만든다(revision 1). 이 버전이 바꿀 수 없는(읽기 전용이거나 읽지 못하는) 번들은 덮어쓰지 않고 그 번들의
+  실패로 알린다.
+- `category`의 `{"mode": "zip"}`은 파일에 적힌 카테고리 이름을 따른다. 대소문자를 무시하고 같은 이름의 카테고리에
+  두고, 없으면 만든다. 이 라이브러리가 받지 않는 이름이거나 카테고리가 이미 최대 개수면 카테고리 없이 둔다.
+  `{"mode": "one", "id"}`는 모두 그 카테고리에 둔다(없는 카테고리면 404 `not_found`이고 아무것도 가져오지 않는다).
+  `{"mode": "none"}`은 카테고리 없이 둔다. 덮어쓴 번들도 이 선택을 따르고, 건너뛴 번들은 그대로 둔다. 즐겨찾기는
+  바꾸지 않는다.
+
+순서와 답:
+
+- ZIP을 다시 열어 같은 검사를 하고, 미리 본 뒤 바뀐 라이브러리의 상태를 따른다. 번들들이 쓰는 파일 중 여기 없는
+  것을 먼저 들인다. 파일은 업로드와 같은 검사(종류, 크기, 디코딩)를 거치고, 바이트의 SHA-256이 이름과 같아야
+  한다. 그다음 저장소 잠금 안에서 번들을 쓰고(새로 오는 번들은 바이트 그대로), 마지막으로 카테고리 배치를 정리
+  파일 한 번의 변경으로 쓴다.
+- `results`는 ZIP의 순서대로 번들마다 `{"id"(여기의 id), "source"(ZIP의 id), "ok", "as": "new" | "overwritten" |
+  "copied" | "skipped", "revision"?, "restored"?}`이다. 실패는 `"ok": false`와 `code`, `message`를 준다:
+  `not_importable`(이 버전이 가져올 수 없음, 미리 보기의 `reason`), `file_failed`(쓰는 파일을 들이지 못함), 그
+  밖에는 쓰기의 오류 코드(`read_only` 등)다. `categories_created`는 만든 카테고리 `[{"id", "name"}]`,
+  `placement_error`는 번들은 썼으나 배치를 쓰지 못한 이유, `files`는 `{"stored", "present", "failed": [{"sha256",
+  "reason"}]}`다. 가져오고 나면 올린 ZIP을 지운다.
+- ZIP에도 라이브러리에도 없는 파일(내보낼 때 이미 없던 파일)을 쓰는 번들도 그 파일 없이 가져온다. 미리 보기가
+  그 수를 알린다.
+
+검사 (ZIP이나 `manifest.json`이 어긋나면 400 `invalid_export`, 더 새 형식이면 400 `newer_export`):
+
+- 올리는 파일은 4 GiB까지(넘으면 413 `too_large`), 풀린 크기의 합은 8 GiB, 항목은 10,000개, 번들 파일 하나는
+  40 MB, `manifest.json`은 16 MB까지다. 크기는 적힌 값이 아니라 실제로 풀리는 바이트로 센다. 암호화된 항목은 받지
+  않는다.
+- `format`이 맞아야 하고, `version`이 이 버전이 아는 것보다 크면 `newer_export`다. 번들은 1,000개까지이고, id는
+  UUID, 파일은 `bundles/<id>.json`이며 같은 id가 두 번 나오지 않는다. 파일 항목은 `assets/<SHA-256>.<ext>`이고
+  확장자의 종류가 `kind`와 맞아야 한다. 적힌 항목은 ZIP에 있어야 하고, 적히지 않은 항목은 읽지 않는다. 항목은
+  manifest가 정한 이름으로만 찾으므로 ZIP 안의 경로(`../` 등)가 어디에 쓰이는 일은 없다.
+- 번들 파일은 바이트의 SHA-256이 manifest와 같아야 하고, 이 버전이 읽고 쓸 수 있어야 하며, 안의 id가 파일 이름의
+  id와 같아야 한다. 아니면 그 번들만 `not_importable`이다.
 
 ### 태그
 
@@ -398,6 +460,8 @@ assets/<SHA-256>.<ext>    번들들이 쓰는 파일의 원본 (썸네일은 넣
 | 400 | `invalid_id` | 번들·카테고리 UUID나 에셋 SHA-256 형식이 아님 |
 | 400 | `nesting_not_supported` | 카테고리 안에 카테고리를 만들려 함 |
 | 400 | `invalid_json` | JSON을 읽을 수 없음 |
+| 400 | `invalid_export` | 이 버전이 읽을 수 있는 내보내기 ZIP이 아님 (0.0.22부터) |
+| 400 | `newer_export` | 더 새 버전의 내보내기 형식 (0.0.22부터) |
 | 400 | `unsupported_type` | 지원하지 않는 필드 타입 |
 | 400 | `unknown_asset` | 올린 적 없는 파일을 가리킴 |
 | 400 | `wrong_kind` | 파일의 종류가 필드 타입과 다름 (예: `video` 필드의 이미지) |

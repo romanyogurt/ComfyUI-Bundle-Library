@@ -15,7 +15,7 @@ from aiohttp import web
 
 from .assets import MIME_TYPES
 from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
-from .exchange import Exports, file_name
+from .exchange import MAX_IMPORT_BYTES, Exports, Imports, file_name
 from .model import LibraryError, check_bundle_id, check_sha256, lone_surrogates
 from .store import present
 
@@ -221,6 +221,65 @@ def register(routes, get_store):
         return web.FileResponse(path, headers={
             "Content-Type": "application/zip", "Cache-Control": "no-store",
             "Content-Disposition": f'attachment; filename="{fallback}"; filename*=UTF-8\'\'{quote(name)}'})
+
+    @routes.post(prefix + "/import")
+    @_api
+    @_writes
+    async def upload_import(request):
+        """Receives an export ZIP (multipart field "file") and answers with what
+        importing it would do (exchange.py); nothing in the library changes yet."""
+        if not request.content_type.startswith("multipart/"):
+            raise LibraryError(415, "unsupported_media_type", "Upload the ZIP as multipart/form-data.")
+        store = get_store()
+        imports = Imports(store.tmp_dir)
+        reader = await request.multipart()
+        part = await reader.next()
+        while part is not None and getattr(part, "name", None) != "file":
+            await part.release()
+            part = await reader.next()
+        if part is None:
+            raise LibraryError(400, "invalid", "The 'file' field is missing.")
+        token, temp = await asyncio.to_thread(imports.new_part)
+        total = 0
+        try:
+            with open(temp, "wb") as f:
+                while chunk := await part.read_chunk(CHUNK):
+                    total += len(chunk)
+                    if total > MAX_IMPORT_BYTES:
+                        raise _too_large(MAX_IMPORT_BYTES)
+                    f.write(chunk)
+            if total == 0:
+                raise LibraryError(400, "invalid", "The file is empty.")
+            path = temp.with_suffix(".zip")
+            temp.replace(path)
+        finally:
+            temp.unlink(missing_ok=True)
+        try:
+            preview = await asyncio.to_thread(imports.inspect, store, token, part.filename)
+        except BaseException:
+            path.unlink(missing_ok=True)
+            raise
+        return web.json_response(preview, status=201)
+
+    @routes.post(prefix + "/import/{token}")
+    @_api
+    @_writes
+    async def apply_import(request):
+        """Imports an uploaded export: {"conflict": skip | overwrite | copy, "category": {"mode": zip | one | none, "id"?}}."""
+        data = _require(await _read_json(request), "conflict", "category")
+        store = get_store()
+        result = await asyncio.to_thread(Imports(store.tmp_dir).apply, store, request.match_info["token"],
+                                         data["conflict"], data["category"])
+        return web.json_response(result)
+
+    @routes.delete(prefix + "/import/{token}")
+    @_api
+    @_writes
+    async def discard_import(request):
+        """Drops an uploaded export that will not be imported."""
+        store = get_store()
+        await asyncio.to_thread(Imports(store.tmp_dir).discard, request.match_info["token"])
+        return web.json_response({"discarded": True})
 
     @routes.get(prefix + "/tags")
     @_api

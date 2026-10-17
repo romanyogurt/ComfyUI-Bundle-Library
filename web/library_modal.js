@@ -2,14 +2,15 @@
 // the editor on the right. It is a document.body overlay of its own: ComfyUI's
 // dialogs need Vue components, and they would open underneath it.
 import {
-    CHANGED_EVENT, batchBundles, createCategory, exportBundles, deleteCategory, getBundle, listLibrary, listTrash, purgeBundle,
-    renameCategory, searchBundleIds, setCategory, setFavorite, thumbnailURL,
+    CHANGED_EVENT, applyImport, batchBundles, createCategory, discardImport, exportBundles, deleteCategory, getBundle,
+    listLibrary, listTrash, purgeBundle, renameCategory, searchBundleIds, setCategory, setFavorite, thumbnailURL, uploadImport,
 } from "./api.js";
 import { BatchPanel, BatchResult, ExportResult } from "./batch_panel.js";
 import { BundleEditor } from "./bundle_editor.js";
 import { Commands } from "./commands.js";
 import { button, closeMenus, code, codeList, el, icon, menu, plural } from "./dom.js";
 import { ATTENTION, CATEGORY, FAVORITES, UNCATEGORIZED, compactGroups, groupBundles, groupLabel } from "./groups.js";
+import { ImportPanel, ImportResult } from "./import_panel.js";
 import { displayNames } from "./names.js";
 import { slotStatuses } from "./reconcile.js";
 import { compareText, sameTag, tagCounts } from "./tags.js";
@@ -316,7 +317,23 @@ class LibraryModal {
         this.trashCount = el("span", "bl-count-badge");
         this.trashButton.append(icon("trash"), this.trashCount);
         this.trashButton.addEventListener("click", () => void this.showTrash());
-        tools.append(this.newCategoryButton, sort.root, tags.root, el("span", "bl-tools-gap"), this.trashButton);
+        this.importButton = button("", "bl-btn icon bl-import-button");
+        this.importButton.setAttribute("aria-label", "Import bundles from a ZIP");
+        this.importButton.append(icon("upload"));
+        const importPicker = el("input");
+        importPicker.type = "file";
+        importPicker.accept = ".zip,application/zip";
+        importPicker.hidden = true;
+        importPicker.addEventListener("change", () => {
+            const file = importPicker.files[0];
+            importPicker.value = "";
+            if (file) void this.showImport(file);
+        });
+        this.importButton.addEventListener("click", () => {
+            if (this.allowed()) importPicker.click();
+        });
+        tools.append(this.newCategoryButton, sort.root, tags.root, el("span", "bl-tools-gap"), this.importButton, importPicker,
+            this.trashButton);
         // While a bundle in a category is dragged, this takes the place of the
         // tools: Uncategorized may be hidden (it is when empty). Same height,
         // so nothing in the list moves.
@@ -857,9 +874,11 @@ class LibraryModal {
         if (why === this.shownLock) return;
         this.shownLock = why;
         const locked = !!why;
-        for (const control of [this.search, this.createButton, this.sortButton, this.tagButton, this.trashButton]) {
+        for (const control of [this.search, this.createButton, this.sortButton, this.tagButton, this.importButton,
+            this.trashButton]) {
             control.disabled = locked;
         }
+        this.importButton.title = why ?? "Import bundles from a ZIP";
         this.newCategoryButton.disabled = locked || !!this.organizeBlocker;
         this.search.title = why ?? "";
         this.createButton.title = why ?? "";
@@ -974,6 +993,94 @@ class LibraryModal {
             }
             if (this.commands.pane.shows(ticket.view)) view.render(outcome);
         });
+    }
+
+    /**
+     * Upload an export ZIP and show what importing it would do; nothing in the
+     * library changes until Import. The upload holds the window (its pane has
+     * Cancel); a preview whose pane is gone meanwhile is dropped on the server.
+     */
+    async showImport(file) {
+        if (!this.allowed()) return;
+        this.selection = new Set();
+        this.status(""); // what the status line said was about something else
+        const panel = new ImportPanel(this, file);
+        await this.commands.hold({ kind: "upload", wait: "Wait until the file is uploaded, or cancel the upload." },
+            async (ticket) => {
+                ticket.view = this.showPane(panel.root, { imports: panel });
+                this.renderList();
+                let preview;
+                try {
+                    preview = await uploadImport(file, { onProgress: (sent) => panel.progress(sent), signal: panel.controller.signal });
+                } catch (error) {
+                    if (!this.commands.pane.shows(ticket.view)) return;
+                    if (error.code === "aborted") {
+                        this.showPlaceholder();
+                        this.status(`Cancelled the upload of ${file.name}.`);
+                    } else {
+                        panel.showError(error.message);
+                    }
+                    return;
+                }
+                if (this.closed || !this.commands.pane.shows(ticket.view)) {
+                    discardImport(preview.token).catch(() => {});
+                    return;
+                }
+                panel.showPreview(preview);
+            });
+    }
+
+    /** Import what the panel shows, as it chose. Like a batch: the window is held, the result stays until left. */
+    async runImport(panel) {
+        if (!panel.preview || !this.allowed()) return;
+        const { conflict, category } = panel.choices();
+        const importable = panel.preview.bundles.filter((b) => b.importable).length;
+        const job = {
+            token: ++this.batchJobs, action: "import", args: {},
+            summaries: panel.preview.bundles.map((b) => ({ id: b.id, label: b.name, revision: null })),
+            describe: { doing: `Importing ${plural(importable, "bundle")}`, done: "Imported", what: "The import" },
+        };
+        await this.commands.hold({
+            kind: "import", wait: "Wait until the bundles are imported.", stallMs: STALL_MS,
+            onStall: () => {
+                if (this.result?.job === job) this.result.stalled();
+            },
+        }, async (ticket) => {
+            job.ticket = ticket;
+            panel.sent = true; // its upload is the import's now: leaving the preview must not drop it
+            this.status("");
+            const view = new ImportResult(this, job, { waiting: true });
+            ticket.view = this.showPane(view.root, { result: view });
+            this.renderList();
+            let outcome;
+            try {
+                outcome = { answer: await applyImport(panel.preview.token, conflict, category) };
+            } catch (error) {
+                outcome = error.status >= 400 && error.status < 500 ? { refused: error } : { unknown: true };
+            }
+            // Refused, nothing changed and the result cannot try again: the upload goes now, not in an hour.
+            if (outcome.refused) discardImport(panel.preview.token).catch(() => {});
+            void this.refreshTrashCount();
+            await this.reload();
+            if (this.commands.pane.shows(ticket.view)) view.render(outcome);
+        });
+    }
+
+    /** Leave a preview without importing (the upload is dropped as it leaves the pane). */
+    cancelImport() {
+        this.showPlaceholder();
+        this.renderList();
+        this.status("Nothing was imported.");
+    }
+
+    /**
+     * A preview leaving the pane or the window without its import: the server
+     * drops the upload now rather than after an hour. Not answered: an upload
+     * it cannot drop now goes with the others an hour on.
+     */
+    dropImport() {
+        const panel = this.importPanel;
+        if (panel?.preview && !panel.sent) discardImport(panel.preview.token).catch(() => {});
     }
 
     /** Give up waiting for a batch's answer: unlock, and say it is not known what happened. */
@@ -1276,11 +1383,13 @@ class LibraryModal {
      * view number (what was shown before no longer owns the pane). Name what
      * it is: an editor, the trash, the batch panel or a batch's result.
      */
-    showPane(content, { editor = null, trash = null, batch = null, result = null, tags = null } = {}) {
+    showPane(content, { editor = null, trash = null, batch = null, result = null, tags = null, imports = null } = {}) {
         if (this.editor !== editor) this.editor?.dispose();
+        if (this.importPanel !== imports) this.dropImport();
         this.editor = editor;
         this.trashPanel = trash;
         this.tagsPanel = tags;
+        this.importPanel = imports;
         this.batchPanel = batch;
         this.result = result;
         this.trashButton.classList.toggle("selected", !!trash);
@@ -1408,6 +1517,7 @@ class LibraryModal {
     close() {
         this.closed = true; // answers still on their way change nothing now
         this.editor?.dispose();
+        this.dropImport();
         this.endDrag();
         window.removeEventListener("pointermove", this.onPointerMove, true);
         this.overlay.remove();

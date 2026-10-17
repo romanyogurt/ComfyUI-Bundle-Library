@@ -337,10 +337,12 @@ class RoutesTest(AioHTTPTestCase):
 
     async def test_every_registered_write_route_is_guarded(self):
         """Found from the router, so a route added later cannot miss the guard."""
-        fill = {"{bundle_id}": SOME_ID, "{category_id}": SOME_ID, "{sha256}": "a" * 64}
+        fill = {"{bundle_id}": SOME_ID, "{category_id}": SOME_ID, "{sha256}": "a" * 64, "{token}": "a" * 22}
         writes = [(route.method, route.resource.canonical) for route in self.app.router.routes()
                   if route.method not in ("GET", "HEAD", "OPTIONS")]
-        self.assertGreaterEqual(len(writes), 15)
+        self.assertGreaterEqual(len(writes), 21)
+        unknown = [path for _, path in writes if "{" in path and not any(name in path for name in fill)]
+        self.assertEqual(unknown, [], "a placeholder the test does not fill would never reach the guard")
         for method, path in writes:
             for name, value in fill.items():
                 path = path.replace(name, value)

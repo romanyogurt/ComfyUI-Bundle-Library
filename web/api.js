@@ -210,11 +210,19 @@ export function uploadAsset(file, kind = "image", { onProgress = null, name = nu
     const form = new FormData();
     form.append("kind", kind); // before the file: it picks the size limit
     form.append("file", file, name ?? (file.name || "upload"));
+    return postFile("/assets", form, { onProgress, signal }).then((answer) => answer.asset);
+}
+
+/**
+ * POST a multipart `form` with the write headers, reporting upload progress
+ * (0 to 1); resolves to the JSON answer. fetch() cannot report progress.
+ */
+function postFile(route, form, { onProgress = null, signal = null } = {}) {
     return new Promise((resolve, reject) => {
         const aborted = () => reject(new ApiError("Upload cancelled.", 0, "aborted"));
         if (signal?.aborted) return aborted();
         const xhr = new XMLHttpRequest();
-        xhr.open("POST", api.apiURL(`${PREFIX}/assets`));
+        xhr.open("POST", api.apiURL(`${PREFIX}${route}`));
         xhr.setRequestHeader("X-Bundle-Library", "1");
         xhr.setRequestHeader("X-Bundle-Library-Version", VERSION);
         if (api.user) xhr.setRequestHeader("Comfy-User", api.user);
@@ -227,7 +235,7 @@ export function uploadAsset(file, kind = "image", { onProgress = null, name = nu
         xhr.addEventListener("load", () => {
             const detail = xhr.response?.error;
             if (detail?.code === "version_mismatch") warnVersionMismatch(detail.server_version);
-            if (xhr.status >= 200 && xhr.status < 300 && xhr.response?.asset) resolve(xhr.response.asset);
+            if (xhr.status >= 200 && xhr.status < 300 && xhr.response) resolve(xhr.response);
             else reject(new ApiError(detail?.message ?? `Upload failed: HTTP ${xhr.status}`, xhr.status, detail?.code, detail));
         });
         xhr.addEventListener("error", () => reject(new ApiError("Could not reach ComfyUI.", 0, "network")));
@@ -236,6 +244,20 @@ export function uploadAsset(file, kind = "image", { onProgress = null, name = nu
         xhr.send(form);
     });
 }
+
+/**
+ * Upload an export ZIP to import (data-format.md, "가져오기"): resolves to the
+ * preview, {token, bundles, assets, ...}. Nothing in the library changes yet.
+ */
+export function uploadImport(file, options) {
+    const form = new FormData();
+    form.append("file", file, file.name || "import.zip");
+    return postFile("/import", form, options);
+}
+
+/** Import an uploaded export; `conflict` is skip, overwrite or copy, `category` {mode: zip | one | none, id?}. */
+export const applyImport = (token, conflict, category) => request(`/import/${token}`, json("POST", { conflict, category }));
+export const discardImport = (token) => request(`/import/${token}`, { method: "DELETE" }, { changes: false });
 
 /**
  * Make a ZIP of bundles to download (data-format.md, "내보내기"): {token, file_name, bytes, bundles, assets,

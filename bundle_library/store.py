@@ -51,15 +51,19 @@ def _now():
 
 
 def _write_json(path, data, tmp_dir):
-    """Replace `path` with `data` in one step. A failure before the replace
-    raises and leaves the old file (nothing is written). After it, the file is
-    the new one: a failure to sync the folder is logged, not raised, and the
-    result is False (written, but a power loss could undo it)."""
+    """Replace `path` with `data` as JSON in one step (see _write_file)."""
+    return _write_file(path, (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"), tmp_dir)
+
+
+def _write_file(path, raw, tmp_dir):
+    """Replace `path` with the bytes `raw` in one step. A failure before the
+    replace raises and leaves the old file (nothing is written). After it, the
+    file is the new one: a failure to sync the folder is logged, not raised,
+    and the result is False (written, but a power loss could undo it)."""
     temp = Path(tmp_dir) / f"{uuid.uuid4().hex}.json.part"
     try:
-        with open(temp, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-            f.write("\n")
+        with open(temp, "wb") as f:
+            f.write(raw)
             f.flush()
             os.fsync(f.fileno())
         os.chmod(temp, 0o644)
@@ -783,6 +787,61 @@ class BundleStore:
                               names.get(self._category_of(org, bundle_id))))
         return found
 
+    def import_bundles(self, items, conflict, place):
+        """Write the bundles of an import (exchange.py), under the lock: `items`
+        are (id, the file's bytes, schema.Loaded) of bundles this version may
+        write. A bundle new here goes byte for byte. One whose id is here
+        already is skipped, overwritten (its id, its revision + 1, back from
+        the trash if it was there) or copied under a new id, as `conflict`
+        says. Then `place` ({"mode": "zip" | "one" | "none", "id"?} and the
+        category name each bundle had, by id) puts them in categories, in one
+        change of organization.json. A result per bundle: {"id" (here), "source",
+        "ok", "as": "new" | "overwritten" | "copied" | "skipped", ...}, and
+        {"categories_created": [{"id", "name"}], "placement_error"?}."""
+        results = []
+        with self._lock:
+            for source, data, loaded in items:
+                try:
+                    results.append(self._import_one(source, data, loaded, conflict))
+                except LibraryError as e:
+                    results.append({**_failure(source, e), "source": source})
+                except OSError as e:
+                    results.append({**_io_failure(source, e), "source": source})
+            placed = [r for r in results if r["ok"] and r["as"] != "skipped"]
+            extra = {"categories_created": []}
+            if placed:
+                try:
+                    extra["categories_created"] = self._change_organization(
+                        lambda org: _place_imported(org, placed, place))
+                except LibraryError as e:
+                    extra["placement_error"] = e.message
+                except OSError as e:
+                    extra["placement_error"] = f"organization.json could not be written: {_reason(e)}"
+        return results, extra
+
+    def _import_one(self, source, data, loaded, conflict):
+        existing = self._load(source)
+        if existing is None:
+            if loaded.bundle["deleted_at"] is None:  # as exported: the file goes as it is
+                path = self._path(source)
+                self._synced = _write_file(path, data, self.tmp_dir)
+                self._remember(path.name, path.stat(), schema.read_file(path, source))
+            else:
+                self._save({**loaded.bundle, "deleted_at": None})
+            return self._written({"id": source, "source": source, "ok": True, "changed": True, "as": "new"})
+        if conflict == "skip":
+            return {"id": source, "source": source, "ok": True, "changed": False, "as": "skipped"}
+        if conflict == "overwrite":
+            current = self._writable(source)  # one this version cannot change stays as it is
+            saved = self._save({**loaded.bundle, "id": source, "revision": current["revision"] + 1,
+                                "created_at": current["created_at"], "updated_at": _now(), "deleted_at": None})
+            return self._written({"id": source, "source": source, "ok": True, "changed": True, "as": "overwritten",
+                                  "revision": saved["revision"], "restored": current["deleted_at"] is not None})
+        now = _now()
+        copy = self._save({**loaded.bundle, "id": str(uuid.uuid4()), "revision": 1, "created_at": now, "updated_at": now,
+                           "deleted_at": None})
+        return self._written({"id": copy["id"], "source": source, "ok": True, "changed": True, "as": "copied"})
+
     # -- tags across the library -------------------------------------------------
 
     def tags(self):
@@ -1019,6 +1078,32 @@ def _place(org, bundle_id, category):
         org.placement.pop(bundle_id, None)
     else:
         org.placement[bundle_id] = category
+
+
+def _place_imported(org, results, place):
+    """Put imported bundles in categories (`place`, see import_bundles); the categories made, as {"id", "name"}."""
+    created = []
+    by_name = {c["name"].casefold(): c["id"] for c in org.categories}
+    for result in results:
+        if place["mode"] == "one":
+            category = place["id"]
+        elif place["mode"] == "zip" and place["names"].get(result["source"]):
+            name = place["names"][result["source"]]
+            category = by_name.get(name.casefold())
+            if category is None:
+                try:
+                    checked = organization.category_name(name, org)
+                except LibraryError:
+                    checked = None  # not a name this library takes: the bundle stays uncategorized
+                if checked is not None and len(org.categories) < organization.MAX_CATEGORIES:
+                    category = str(uuid.uuid4())
+                    org.categories.append({"id": category, "name": checked, "parent": None})
+                    by_name[checked.casefold()] = category
+                    created.append({"id": category, "name": checked})
+        else:
+            category = None
+        _place(org, result["id"], category)
+    return created
 
 
 def _star(org, bundle_id, favorite):

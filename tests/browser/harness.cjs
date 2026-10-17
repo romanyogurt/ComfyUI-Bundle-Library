@@ -6,7 +6,8 @@
 //   answered locally (never reaches the server), so settings and workflows on
 //   the server are not changed;
 // - only bundles created during the session (seen in the server's 201
-//   answers) are removed at the end, by id, and then their trash entries;
+//   answers, and in the answers of imports) are removed at the end, by id,
+//   and then their trash entries; never one that was there before;
 //   every bundle and trash entry that was there before must still be there;
 // - so are the categories made during the session; the categories, places and
 //   stars of what was there before must be as they were;
@@ -272,6 +273,12 @@ async function startSession(name, { expectedErrors = [] } = {}) {
     page.on("response", (res) => {
         const route = new URL(res.url()).pathname;
         const making = route === BUNDLES || /^\/api\/bundle-library\/v1\/bundles\/[^/]+\/duplicate$/.test(route);
+        if (res.request().method() === "POST" && res.status() === 200 && /^\/api\/bundle-library\/v1\/import\/[^/]+$/.test(route)) {
+            reading.push(res.json().then((answer) => { // what an import made, new, copied or overwritten
+                for (const r of answer.results) if (r.ok && r.as !== "skipped") created.add(r.id);
+                for (const c of answer.categories_created) createdCategories.add(c.id);
+            }, () => {}));
+        }
         if (res.request().method() !== "POST" || res.status() !== 201) return;
         if (making) reading.push(res.json().then((b) => created.add(b.id), () => {}));
         if (route === CATEGORIES) reading.push(res.json().then((c) => createdCategories.add(c.id), () => {}));
@@ -301,7 +308,8 @@ async function startSession(name, { expectedErrors = [] } = {}) {
         /** Remove the bundles made in the session, check what else happened, and close. */
         async finish({ expectRemoved } = {}) {
             await Promise.all(reading);
-            const removed = await ev((ids) => window.__bl.removeBundles(ids), [...created]);
+            const before = new Set([...existing, ...existingTrash]);
+            const removed = await ev((ids) => window.__bl.removeBundles(ids), [...created].filter((id) => !before.has(id)));
             check("bundles made in the session removed", expectRemoved === undefined || removed.length === expectRemoved,
                 { removed: removed.length, made: created.size });
             const removedCategories = await ev((ids) => window.__bl.removeCategories(ids), [...createdCategories]);
