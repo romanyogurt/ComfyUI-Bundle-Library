@@ -44,12 +44,18 @@ A command-line client such as curl sends neither `Sec-Fetch-Site` nor `Origin`, 
 - The node's pages also send `X-Bundle-Library-Version`. When it differs from the server's version, the write is
   refused with 409 `version_mismatch`, with `page_version` and `server_version`. A request without this header
   (a script) is not checked.
-- Every file is written to a temporary file, synced, then put in place in one step. If that fails, nothing was
-  written: a single request answers 500 `io_error` with `"retry": true`. If only the sync of the folder fails
-  afterwards, the change is made and reported with a `warning` (a power cut could still lose it).
-- Categories and favorites live in `organization.json`, apart from the bundles. When a bundle is made or
-  duplicated but its category cannot be written, the request still succeeds and says why in `placement_error`.
-  Set the category again; the bundle is not made twice.
+- Each file Bundle Library writes (a bundle file, `organization.json`, an uploaded file) is written in full and
+  synced to the disk before it takes its place in one step, so a file is never half written. Its folder is synced
+  afterwards (Windows cannot sync a folder, so that step is skipped there).
+- A request answered with 500 `io_error` and `"retry": true` can be sent again as it was: it wrote nothing, or
+  what it did is harmless to repeat (an upload stores the same file; a cleanup deletes what is still unused).
+- Some requests write more than one file. Categories and favorites live in `organization.json`, apart from the
+  bundles: when a bundle is made or duplicated but its category cannot be written, the request still succeeds and
+  says why in `placement_error` (set the category again; the bundle is not made twice). Batch actions, tag actions
+  and imports write bundle by bundle and report each one: send again only what failed.
+- When only the sync of a folder fails, the change is made, the ComfyUI log says why, and the answer carries a
+  `warning`: a power cut could still undo the change. Deleting files (emptying the trash, cleaning up) does not
+  sync folders.
 
 ## Endpoints
 
@@ -59,7 +65,7 @@ Paths are relative to `/api/bundle-library/v1`. `{id}` is a bundle id (a UUID) u
 
 | Method | Path | Request | Answer |
 | --- | --- | --- | --- |
-| GET | `/health` | — | `{"version", "organization", "bundles", "trash", "corrupt", "newer", "unsupported", "legacy_trash", "writable"}`. `bundles` and `trash` are counts. `corrupt`, `newer` and `unsupported` list the bundle files in that state (see [Compatibility and versions](Compatibility-and-versions#file-states)). `organization` is the state of `organization.json`: `missing`, `ok`, `read_only`, `newer_version`, `unsupported` or `corrupt` |
+| GET | `/health` | — | `{"version", "organization", "bundles", "trash", "corrupt", "newer", "unsupported", "legacy_trash", "writable"}`. `bundles` and `trash` are counts. `corrupt`, `newer` and `unsupported` list the bundle files in that state (see [Compatibility and versions](Compatibility-and-versions#file-states)). `organization` is the state of `organization.json`: `missing`, `ok`, `read_only`, `newer_version`, `unsupported` or `corrupt`. `legacy_trash` lists files left in the `trash/` folder of a development version before 0.1.0 (empty otherwise) |
 | GET | `/messages?lang=` | — | The message catalogs for a language: see [Translated messages](#translated-messages) |
 
 ### Bundles
@@ -73,8 +79,8 @@ Paths are relative to `/api/bundle-library/v1`. `{id}` is a bundle id (a UUID) u
 | DELETE | `/bundles/{id}?expected_revision=N` | — | `{"deleted": id, "changed", "warning"?}`. Moves the bundle to the trash (revision +1). `changed` is false when it was there already |
 | POST | `/bundles/{id}/duplicate` | `{"mode"?, "name"?}`. `mode` is `values` (the default: a full copy) or `structure` (the same fields with empty values and no files) | 201 and the new bundle, with the same tags and note, in the same category. The name defaults to `<name> copy` |
 | POST | `/bundles/{id}/restore` | — | The bundle back from the trash, with the same id and name (revision +1), in its old category |
-| PUT | `/bundles/{id}/category` | `{"category": id or null}` (the key is required; `null` takes it out of its category) | `{"id", "category"}`. Works for bundles in the trash too. The revision does not change |
-| PUT | `/bundles/{id}/favorite` | `{"favorite": true or false}` | `{"id", "favorite"}`. The revision does not change |
+| PUT | `/bundles/{id}/category` | `{"category": id or null}` (the key is required; `null` takes it out of its category) | `{"id", "category", "warning"?}`. Works for bundles in the trash too. The revision does not change |
+| PUT | `/bundles/{id}/favorite` | `{"favorite": true or false}` | `{"id", "favorite", "warning"?}`. The revision does not change |
 | POST | `/bundles/batch` | `{"ids", "action", …}` | One action on many bundles: see [Several bundles at once](#several-bundles-at-once) |
 
 ### Categories
@@ -101,7 +107,7 @@ a file first, then put its `sha256` in a field.
 
 | Method | Path | Request | Answer |
 | --- | --- | --- | --- |
-| POST | `/assets` | Multipart: a `kind` field (`image`, `video` or `audio`; `image` if absent), then the `file` field. `kind` must come first: it picks the size limit | `{"asset": {"sha256", "ext", "mime", "bytes", …, "original_name"}}`: 201 for a new file, 200 when the same file was stored before. The other keys describe the file (see [File formats](File-formats#fields)) |
+| POST | `/assets` | Multipart: a `kind` field (`image`, `video` or `audio`; `image` if absent), then the `file` field. `kind` must come first: it picks the size limit | `{"asset": {"sha256", "ext", "mime", "bytes", …, "original_name"}, "warning"?}`: 201 for a new file, 200 when the same file was stored before. The other keys describe the file (see [File formats](File-formats#fields)) |
 | GET | `/assets?kind=` | `kind` is required | `{"assets": [{"sha256", "ext", "mime", "bytes", …, "stored_at", "names", "used_by": [{"id", "name", "field", "deleted"}]}]}`: every stored file of that kind, the most recently stored first. `names` are the names bundles gave the file, the most used first; `used_by` are the bundles that use it (those in use first, then those in the trash) |
 | POST | `/assets/{sha256}/use` | — | `{"asset": {…}}`. Tells the server that a draft now uses this stored file: its grace time before a cleanup starts again, as if it were uploaded again. 404 `not_found` when there is no such file |
 | GET | `/assets/{sha256}` | — | The file as stored. Range requests work, so browsers can stream and seek. Sent with `Cache-Control: immutable` |
@@ -118,8 +124,9 @@ a file first, then put its `sha256` in a field.
 | POST | `/cleanup` | `{"sha256": [...], "recent"?: true}` | `{"deleted", "bytes", "kept", "thumbnails"}`. Deletes those files (and their thumbnails) if they are still unused. Files within the grace time go only with `"recent": true` |
 
 The grace time exists because the library window uploads a file before its bundle is saved: a file of a draft not
-saved yet looks unused. Cleanup refuses to run (409 `unreadable_bundles`, with the file names in `files`) while
-any bundle file cannot be fully understood, since the files it uses could look unused. See
+saved yet looks unused. Cleanup refuses to run (409 `unreadable_bundles`, with the file names in `files`) while a
+bundle file might point at files this version cannot see, since those files could look unused. A damaged file whose
+references are all understood does not stop it (its files are kept). See
 [Compatibility and versions](Compatibility-and-versions#what-each-state-allows).
 
 ### Export and import
@@ -134,8 +141,9 @@ any bundle file cannot be fully understood, since the files it uses could look u
 
 ## Bundle summaries
 
-`GET /bundles` and `GET /trash` give a summary of each bundle: the bundle's keys, and for each field a `preview`
-instead of its value:
+`GET /bundles` and `GET /trash` list summaries, not whole bundles. A summary has `id`, `name`, `tags`, `revision`,
+`updated_at`, `fields`, `category` and `favorite` (and `deleted_at` in the trash); `note`, `created_at` and the
+bundle's other keys are left out. Each field is `{"name", "type", "preview"}`, the preview standing for its value:
 
 | Field type | `preview` |
 | --- | --- |
@@ -145,8 +153,9 @@ instead of its value:
 | `audio` | `{"sha256", "duration"}`, or `null` |
 | `boolean`, `int`, `float` | The value |
 
-- A summary also has `category` (an id or `null`) and `favorite`. When `organization.json` cannot be read, they are
-  `null` and `false`.
+- `category` is a category id or `null`. When `organization.json` cannot be read, `category` is `null` and
+  `favorite` is `false`.
+- To change a bundle, read it whole with `GET /bundles/{id}` first: a summary is not a bundle.
 - A field that is turned off has `"enabled": false`.
 - `warnings` lists the writing rules a bundle breaks (a rule tightened after it was saved); it can still be used,
   but must be fixed before it is saved again. `read_only` says why this version cannot change a bundle (it has data
@@ -172,9 +181,10 @@ instead of its value:
 | `remove_tags` | `tags`: 1 to 20 tags to take off | Each bundle file that changes |
 
 - The whole request is checked first; if anything is wrong, nothing is written. Refused are: empty `ids`, an id that
-  is not a UUID, more than 1000 ids, an unknown `action` (400 `invalid`), a wrong or missing argument, a category
-  that does not exist (404), an `organization.json` this version cannot change (409 `organization_unwritable`), and
-  a `trash` without a revision for every id (400).
+  is not a UUID, more than 1000 ids, an unknown `action` (400 `invalid`), a wrong or missing argument, and a `trash`
+  without a revision for every id (400). `set_category` and `set_favorite` are also refused for a category that does
+  not exist (404) and for an `organization.json` this version cannot change (409 `organization_unwritable`); the
+  other actions do not write that file.
 - Repeated ids count once. Results come in the order of first appearance.
 - Categories and favorites are applied to the latest `organization.json`, written once if anything changes. Bundle
   files and revisions stay as they are; read-only bundles can be moved too.
@@ -286,7 +296,8 @@ get a new revision. Tags do not take part in the node's cache key.
 - `GET /tags` counts each tag once over the bundle files this version can read (in use and in the trash). `name`
   is the spelling most bundles use, `spellings` lists every spelling, `active` and `trash` count the bundles with the
   tag, and `protected` counts those this version cannot change. `unreadable` counts the bundle files this version
-  cannot read (their tags are unknown); `legacy` counts files left in the old trash folder.
+  cannot read (their tags are unknown); `legacy` counts files left in the `trash/` folder of a development version
+  before 0.1.0.
 - `POST /tags/rename` renames `from` to `to` in every bundle. A bundle that has both keeps one `to`, where the
   first of the two was (`merged` counts these): `["Flowers", "old"]` with `old → flowers` becomes `["flowers"]`. You
   can change only the case. `from` equal to `to` is refused (400).

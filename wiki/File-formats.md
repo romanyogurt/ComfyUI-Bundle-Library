@@ -30,13 +30,13 @@ bundle_library/
   `tmp/` need no backup. See [Data and backups](Data-and-backups).
 - Only one ComfyUI process should use a library folder. Another process opening the same folder could delete the
   temporary files of a write in progress.
+- Every file is written in full and synced to the disk before it takes its place, so a power cut never leaves half a
+  file. What a request guarantees is in [HTTP API](HTTP-API#writing).
 - A bundle file edited by hand is picked up the next time the list is read (changes of content, permissions and
   replaced files are noticed). A file that cannot be used is skipped and reported in the list's `errors` and in
   `/health`, by its state. One file never stops the others from listing.
 - A file that cannot be read because of permissions or a disk error is reported as `read_error`, not as damaged, and
   is read again on the next request. The same goes for `organization.json`.
-- Libraries from early development versions (0.0.10 and before) may have a `trash/` folder. On start, its files move
-  into `bundles/` when they can; the others stay and are reported as `legacy_trash`.
 
 ## Bundle file
 

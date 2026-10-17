@@ -660,10 +660,10 @@ export class BundleEditor {
         this.refreshField(field);
         this.refreshState();
         this.modal.status(t("editor.uploading", { name }));
-        let asset = null;
+        let answer = null;
         let error = null;
         try {
-            asset = await uploadAsset(file, kind, {
+            answer = await uploadAsset(file, kind, {
                 name,
                 signal: transfer.controller.signal,
                 onProgress: (sent) => {
@@ -675,11 +675,12 @@ export class BundleEditor {
         } catch (e) {
             error = e.message;
         }
+        const asset = answer?.asset ?? null;
         if (!this.model.endUpload(field, transfer, { asset, error })) return; // stopped: another file, Cancel, or the field went
         this.refreshField(field);
         this.refreshState();
         if (error) this.modal.status(error, "error");
-        else this.modal.status(asset.original_name ? t("editor.uploaded_name", { name: asset.original_name }) : t(MEDIA_TEXT[kind].uploaded));
+        else this.modal.done(asset.original_name ? t("editor.uploaded_name", { name: asset.original_name }) : t(MEDIA_TEXT[kind].uploaded), answer);
     }
 
     /** Take a file the library already keeps for `field` (0.0.29): chosen among the stored files of its kind. */
@@ -870,10 +871,11 @@ export class BundleEditor {
                     await this.modal.reload();
                     return false;
                 }
-                await this.adopt(saved, t("editor.saved"), { reveal: created }); // a new row: the list shows where it went
+                // A new row: the list shows where it went. "Saved" opens the warning already, when there is one.
+                await this.adopt(saved, saved.warning ? "" : t("editor.saved"), { reveal: created });
                 if (saved.placement_error) {
                     // The bundle is made; only putting it in its category failed. Choosing it again retries that.
-                    this.modal.status(t("editor.saved_not_categorized", { reason: said(saved, "placement_error") }), "error");
+                    this.modal.done(t("editor.saved_not_categorized", { reason: said(saved, "placement_error") }), saved, "error");
                     return false;
                 }
                 return true;
@@ -891,7 +893,7 @@ export class BundleEditor {
         this.model.load(saved);
         this.render();
         await this.modal.bundleSaved(saved, { reveal });
-        this.modal.status(message);
+        this.modal.done(message, saved);
     }
 
     /** A save met a newer revision: Overwrite (true), Reload (the draft is dropped) or Cancel (it stays). */
@@ -945,9 +947,9 @@ export class BundleEditor {
                 }
                 await this.modal.bundleSaved(copy, { open: true, reveal: true });
                 if (copy.placement_error) {
-                    this.modal.status(t("editor.created_not_categorized", { name: copy.name, reason: said(copy, "placement_error") }), "error");
+                    this.modal.done(t("editor.created_not_categorized", { name: copy.name, reason: said(copy, "placement_error") }), copy, "error");
                 } else {
-                    this.modal.status(t("editor.created", { name: copy.name }));
+                    this.modal.done(t("editor.created", { name: copy.name }), copy);
                 }
             } catch (error) {
                 this.modal.status(error.message, "error");

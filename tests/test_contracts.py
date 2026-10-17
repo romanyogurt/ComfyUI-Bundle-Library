@@ -61,13 +61,54 @@ class ContractsTest(unittest.TestCase):
             starred = self.store.batch({"action": "set_favorite", "ids": [red["id"]], "favorite": True})
             trashed = self.store.batch({"action": "trash", "ids": [blue["id"]], "expected_revisions": {blue["id"]: 1}})
             updated = self.store.update(red["id"], {"name": "Red 2", "fields": []}, 1)
+            # Every single command says so too (0.0.34): a write done, but a power loss could undo it
+            singles = {
+                "create": self.store.create({"name": "Green", "fields": []}),
+                "create in a category": self.store.create({"name": "Teal", "fields": []}, self.heroes),
+                "duplicate": self.store.duplicate(red["id"]),
+                "restore": self.store.restore(blue["id"]),
+                "star": self.store.set_favorite(blue["id"], True),
+                "move": self.store.set_category(blue["id"], self.heroes),
+                "new category": self.store.create_category("Villains"),
+                "rename category": self.store.rename_category(self.heroes, "Allies"),
+            }
+            singles["delete category"] = self.store.delete_category(singles["new category"]["id"])
         for answer in (starred, trashed):
             self.assertEqual((answer["changed"], answer["failed"], answer["results"][0]["warning"]), (1, 0, UNSYNCED))
-        self.assertEqual(updated["name"], "Red 2")  # a single command succeeds: the file is the new one
+        self.assertEqual((updated["name"], updated["warning"]), ("Red 2", UNSYNCED))  # done: the file is the new one
+        for what, answer in singles.items():
+            self.assertEqual(answer.get("warning"), UNSYNCED, what)
+        self.assertNotIn("placement_error", singles["create in a category"])
         listed = {b["id"]: b for b in self.store.list()["bundles"]}
         self.assertTrue(listed[red["id"]]["favorite"])
-        self.assertNotIn(blue["id"], listed)
+        self.assertEqual((listed[blue["id"]]["favorite"], listed[blue["id"]]["category"]), (True, self.heroes))
         self.assertTrue(any("could not be synced" in line for line in logs.output))
+
+    def test_a_failure_after_the_file_is_in_place_is_no_failure_of_the_save(self):
+        # 0.0.34: noting how the file reads failed after it was written; the answer once was io_error, and a
+        # client that tried again made the bundle twice
+        written, real_write, real_stat = set(), store_module._write_json, Path.stat
+
+        def write(path, data, tmp_dir):
+            synced = real_write(path, data, tmp_dir)
+            written.add(path)  # the first look at it after the write fails
+            return synced
+
+        def stat(path, *args, **kwargs):
+            if path in written:
+                written.discard(path)
+                raise OSError(5, "Input/output error")
+            return real_stat(path, *args, **kwargs)
+
+        red = self.make("Red")
+        with mock.patch.object(store_module, "_write_json", write), mock.patch.object(Path, "stat", stat):
+            made = self.store.create({"name": "Green", "fields": []})
+            updated = self.store.update(red["id"], {"name": "Red 2", "fields": []}, 1)
+        self.assertEqual((made["revision"], updated["revision"]), (1, 2))
+        listed = {b["name"]: b for b in self.store.list()["bundles"]}
+        self.assertEqual(sorted(listed), ["Green", "Red 2"])  # each once, as saved
+        self.assertEqual(self.store.get(made["id"])["name"], "Green")
+        self.assertEqual(list((self.root / "tmp").iterdir()), [])
 
     def test_a_write_that_fails_before_the_replace_changes_nothing_and_says_so(self):
         red = self.make("Red")

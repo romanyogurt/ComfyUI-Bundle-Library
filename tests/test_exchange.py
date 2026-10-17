@@ -14,7 +14,7 @@ from bundle_library import exchange, schema
 from bundle_library import store as store_module
 from bundle_library.exchange import EXPORT_TTL, FORMAT, Exports, Imports, file_name
 from bundle_library.model import LibraryError
-from bundle_library.store import BundleStore
+from bundle_library.store import UNSYNCED, BundleStore
 from bundle_library.text import said
 from tests import helpers
 
@@ -555,6 +555,15 @@ class ImportTest(unittest.TestCase):
         kept.write_text(json.dumps({"results": [{"message": "English only"}]}), encoding="utf-8")
         self.assertEqual(imports.apply(self.target, token, "skip", {"mode": "zip"})["results"],
                          [{"message": "English only"}])
+
+    def test_a_file_whose_folder_could_not_be_synced_warns_on_the_bundles_using_it(self):
+        # 0.0.34: such a file is in place, but a power loss could undo it
+        a, b = self.make(self.source, "A", self.red), self.make(self.source, "B")
+        with mock.patch("bundle_library.assets.sync_folder", return_value=False):
+            _, result = self.run_import(self.target, self.export(self.source, [a, b]))
+        by_source = {r["source"]: r for r in result["results"]}
+        self.assertEqual((by_source[a].get("warning"), "warning" in by_source[b]), (UNSYNCED, False))
+        self.assertEqual(said(result)["results"][0]["warning_i18n"]["id"], "store.sync_warning")
 
     def test_an_import_cut_off_says_so_and_one_failing_early_can_run_again(self):
         a = self.make(self.source, "A", self.red)

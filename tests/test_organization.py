@@ -54,7 +54,7 @@ class OrganizationTest(unittest.TestCase):
         self.make("Blue", villains["id"])
         self.assertEqual([c["name"] for c in self.store.categories()["categories"]], ["Heroes", "Villains"])
         self.assertEqual(self.store.rename_category(heroes["id"], "Allies")["name"], "Allies")
-        self.assertEqual(self.store.delete_category(villains["id"]), 1)
+        self.assertEqual(self.store.delete_category(villains["id"]), {"uncategorized": 1})
         self.assertEqual(self.listed(), {"Red": (heroes["id"], False), "Blue": (None, False)})
         stored = json.loads(self.org_file.read_text(encoding="utf-8"))
         self.assertEqual((stored["format"], stored["schema_version"]), (organization.FORMAT, 1))

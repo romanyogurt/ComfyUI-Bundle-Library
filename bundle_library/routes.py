@@ -17,7 +17,7 @@ from .assets import MIME_TYPES
 from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
 from .exchange import MAX_IMPORT_BYTES, Exports, Imports, file_name
 from .model import LibraryError, check_bundle_id, check_sha256, lone_surrogates
-from .store import present
+from .store import UNSYNCED, present
 from .text import Text, catalogs, said
 
 CHUNK = 64 * 1024
@@ -319,8 +319,7 @@ def register(routes, get_store):
     async def set_category(request):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
         data = _require(await _read_json(request), "category")  # null: no category
-        category = await asyncio.to_thread(get_store().set_category, bundle_id, data["category"])
-        return _json({"id": bundle_id, "category": category})
+        return _json(await asyncio.to_thread(get_store().set_category, bundle_id, data["category"]))
 
     @routes.put(prefix + "/bundles/{bundle_id}/favorite")
     @_api
@@ -328,8 +327,7 @@ def register(routes, get_store):
     async def set_favorite(request):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
         data = await _read_json(request)
-        favorite = await asyncio.to_thread(get_store().set_favorite, bundle_id, data.get("favorite"))
-        return _json({"id": bundle_id, "favorite": favorite})
+        return _json(await asyncio.to_thread(get_store().set_favorite, bundle_id, data.get("favorite")))
 
     @routes.get(prefix + "/categories")
     @_api
@@ -358,8 +356,8 @@ def register(routes, get_store):
     @_writes
     async def delete_category(request):
         category_id = request.match_info["category_id"]
-        moved = await asyncio.to_thread(get_store().delete_category, category_id)
-        return _json({"deleted": category_id, "uncategorized": moved})
+        answer = await asyncio.to_thread(get_store().delete_category, category_id)
+        return _json({"deleted": category_id, **answer})
 
     @routes.get(prefix + "/trash")
     @_api
@@ -444,10 +442,10 @@ def register(routes, get_store):
                     f.write(chunk)
             if total == 0:
                 raise LibraryError(400, "invalid", Text("request.file_empty"))
-            info, created = await asyncio.to_thread(assets.finalize, temp, digest.hexdigest(), part.filename, kind)
+            info, created, synced = await asyncio.to_thread(assets.finalize, temp, digest.hexdigest(), part.filename, kind)
         finally:
             temp.unlink(missing_ok=True)
-        return _json({"asset": info}, status=201 if created else 200)
+        return _json({"asset": info, **({} if synced else {"warning": UNSYNCED})}, status=201 if created else 200)
 
     @routes.get(prefix + "/assets")
     @_api

@@ -2,7 +2,7 @@
 *bundles* in a library: each bundle holds the prompts, images, videos, audio and values that belong together, such as
 a character with its reference pictures and settings. One **Load Bundle** node loads a bundle into a workflow, and its
 outputs follow the bundle you choose: choose another bundle and the same workflow runs with that one's prompt,
-pictures and settings.
+pictures and settings, as long as it has fields of the same names and types for the outputs you linked.
 
 These pages cover everything the pack does. To get going quickly, start with [Getting started](Getting-started).
 

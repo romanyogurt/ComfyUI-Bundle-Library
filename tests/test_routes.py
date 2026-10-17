@@ -244,6 +244,23 @@ class RoutesTest(AioHTTPTestCase):
             **WRITE, "Content-Type": "image/png"}), 415, "unsupported_media_type")
         self.assertEqual(list((self.root / "tmp").iterdir()), [])
 
+    async def test_a_write_not_synced_to_the_disk_says_so(self):
+        # 0.0.34: an upload and a single write answer with the warning when the folder could not be synced
+        with unittest.mock.patch("bundle_library.assets.sync_folder", return_value=False), \
+                unittest.mock.patch("bundle_library.store.sync_folder", return_value=False):
+            upload = await self.body(await self.upload(helpers.png("lime")), 201)
+            category = await self.body(await self.client.post(P + "/categories", json={"name": "Shelf"}, headers=WRITE), 201)
+            bundle = await self.body(await self.client.post(P + "/bundles", json=await self.bundle_data(), headers=WRITE), 201)
+            moved = await self.body(await self.client.put(f"{P}/bundles/{bundle['id']}/category",
+                                                          json={"category": category["id"]}, headers=WRITE), 200)
+            deleted = await self.body(await self.client.delete(f"{P}/categories/{category['id']}", headers=WRITE), 200)
+        for answer in (upload, category, bundle, moved, deleted):
+            self.assertEqual(answer["warning_i18n"], {"id": "store.sync_warning", "values": {}}, answer)
+        self.assertEqual((moved["category"], deleted["uncategorized"]), (category["id"], 1))
+        quiet = await self.body(await self.client.put(f"{P}/bundles/{bundle['id']}/favorite", json={"favorite": True},
+                                                      headers=WRITE), 200)
+        self.assertEqual(quiet, {"id": bundle["id"], "favorite": True})
+
     async def test_media_uploads(self):
         clip = await self.body(await self.upload(helpers.video("mp4", "libx264", audio_codec="aac"), "clip.mp4",
                                                  kind="video"), 201)

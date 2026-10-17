@@ -36,7 +36,7 @@ from pathlib import Path
 from . import schema
 from .constants import VERSION
 from .model import LibraryError, check_bundle_id, invalid
-from .store import kind_problem
+from .store import UNSYNCED, kind_problem
 from .text import Text, said
 
 FORMAT = "comfyui-bundle-library/export"
@@ -454,7 +454,7 @@ class Imports:
             plan, listed = self._plan(store, export)
             wanted = {s for p in plan if p["reason"] is None and (conflict != "skip" or p["conflict"] == "none")
                       for s in p["refs"]}
-            failed, stored, present = {}, 0, 0
+            failed, stored, present, unsynced = {}, 0, 0, set()
             for sha in sorted(wanted):
                 if store.assets.path(sha) is not None:
                     present += 1
@@ -467,15 +467,17 @@ class Imports:
                     got = export.extract(entry["file"], temp, store.assets.limits[entry["kind"]]["bytes"])
                     if got != sha:
                         raise LibraryError(400, "invalid_export", Text("exchange.file_digest_name"))
-                    store.assets.finalize(temp, sha, None, entry["kind"])
+                    _, _, synced = store.assets.finalize(temp, sha, None, entry["kind"])
                     stored += 1
+                    if not synced:
+                        unsynced.add(sha)
                 except LibraryError as e:
                     failed[sha] = e.message
                 finally:
                     temp.unlink(missing_ok=True)
         finally:
             export.close()
-        return {"plan": plan, "failed": failed, "stored": stored, "present": present}
+        return {"plan": plan, "failed": failed, "stored": stored, "present": present, "unsynced": unsynced}
 
     def _write(self, store, prepared, conflict, category):
         """Write the bundles of a prepared import, then their places; the answer."""
@@ -494,6 +496,10 @@ class Imports:
         written, extra = store.import_bundles(items, conflict, {**category, "names": {
             p["entry"]["id"]: p["entry"].get("category") for p in plan}})
         by_source = {r["source"]: r for r in written}
+        for p in plan:  # a bundle written with a file whose folder could not be synced says so (0.0.34)
+            result = by_source.get(p["entry"]["id"])
+            if result and result["ok"] and result["as"] != "skipped" and prepared["unsynced"] & set(p["refs"]):
+                result.setdefault("warning", UNSYNCED)
         results += [by_source[i[0]] for i in items]
         order = [p["entry"]["id"] for p in plan]
         results.sort(key=lambda r: order.index(r["source"]))

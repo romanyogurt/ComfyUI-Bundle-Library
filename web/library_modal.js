@@ -1214,7 +1214,8 @@ class LibraryModal {
         if (!summary || this.organizeBlocker || summary.favorite === favorite) return;
         this.showOrganized(id, { favorite });
         try {
-            await this.organize(() => setFavorite(id, favorite));
+            const answer = await this.organize(() => setFavorite(id, favorite));
+            if (answer?.warning) this.done("", answer);
         } catch (error) {
             this.status(error.message, "error");
         }
@@ -1232,9 +1233,9 @@ class LibraryModal {
         const name = this.categories.find((c) => c.id === category)?.name;
         this.showOrganized(id, { category });
         try {
-            await this.organize(() => setCategory(id, category));
-            this.status(category ? t("library.moved_named", { name: summary.name, category: name })
-                : t("library.uncategorized_named", { name: summary.name }));
+            const answer = await this.organize(() => setCategory(id, category));
+            this.done(category ? t("library.moved_named", { name: summary.name, category: name })
+                : t("library.uncategorized_named", { name: summary.name }), answer);
         } catch (error) {
             this.status(error.message, "error");
         }
@@ -1260,7 +1261,7 @@ class LibraryModal {
             this.renderList();
             this.editor?.organizationChanged();
         }
-        this.status(t("library.category_created", { name: made.name }));
+        this.done(t("library.category_created", { name: made.name }), made);
         return made;
     }
 
@@ -1273,7 +1274,7 @@ class LibraryModal {
                 renamed = await this.organize(() => renameCategory(category.id, name));
             },
         });
-        if (renamed) this.status(t("library.category_renamed", { name: renamed.name }));
+        if (renamed) this.done(t("library.category_renamed", { name: renamed.name }), renamed);
     }
 
     async askDelete(category) {
@@ -1285,10 +1286,10 @@ class LibraryModal {
             t("library.category_delete"), { danger: true });
         if (!confirmed) return;
         try {
-            await this.organize(() => deleteCategory(category.id));
+            const answer = await this.organize(() => deleteCategory(category.id));
             this.collapsed.delete(`${CATEGORY}:${category.id}`);
             remember(COLLAPSED_KEY, [...this.collapsed]);
-            this.status(t("library.category_deleted", { name: category.name }));
+            this.done(t("library.category_deleted", { name: category.name }), answer);
         } catch (error) {
             this.status(error.message, "error");
         }
@@ -1624,6 +1625,15 @@ class LibraryModal {
         window.removeEventListener("beforeunload", this.onBeforeUnload);
         document.removeEventListener("visibilitychange", this.onVisible);
         current = null;
+    }
+
+    /**
+     * Say `message` of a write that is done, and the warning of its answer when
+     * the library folder could not be synced to the disk (0.0.34).
+     */
+    done(message, answer, kind = "info") {
+        const warning = answer?.warning ? said(answer, "warning") : "";
+        this.status([message, warning].filter(Boolean).join(" "), warning ? "error" : kind);
     }
 
     status(message, kind = "info") {

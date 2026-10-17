@@ -92,20 +92,22 @@ size of an image):
 
 ## Change a bundle
 
-`PUT` replaces the whole bundle, so send every key, with the revision you read:
+`PUT` replaces the whole bundle. Read it, change what you need, and send it back with the revision you read. With
+[jq](https://jqlang.org):
 
 ```bash
-curl -s -X PUT -H "X-Bundle-Library: 1" -H "Content-Type: application/json" $BASE/bundles/<id> -d '{
-  "expected_revision": 1, "name": "Red knight", "tags": ["character"], "note": "Made from the API.",
-  "fields": [
-    {"name": "prompt", "type": "text", "value": "a knight in red armor, castle at dusk"},
-    {"name": "reference", "type": "image", "asset": {"sha256": "37d14be3…8698"}},
-    {"name": "steps", "type": "int", "value": 8}
-  ]}'
+curl -s $BASE/bundles/<id> \
+  | jq '.fields[0].value = "a knight in red armor, castle at dusk"
+        | {expected_revision: .revision, name, tags, note, fields}' \
+  | curl -s -X PUT -H "X-Bundle-Library: 1" -H "Content-Type: application/json" -d @- $BASE/bundles/<id>
 ```
 
-The answer is the bundle with `revision` 2. If someone saved it in between, you get 409 instead; read it again and
-retry:
+The answer is the bundle with `revision` 2. Sending the fields as you read them keeps what you did not mean to
+change: a field sent without something loses it (an `asset` without its `original_name` loses the file's name, and a
+field without `"enabled": false` is turned on).
+
+If someone saved the bundle in between, you get 409 instead. Read it again, apply your change to what you read,
+and send it again:
 
 ```json
 {"error": {"code": "revision_conflict", "current_revision": 2,
@@ -190,8 +192,9 @@ where the bundles go (`{"mode": "zip"}`, `{"mode": "one", "id": …}` or `{"mode
 
 - Check `code` in an error, not the message: messages may be reworded.
 - Ids are UUIDs and never change. Names can repeat, so look bundles up by name only when you know it is unique.
-- Read a bundle before changing it, and send the `revision` you read: two writers never overwrite each other
-  silently.
+- `PUT`, trashing and deleting for good take the revision you read and refuse a stale one (409
+  `revision_conflict`), so two writers do not overwrite each other silently there. Other writes act on the bundle as
+  it is: moving it to a category, starring it, tag actions, and an import that overwrites it.
 - Prefer the API to editing the library's files: it checks every change, keeps revisions, and writes each file
   safely. The files themselves are described in [File formats](File-formats).
 - Deleting a bundle moves it to the trash (`DELETE /bundles/<id>?expected_revision=N`); `POST /bundles/<id>/restore`

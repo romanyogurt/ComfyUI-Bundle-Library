@@ -1,11 +1,14 @@
 import hashlib
 import os
+import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from PIL import Image, ImageStat
 
+from bundle_library import assets as assets_module
 from bundle_library.assets import AssetStore
 from bundle_library.model import LibraryError
 
@@ -27,7 +30,7 @@ class AssetStoreTest(unittest.TestCase):
         temp = store.temp_path()
         temp.write_bytes(data)
         try:
-            return store.finalize(temp, hashlib.sha256(data).hexdigest(), name)
+            return store.finalize(temp, hashlib.sha256(data).hexdigest(), name)[:2]  # (info, created)
         finally:
             temp.unlink(missing_ok=True)
 
@@ -52,6 +55,40 @@ class AssetStoreTest(unittest.TestCase):
                 self.assertEqual(path.name, f"{sha}.{ext}")
                 self.assertEqual(path.read_bytes(), data)
                 self.assertEqual(self.assets.info(sha), {k: v for k, v in info.items() if k != "original_name"})
+
+    def test_a_new_file_is_on_the_disk_before_it_takes_its_place(self):
+        # 0.0.34, as a bundle file: the file is synced, then its folder; a stored file only gets a new time
+        synced = []
+        real_fsync = os.fsync
+
+        def fsync(fd):
+            synced.append("folder" if stat.S_ISDIR(os.fstat(fd).st_mode) else "file")
+            return real_fsync(fd)
+
+        with mock.patch.object(assets_module.os, "fsync", fsync):
+            info, created, ok = self.assets.finalize(*self.received(helpers.png("olive")), "a.png")
+            self.assertEqual((created, ok, synced), (True, True, ["file", "folder"] if assets_module.SYNC_FOLDERS else ["file"]))
+            synced.clear()
+            _, created, ok = self.assets.finalize(*self.received(helpers.png("olive")), "a.png")
+            self.assertEqual((created, ok, synced), (False, True, []))
+        real_open = os.open
+
+        def no_folder(path, flags, *args):
+            if Path(path).is_dir():
+                raise OSError(5, "Input/output error")
+            return real_open(path, flags, *args)
+
+        with mock.patch.object(assets_module.os, "open", no_folder), self.assertLogs(level="WARNING"):
+            info, created, ok = self.assets.finalize(*self.received(helpers.png("navy")), "b.png")
+        self.assertEqual((created, ok), (True, False))  # in place, but a power loss could undo it
+        self.assertIsNotNone(self.assets.path(info["sha256"]))
+
+    def received(self, data):
+        """An upload as the route leaves it: (the file, its SHA-256)."""
+        temp = self.assets.temp_path()
+        temp.write_bytes(data)
+        self.addCleanup(temp.unlink, missing_ok=True)
+        return temp, hashlib.sha256(data).hexdigest()
 
     def test_same_content_is_stored_once(self):
         data = helpers.png("blue")

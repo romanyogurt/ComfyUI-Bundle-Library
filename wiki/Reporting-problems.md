@@ -15,7 +15,8 @@ Found a bug, or something that could work better? Open an issue at
 - **What happened**: what you did, what you expected, and what you saw instead. Steps that make it happen again help
   the most.
 - **Messages**: the message on screen; lines starting with `[Bundle Library]` in the browser console (F12) and in
-  the ComfyUI log; for a failed run, the error ComfyUI shows.
+  the ComfyUI log, with the traceback that follows them; for a failed run, the error ComfyUI shows. Before posting,
+  replace personal paths and content in them.
 - **The library's state**: the answer of `/health` above. It holds counts and file names, not your content.
 
 ## Keep your data private

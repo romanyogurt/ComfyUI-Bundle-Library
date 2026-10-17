@@ -208,7 +208,8 @@ export const deleteUnusedFiles = (shas, { recent = false } = {}) =>
 
 /**
  * Upload one file for a field of `kind` (image, video or audio); resolves to
- * the stored asset's metadata. `onProgress` gets the sent fraction (0..1).
+ * the server's answer: {asset (the stored file's metadata), warning?} (the
+ * warning since 0.0.34). `onProgress` gets the sent fraction (0..1).
  * Aborting `signal` stops the upload, which then rejects with code "aborted".
  * fetch() cannot report upload progress, so this uses XMLHttpRequest, with
  * the headers api.fetchApi() would add.
@@ -217,7 +218,7 @@ export function uploadAsset(file, kind = "image", { onProgress = null, name = nu
     const form = new FormData();
     form.append("kind", kind); // before the file: it picks the size limit
     form.append("file", file, name ?? (file.name || "upload"));
-    return postFile("/assets", form, { onProgress, signal }).then((answer) => answer.asset);
+    return postFile("/assets", form, { onProgress, signal });
 }
 
 /**

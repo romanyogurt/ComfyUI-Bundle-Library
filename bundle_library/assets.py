@@ -4,6 +4,7 @@ Images are checked with Pillow, video and audio with PyAV (the library core's
 LoadVideo and LoadAudio use). A file's kind follows from its stored extension.
 """
 
+import logging
 import os
 import threading
 import uuid
@@ -71,9 +72,11 @@ class AssetStore:
         under its hash.
 
         `temp` holds the received bytes and `sha256` their digest, computed
-        while streaming. Returns (info, created); created is False when the
-        same content was stored before, in which case `temp` is left for the
-        caller to delete.
+        while streaming. Returns (info, created, synced); created is False when
+        the same content was stored before, in which case `temp` is left for the
+        caller to delete. A new file is on the disk before it takes its place,
+        as a bundle file is; synced is False when its folder could not be synced
+        afterwards (in place, but a power loss could undo it; 0.0.34).
         """
         if kind == "image":
             width, height, image_format = self._check_image(temp)
@@ -81,19 +84,23 @@ class AssetStore:
         else:
             ext, meta = self._check_media(temp, kind)
         target = self.files / sha256[:2] / f"{sha256}.{ext}"
+        synced = True
         with self._lock:
             created = not target.exists()
             if created:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 os.chmod(temp, 0o644)
+                with open(temp, "r+b") as f:  # writable: Windows syncs only a file open for writing
+                    os.fsync(f.fileno())
                 os.replace(temp, target)
+                synced = sync_folder(target)
             else:
                 _touch(target)  # uploaded again: a cleanup waits the grace time anew
         self._meta[sha256] = meta
         info = self._info(sha256, target)
         if original_name:
             info["original_name"] = clean_original_name(original_name)
-        return info, created
+        return info, created, synced
 
     def _check_image(self, path):
         """(width, height, format) of a file that must be a whole PNG, JPEG or
@@ -267,6 +274,28 @@ class AssetStore:
         finally:
             temp.unlink(missing_ok=True)
         return target
+
+
+SYNC_FOLDERS = os.name != "nt"  # Windows cannot open a folder to sync it
+
+
+def sync_folder(path):
+    """Sync the folder of `path`, a file just put in place, so that a power
+    loss keeps it there. False when that failed: the file is in place, but a
+    power loss could undo it (logged, not raised)."""
+    if not SYNC_FOLDERS:
+        return True
+    try:
+        folder = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(folder)
+        finally:
+            os.close(folder)
+    except OSError as e:
+        logging.warning("[Bundle Library] %s was written, but its folder could not be synced: %s",
+                        path.name, e.strerror or type(e).__name__)
+        return False
+    return True
 
 
 def _touch(path):

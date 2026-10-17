@@ -28,7 +28,7 @@ from collections import Counter
 
 from . import organization, schema
 from . import tags as tag_rules
-from .assets import KINDS, AssetStore
+from .assets import KINDS, AssetStore, sync_folder
 from .constants import (
     ASSET_GRACE_SECONDS, MAX_BUNDLE_NAME, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MAX_TAGS, MEDIA_TYPES,
 )
@@ -42,7 +42,6 @@ TEXT_PREVIEW = 200
 MAX_BATCH = 1000  # bundles in one batch request
 BATCH_ACTIONS = ("set_category", "set_favorite", "trash", "add_tags", "remove_tags")
 MAX_BATCH_TAGS = 20  # tags in one add_tags or remove_tags request
-SYNC_FOLDERS = os.name != "nt"  # Windows cannot open a folder to sync it
 # Told with a change that is made but may not survive a power loss (_write_json).
 UNSYNCED = Text("store.sync_warning")
 
@@ -59,8 +58,8 @@ def _write_json(path, data, tmp_dir):
 def _write_file(path, raw, tmp_dir):
     """Replace `path` with the bytes `raw` in one step. A failure before the
     replace raises and leaves the old file (nothing is written). After it, the
-    file is the new one: a failure to sync the folder is logged, not raised,
-    and the result is False (written, but a power loss could undo it)."""
+    file is the new one and nothing raises: a failure to sync the folder is
+    logged, and the result is False (written, but a power loss could undo it)."""
     temp = Path(tmp_dir) / f"{uuid.uuid4().hex}.json.part"
     try:
         with open(temp, "wb") as f:
@@ -69,20 +68,18 @@ def _write_file(path, raw, tmp_dir):
             os.fsync(f.fileno())
         os.chmod(temp, 0o644)
         os.replace(temp, path)
-    finally:
-        temp.unlink(missing_ok=True)
-    if SYNC_FOLDERS:
+    except BaseException:
         try:
-            folder = os.open(path.parent, os.O_RDONLY)
-            try:
-                os.fsync(folder)
-            finally:
-                os.close(folder)
-        except OSError as e:
-            logging.warning("[Bundle Library] %s was written, but its folder could not be synced: %s",
-                            path.name, e.strerror or type(e).__name__)
-            return False
-    return True
+            temp.unlink(missing_ok=True)
+        except OSError:
+            pass  # tmp/ is emptied on start
+        raise
+    return sync_folder(path)
+
+
+def _with_warning(answer, unsynced):
+    """`answer` of a write, with the warning when a file it wrote could not be synced (0.0.34)."""
+    return {**answer, "warning": UNSYNCED} if unsynced else answer
 
 
 def _stat_key(stat):
@@ -293,7 +290,14 @@ class BundleStore:
         bundle = {**bundle, "schema_version": schema.version_for(bundle)}  # the lowest version that holds it
         path = self._path(bundle["id"])
         self._synced = _write_json(path, bundle, self.tmp_dir)
-        self._remember(path.name, path.stat(), schema.read_file(path, bundle["id"]))
+        try:
+            stat = path.stat()
+        except OSError:
+            # The file is written; only noting how it reads failed, which is no failure of the save
+            # (0.0.34: an error here once made a client create the bundle twice). The next scan reads it.
+            self._cache.pop(path.name, None)
+        else:
+            self._remember(path.name, stat, schema.read_file(path, bundle["id"]))
         return bundle
 
     def create(self, data, category=None):
@@ -310,16 +314,17 @@ class BundleStore:
             bundle = {"format": schema.FORMAT, "schema_version": schema.SCHEMA_VERSION, "id": str(uuid.uuid4()),
                       "revision": 1, **editable, "created_at": now, "updated_at": now, "deleted_at": None}
             bundle = self._save(bundle)
+            unsynced = not self._synced
             if category is None:
-                return bundle
+                return _with_warning(bundle, unsynced)
             try:
-                self.set_category(bundle["id"], category)
+                placed = self.set_category(bundle["id"], category)
             except LibraryError as e:
-                return {**bundle, "placement_error": e.message}
+                return _with_warning({**bundle, "placement_error": e.message}, unsynced)
             except OSError as e:
-                return {**bundle, "placement_error": Text("store.organization_write_failed",
-                                                           reason=_reason(e))}
-            return bundle
+                return _with_warning({**bundle, "placement_error": Text("store.organization_write_failed",
+                                                                         reason=_reason(e))}, unsynced)
+            return _with_warning(bundle, unsynced or "warning" in placed)
 
     def _writable(self, bundle_id, expected_revision=None):
         """The bundle of `bundle_id` as stored, if this version may write it."""
@@ -353,7 +358,8 @@ class BundleStore:
         with self._lock:
             current = self._in_use(self._writable(bundle_id, expected_revision))
             self._resolve_assets(editable["fields"])
-            return self._save({**current, **editable, "revision": current["revision"] + 1, "updated_at": _now()})
+            saved = self._save({**current, **editable, "revision": current["revision"] + 1, "updated_at": _now()})
+            return _with_warning(saved, not self._synced)
 
     def delete(self, bundle_id, expected_revision):
         """Move the bundle to the trash: the same file, with the time it was
@@ -415,7 +421,8 @@ class BundleStore:
             bundle = self._writable(bundle_id)
             if bundle["deleted_at"] is None:
                 raise LibraryError(409, "not_in_trash", Text("store.not_in_trash", name=bundle['name']))
-            return self._save({**bundle, "deleted_at": None, "revision": bundle["revision"] + 1})
+            saved = self._save({**bundle, "deleted_at": None, "revision": bundle["revision"] + 1})
+            return _with_warning(saved, not self._synced)
 
     def purge(self, bundle_id, unreadable=False, expected_revision=None):
         """Delete a bundle in the trash for good; the files it used stay until a
@@ -571,7 +578,7 @@ class BundleStore:
             return category
 
         with self._lock:
-            return self._change_organization(change)
+            return _with_warning(self._change_organization(change), not self._synced)
 
     def rename_category(self, category_id, name):
         _check_category_id(category_id)
@@ -584,10 +591,10 @@ class BundleStore:
             return dict(category)
 
         with self._lock:
-            return self._change_organization(change)
+            return _with_warning(self._change_organization(change), not self._synced)
 
     def delete_category(self, category_id):
-        """Delete a category; its bundles become uncategorized. How many there were."""
+        """Delete a category; its bundles become uncategorized: {"uncategorized": how many, "warning"?}."""
         _check_category_id(category_id)
 
         def change(org):
@@ -597,27 +604,27 @@ class BundleStore:
             moved = [b for b, c in org.placement.items() if c == category_id]
             for bundle_id in moved:
                 del org.placement[bundle_id]
-            return len(moved)
+            return {"uncategorized": len(moved)}
 
         with self._lock:
-            return self._change_organization(change)
+            return _with_warning(self._change_organization(change), not self._synced)
 
     def set_category(self, bundle_id, category_id):
         """Put a bundle (in use or in the trash) in a category, or in none with
-        None. The batch's code for one bundle: nothing is written when the bundle
-        is there already."""
+        None: {"id", "category", "warning"?}. The batch's code for one bundle:
+        nothing is written when the bundle is there already."""
         check_bundle_id(bundle_id)
         if category_id is not None:
             _check_category_id(category_id)
-        _single(self._place_bundles(category_id, [bundle_id]))
-        return category_id
+        result = _single(self._place_bundles(category_id, [bundle_id]))
+        return _with_warning({"id": bundle_id, "category": category_id}, "warning" in result)
 
     def set_favorite(self, bundle_id, favorite):
         check_bundle_id(bundle_id)
         if not isinstance(favorite, bool):
             raise invalid(Text("store.favorite_boolean"))
-        _single(self._star_bundles(favorite, [bundle_id]))
-        return favorite
+        result = _single(self._star_bundles(favorite, [bundle_id]))
+        return _with_warning({"id": bundle_id, "favorite": favorite}, "warning" in result)
 
     def _place_bundles(self, category, ids):
         return self._batch_organize(ids, lambda org, bundle_id: org.category_of(bundle_id) == category,

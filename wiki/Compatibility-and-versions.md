@@ -1,6 +1,6 @@
 Which versions of ComfyUI Bundle Library runs on, and how it treats files and workflows from other versions of
-itself: libraries and workflows keep working after an update, and an older version never damages what a newer one
-wrote.
+itself: from the first public release (0.1.0) on, libraries and workflows keep working after an update, and an older
+version never damages what a newer one wrote.
 
 - [Supported versions](#supported-versions)
 - [Updating safely](#updating-safely)
@@ -48,19 +48,21 @@ wrote.
 
 ## Promises
 
-- **Upgrades read the past.** Every release reads and runs the bundle files of the earlier releases (a supported
-  `format`, `schema_version` from 1 to the current one) and their workflows (`slot_spec` v1). Limits that apply
-  when a workflow runs (audio length, samples) are those of the running version.
+These hold for the public releases, from 0.1.0 on. Development versions before it are not covered.
+
+- **Upgrades read the past.** Every release reads and runs the bundle files and workflows of the releases before it:
+  every `schema_version` of the bundle format (1 to the current one) and `slot_spec` v1. Limits that apply when a
+  workflow runs (audio length, samples) are those of the running version.
 - **Reading converts in memory only.** Listing, opening and running a bundle of an older version upgrade it in
   memory; the file is not rewritten. A file is written only when you save, trash or restore that bundle, and then in
   the lowest version that holds it. Trashing and restoring do not change the content, so they do not apply the
   writing rules again.
 - **What is not understood is not touched.** A file this version cannot fully understand (read-only, newer,
-  unsupported or damaged, below) keeps its bytes. You can only delete it for good, by choosing it. While any such
-  bundle file exists, cleaning up unused files is refused.
-- **Going back.** An older version reports a bundle of a newer schema as newer and leaves it alone. A bundle with a
-  field turned off is schema 3, which versions before 0.0.30 do not know; other bundles are schema 2. To go back
-  completely, restore the backup you made before the update.
+  unsupported or damaged, below) keeps its bytes; you can only delete it for good, by choosing it. Cleaning up unused
+  files is refused while such a file could point at one: always for a read-only, newer or unsupported file, and for a
+  damaged file unless the rest of it is understood (its files are then kept).
+- **Going back.** An older release reports a bundle of a newer schema as newer and leaves it alone, and does not
+  clean up unused files while it is there. To go back completely, restore the backup you made before the update.
 
 ## File states
 
@@ -81,7 +83,7 @@ read again on the next request.
 | Action | OK | Warning | Read-only, newer, unsupported | Damaged |
 | --- | --- | --- | --- | --- |
 | Save an edit | Yes | Once the values are fixed | No | No |
-| Duplicate | Yes | When the copy meets the writing rules (a copy with values usually does not; a copy of the structure does) | No | No |
+| Duplicate | Yes | When the copy meets the writing rules. A copy with values keeps the values that break them; a copy of the structure empties the values but keeps the field names, tags and note | No | No |
 | Move to the trash, restore | Yes | Yes | No | No |
 | Delete one for good | When it is in the trash, at the revision you saw | The same | With `unreadable=1` only (read-only: also only from the trash) | With `unreadable=1` only |
 | Empty the trash | The bundles you saw, if unchanged | The same | Left alone | Left alone |

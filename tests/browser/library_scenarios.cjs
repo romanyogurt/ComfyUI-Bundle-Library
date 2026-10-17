@@ -881,13 +881,26 @@ const LIB_HELPERS = () => {
     check("a file no bundle named is chosen by its digest",
         (await lib(() => window.__lib.status())).text === `Chose ${loose.sha256.slice(0, 12)}… from the library.`
         && (await state()).fields[1].thumb?.includes(loose.sha256), (await lib(() => window.__lib.status())).text);
+    // The server answers as when the library folder could not be synced to the disk (0.0.34)
+    const UNSYNCED = "Saved, but the library folder could not be synced to the disk; a power loss could undo it.";
+    const unsynced = async (route) => {
+        if (route.request().method() !== "PUT") return route.fallback();
+        const response = await route.fetch();
+        return route.fulfill({ response, json: { ...(await response.json()), warning: UNSYNCED,
+            warning_i18n: { id: "store.sync_warning", values: {} } } });
+    };
+    await page.route(`**/api/bundle-library/v1/bundles/${pickId}`, unsynced);
     await page.keyboard.press("Control+s");
     await savedState();
+    await page.unroute(`**/api/bundle-library/v1/bundles/${pickId}`, unsynced);
+    const told = await lib(() => window.__lib.status());
     const picked = await api("GET", `/bundles/${pickId}`);
     check("saved: the fields keep the chosen files, with the name bundles gave the first",
         picked.fields[0].asset.sha256 === bRef.sha256 && picked.fields[0].asset.original_name === "B ref_1.png"
         && picked.fields[1].asset.sha256 === loose.sha256 && !picked.fields[1].asset.original_name
         && picked.fields[1].asset.width === 512 && uploadRequests === uploadsBeforePick, picked.fields.map((f) => f.asset));
+    check("a save the server could not sync to the disk says so, as an error (0.0.34)",
+        told.text === UNSYNCED && told.error, told);
     await page.keyboard.press("Escape");
     await closed();
 

@@ -82,7 +82,7 @@ export class TrashPanel {
     async restore(entry) {
         try {
             const bundle = await restoreBundle(entry.id);
-            this.modal.status(t("trash.restored", { name: bundle.name }));
+            this.modal.done(t("trash.restored", { name: bundle.name }), bundle);
             await this.modal.reload();
         } catch (error) {
             this.modal.status(error.message, "error");

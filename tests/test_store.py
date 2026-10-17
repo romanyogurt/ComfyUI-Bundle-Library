@@ -28,7 +28,7 @@ class StoreTest(unittest.TestCase):
         temp = self.store.assets.temp_path()
         temp.write_bytes(data)
         try:
-            info, _ = self.store.assets.finalize(temp, hashlib.sha256(data).hexdigest(), "up.png", kind)
+            info, *_ = self.store.assets.finalize(temp, hashlib.sha256(data).hexdigest(), "up.png", kind)
         finally:
             temp.unlink(missing_ok=True)
         return info["sha256"]
@@ -255,10 +255,13 @@ class StoreTest(unittest.TestCase):
                 raise PermissionError(13, "Permission denied")  # what Windows answers
             return real_open(path, flags, *args, **kwargs)
 
-        with mock.patch("bundle_library.store.SYNC_FOLDERS", False), mock.patch("bundle_library.store.os.open", no_folders):
+        with mock.patch("bundle_library.assets.SYNC_FOLDERS", False), mock.patch("bundle_library.assets.os.open", no_folders):
             bundle = self.store.create(self.data())
-            self.store.update(bundle["id"], self.data(note="saved"), 1)
+            updated = self.store.update(bundle["id"], self.data(note="saved"), 1)
+            sha = self.upload(helpers.png("teal"))  # a stored file too (0.0.34)
         self.assertEqual(self.store.get(bundle["id"])["note"], "saved")
+        self.assertNotIn("warning", updated)
+        self.assertIsNotNone(self.store.assets.path(sha))
 
     def test_invalid_ids(self):
         for call in (lambda: self.store.get("../../etc/passwd"), lambda: self.store.delete("x", 1)):
