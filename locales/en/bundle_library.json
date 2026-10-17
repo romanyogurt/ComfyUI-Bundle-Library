@@ -162,6 +162,7 @@
   "editor.delete": "Delete",
   "editor.delete_confirm": "Delete '{name}'?",
   "editor.delete_detail": "The bundle moves to the trash, from where it can be restored. Until then, workflows that use it report it as missing.",
+  "editor.drag_field": "Drag to move",
   "editor.drop_audio": "Drop an audio file here, or ",
   "editor.drop_audio_replace": "Drop an audio file to replace it.",
   "editor.drop_image": "Drop or paste an image here, or ",

@@ -579,6 +579,10 @@
     "en": "The bundle moves to the trash, from where it can be restored. Until then, workflows that use it report it as missing.",
     "text": "번들은 휴지통으로 옮겨지고, 휴지통에서 되살릴 수 있습니다. 그때까지 이 번들을 쓰는 워크플로는 번들이 없다고 알립니다."
   },
+  "editor.drag_field": {
+    "en": "Drag to move",
+    "text": "끌어서 옮기기"
+  },
   "editor.drop_audio": {
     "en": "Drop an audio file here, or ",
     "text": "여기에 오디오 파일을 끌어다 놓기, 또는 "

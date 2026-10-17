@@ -810,6 +810,7 @@
 }
 
 .bl-field {
+    position: relative; /* the line where a dragged card would land */
     display: flex;
     flex-direction: column;
     gap: 6px;
@@ -817,6 +818,51 @@
     border: 1px solid var(--border-color, #4e4e4e);
     border-radius: 8px;
     outline: none;
+}
+
+/* The handle a field's card is dragged by (0.0.28): two columns of three dots. */
+.bl-grip {
+    flex: none;
+    width: 10px;
+    height: 16px;
+    cursor: grab;
+    color: var(--descrip-text, #999);
+    background-image: radial-gradient(circle, currentColor 1.2px, transparent 1.6px);
+    background-size: 5px 5px;
+    background-position: center;
+}
+
+.bl-grip:hover {
+    color: var(--input-text, #ddd);
+}
+
+.bl-grip[draggable="false"] {
+    cursor: default;
+    opacity: 0.35;
+}
+
+.bl-field.dragging {
+    opacity: 0.4;
+}
+
+.bl-field.drop-before::before,
+.bl-field.drop-after::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: 2px;
+    background: #2563eb;
+    pointer-events: none;
+}
+
+.bl-field.drop-before::before {
+    top: -7px;
+}
+
+.bl-field.drop-after::after {
+    bottom: -7px;
 }
 
 .bl-field:focus-within,

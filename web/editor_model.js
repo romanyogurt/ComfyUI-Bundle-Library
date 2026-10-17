@@ -199,11 +199,17 @@ export class EditorModel {
 
     /** Move a field up (-1) or down (+1); whether it moved. */
     moveField(field, delta) {
+        const index = this.draft.fields.indexOf(field);
+        return index >= 0 && this.moveFieldTo(field, index + delta);
+    }
+
+    /** Move a field to `index` among the fields (the place it is dropped at, 0.0.28); whether it moved. */
+    moveFieldTo(field, index) {
         const fields = this.draft.fields;
-        const index = fields.indexOf(field);
-        const other = index + delta;
-        if (index < 0 || other < 0 || other >= fields.length) return false;
-        [fields[index], fields[other]] = [fields[other], fields[index]];
+        const from = fields.indexOf(field);
+        if (from < 0 || index < 0 || index >= fields.length || index === from) return false;
+        fields.splice(from, 1);
+        fields.splice(index, 0, field);
         return true;
     }
 

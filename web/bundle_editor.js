@@ -17,6 +17,8 @@ import { POOL_SIZE } from "./reconcile.js";
 const TYPES = [["text", msg("editor.type_text")], ["image", msg("editor.type_image")], ["video", msg("editor.type_video")],
     ["audio", msg("editor.type_audio")], ["boolean", msg("editor.type_boolean")], ["int", msg("editor.type_integer")],
     ["float", msg("editor.type_float")]];
+// What a field card dragged by its grip carries (0.0.28): its key in the draft.
+const FIELD_DRAG = "application/x-bundle-library-field";
 // A field's type on its badge: the type's own name in English.
 const BADGE = { text: msg("editor.badge_text"), image: msg("kind.image"), video: msg("kind.video"), audio: msg("kind.audio"),
     boolean: msg("editor.badge_boolean"), int: msg("editor.badge_int"), float: msg("editor.badge_float") };
@@ -66,6 +68,7 @@ export class BundleEditor {
         this.model = new EditorModel(bundle, newName);
         this.busy = null; // the command of the editor that is out: "save", "duplicate" or "delete"
         this.cards = new Map(); // by field key
+        this.dragged = null; // the field whose card is being dragged by its grip
         this.tagText = ""; // a tag typed but not entered yet; kept when the tags are drawn again
         this.root = el("div", "bl-editor");
         this.render();
@@ -102,6 +105,7 @@ export class BundleEditor {
         const place = this.focusPlace();
         this.cards.clear();
         this.fieldsBox = el("div", "bl-fields");
+        this.takeFieldDrops(this.fieldsBox);
         for (const field of this.draft.fields) {
             const card = this.renderField(field);
             this.cards.set(field.key, card);
@@ -350,13 +354,15 @@ export class BundleEditor {
         down.addEventListener("click", () => this.move(field, 1));
         const remove = button("✕", "bl-btn icon danger", t("editor.remove_field_title"));
         remove.addEventListener("click", () => void this.removeField(field));
-        head.append(name, el("span", "bl-badge", field.type in BADGE ? t(BADGE[field.type]) : field.type), up, down, remove);
+        const grip = this.grip(root, field);
+        head.append(grip, name, el("span", "bl-badge", field.type in BADGE ? t(BADGE[field.type]) : field.type), up, down,
+            remove);
         const warning = el("div", "bl-warn");
         const error = el("div", "bl-error");
         error.hidden = true;
         const body = el("div", "bl-field-body");
         root.append(head, warning, body, error);
-        const card = { root, field, name, up, down, warning, body, error, bar: null };
+        const card = { root, field, grip, name, up, down, warning, body, error, bar: null };
         if (MEDIA_TYPES.has(field.type)) this.takeFiles(card);
         body.append(this.valueEditor(card));
         this.showError(card);
@@ -472,6 +478,85 @@ export class BundleEditor {
         }
         box.append(picker);
         return box;
+    }
+
+    /**
+     * The handle a field's card is dragged by to another place among the cards
+     * (0.0.28); the whole card shows while it is dragged. The keyboard moves it
+     * with ▲▼, so screen readers are not offered the handle.
+     */
+    grip(root, field) {
+        const grip = el("span", "bl-grip");
+        grip.title = t("editor.drag_field");
+        grip.setAttribute("aria-hidden", "true");
+        grip.draggable = true;
+        grip.addEventListener("dragstart", (e) => {
+            const box = root.getBoundingClientRect();
+            e.dataTransfer.setData(FIELD_DRAG, field.key);
+            e.dataTransfer.effectAllowed = "move";
+            e.dataTransfer.setDragImage(root, e.clientX - box.left, e.clientY - box.top);
+            root.classList.add("dragging");
+            this.dragged = field;
+        });
+        grip.addEventListener("dragend", () => {
+            root.classList.remove("dragging");
+            this.dragged = null;
+            this.markDrop(null);
+        });
+        return grip;
+    }
+
+    /** The cards take a dragged field's card where it is dropped: before the first card whose middle is below the pointer. */
+    takeFieldDrops(box) {
+        const carries = (e) => this.dragged && e.dataTransfer?.types.includes(FIELD_DRAG);
+        box.addEventListener("dragover", (e) => {
+            if (!carries(e)) return;
+            e.preventDefault(); // allows the drop
+            e.dataTransfer.dropEffect = "move";
+            this.markDrop(this.dropIndex(e.clientY));
+        });
+        box.addEventListener("dragleave", (e) => {
+            if (carries(e) && !box.contains(e.relatedTarget)) this.markDrop(null);
+        });
+        box.addEventListener("drop", (e) => {
+            if (!carries(e)) return;
+            e.preventDefault();
+            const field = this.dragged;
+            const index = this.dropIndex(e.clientY);
+            this.markDrop(null);
+            this.moveTo(field, index);
+        });
+    }
+
+    /** The index a dragged field gets when it is dropped with the pointer at `y`. */
+    dropIndex(y) {
+        const others = this.draft.fields.filter((f) => f !== this.dragged);
+        const index = others.findIndex((f) => {
+            const box = this.cards.get(f.key).root.getBoundingClientRect();
+            return y < box.top + box.height / 2;
+        });
+        return index < 0 ? others.length : index;
+    }
+
+    /** Show where a dragged field would land (a line between the cards), or nothing (null, or its own place). */
+    markDrop(index) {
+        for (const marked of this.fieldsBox.querySelectorAll(".drop-before, .drop-after")) {
+            marked.classList.remove("drop-before", "drop-after");
+        }
+        if (index === null || !this.dragged || index === this.draft.fields.indexOf(this.dragged)) return;
+        const others = this.draft.fields.filter((f) => f !== this.dragged);
+        if (index < others.length) this.cards.get(others[index].key).root.classList.add("drop-before");
+        else this.cards.get(others.at(-1).key).root.classList.add("drop-after");
+    }
+
+    /** Put a field at `index` among the fields (a drop). */
+    moveTo(field, index) {
+        if (!this.model.moveFieldTo(field, index)) return;
+        const card = this.cards.get(field.key);
+        const next = this.draft.fields[index + 1];
+        if (next) this.cards.get(next.key).root.before(card.root);
+        else this.fieldsBox.append(card.root);
+        this.fieldsChanged();
     }
 
     /** A media card takes drops and, once focused (click it), pastes. */
@@ -654,6 +739,7 @@ export class BundleEditor {
             const card = this.cards.get(field.key);
             card.up.disabled = i === 0;
             card.down.disabled = i === last;
+            card.grip.draggable = last > 0; // one field has nowhere to go
         });
     }
 

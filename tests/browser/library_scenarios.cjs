@@ -723,7 +723,65 @@ const LIB_HELPERS = () => {
         window.__bl.app.graph.clear();
     });
 
-    await finish({ expectRemoved: 7 }); // A–E, the UI-made bundle and its copy
+    // ---- dragging a field's card to another place (0.0.28) --------------------------------
+    const dragId = (await api("POST", "/bundles", { name: "[test] Drag", tags: ["test"],
+        fields: ["a", "b", "c", "d"].map((name) => ({ name, type: "text", value: name })) })).id;
+    await ev(async ([module, id]) => (await import(`${module}/library_modal.js`)).openLibrary({ selected: id }),
+        ["/extensions/ComfyUI-Bundle-Library", dragId]);
+    await opened();
+    await editing("[test] Drag");
+    const order = async () => (await state()).fields.map((f) => f.name).join();
+    const grips = await lib(() => [...document.querySelectorAll(".bl-overlay .bl-field .bl-grip")]
+        .map((g) => [g.getAttribute("draggable"), g.title, g.getAttribute("aria-hidden")]));
+    check("each field card has a grip to drag it by, named for the mouse and left to ▲▼ for screen readers",
+        grips.length === 4 && grips.every((g) => JSON.stringify(g) === JSON.stringify(["true", "Drag to move", "true"])), grips);
+    /** Drag card `from` by its grip to height `y` (0 top, 1 bottom) of card `to`, or of an element; the cards' marks before the drop. */
+    const dragField = async (from, to, y, photo = null) => {
+        const grip = await fields.nth(from).locator(".bl-grip").boundingBox();
+        const box = typeof to === "number" ? await fields.nth(to).boundingBox() : await to.boundingBox();
+        const [x, top] = [box.x + box.width / 2, box.y + box.height * y];
+        await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+        await page.mouse.down();
+        await page.mouse.move(x, top, { steps: 6 });
+        await page.mouse.move(x + 1, top, { steps: 2 }); // dragover comes with a move
+        const marks = await lib(() => [...document.querySelectorAll(".bl-overlay .bl-field")].map((card) =>
+            ["drop-before", "drop-after", "dragging"].filter((c) => card.classList.contains(c)).join(" ")));
+        if (photo) await shot(photo);
+        await page.mouse.up();
+        return marks;
+    };
+    /** Marks left on the cards once a drag is over: none. */
+    const leftover = () => lib(() => document.querySelectorAll(".bl-overlay .bl-field.dragging, .bl-overlay .drop-before, "
+        + ".bl-overlay .drop-after").length);
+    let lines = await dragField(3, 0, 0.25, "library-drag.png");
+    st = await state();
+    check("dragging the last card above the first: a line above it while dragged, then the field is first, not saved yet",
+        JSON.stringify(lines) === JSON.stringify(["drop-before", "", "", "dragging"]) && await order() === "d,a,b,c"
+        && st.state === "● Unsaved changes" && !st.fields[0].up && st.fields[1].up && !st.fields[3].down
+        && await leftover() === 0, { lines, state: st.state });
+    lines = await dragField(0, 3, 0.75);
+    st = await state();
+    check("dropped below the last card it is last again: the saved order, so no change",
+        JSON.stringify(lines) === JSON.stringify(["dragging", "", "", "drop-after"]) && await order() === "a,b,c,d"
+        && st.state === "Saved", { lines, state: st.state });
+    lines = await dragField(1, 1, 0.5);
+    check("a card dropped at its own place shows no line and changes nothing",
+        JSON.stringify(lines) === JSON.stringify(["", "dragging", "", ""]) && await order() === "a,b,c,d"
+        && (await state()).state === "Saved", lines);
+    await dragField(2, page.locator(".bl-overlay .bl-search"), 0.5);
+    const left = await leftover();
+    check("dropped outside the cards (on the search box), nothing moves and no mark is left",
+        await order() === "a,b,c,d" && left === 0 && (await state()).state === "Saved", left);
+    await dragField(2, 0, 0.25);
+    await page.keyboard.press("Control+s");
+    await savedState();
+    const dragged = await api("GET", `/bundles/${dragId}`);
+    check("a dragged order is saved like any change", dragged.fields.map((f) => f.name).join() === "c,a,b,d"
+        && dragged.revision === 2, { order: dragged.fields.map((f) => f.name), revision: dragged.revision });
+    await page.keyboard.press("Escape");
+    await closed();
+
+    await finish({ expectRemoved: 8 }); // A–E, the UI-made bundle, its copy and the dragged one
 })().catch((e) => {
     console.error(e);
     process.exit(1);

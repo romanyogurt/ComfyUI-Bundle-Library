@@ -98,6 +98,27 @@ test("fields: names, keys, moves and the notes about their names", () => {
     assert.match(model.nameNotes().get(original.key).renamed, /Renamed from 'prompt'/);
 });
 
+test("a field dropped at another place moves there; at its own place, or nowhere, nothing changes (0.0.28)", () => {
+    const model = new EditorModel(stored(["a", "b", "c", "d"].map((name) => ({ name, type: "text", value: name }))));
+    const names = () => model.draft.fields.map((f) => f.name);
+    const [a, , c, d] = model.draft.fields;
+    assert.equal(model.moveFieldTo(d, 0), true);
+    assert.deepEqual(names(), ["d", "a", "b", "c"]);
+    assert.equal(model.dirty, true, "the order is part of the bundle");
+    assert.equal(model.moveFieldTo(d, 3), true);
+    assert.deepEqual(names(), ["a", "b", "c", "d"]);
+    assert.equal(model.dirty, false, "back in its order: no change");
+    assert.equal(model.moveFieldTo(a, 2), true);
+    assert.deepEqual(names(), ["b", "c", "a", "d"]);
+    assert.equal(model.moveFieldTo(c, 1), false, "its own place");
+    assert.equal(model.moveFieldTo(c, 4), false);
+    assert.equal(model.moveFieldTo(c, -1), false);
+    assert.equal(model.moveFieldTo({ key: "gone" }, 0), false);
+    assert.equal(model.moveField(a, 1), true, "▲▼ still move it by one");
+    assert.deepEqual(names(), ["b", "c", "d", "a"]);
+    assert.equal(model.moveField(a, 1), false, "already last");
+});
+
 test("tags: blank and repeated ones are not added", () => {
     const model = new EditorModel(stored([]));
     assert.equal(model.addTag("  "), false);
