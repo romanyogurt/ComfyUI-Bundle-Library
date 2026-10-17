@@ -261,7 +261,7 @@ scripts/bundle-library-test-server.sh stop
 
 | 테스트 | 확인하는 것 |
 | --- | --- |
-| `tests/test_*.py` (`python -m unittest discover -s tests -t .`) | 저장소, 모델, API, 변환, 미디어 검사. `test_compat.py`는 `tests/fixtures/compat/`의 출시 표본으로 호환성 계약을, `test_versions.py`는 버전 번호와 JS 상수 사본을, `test_examples.py`는 팩의 예제 ZIP이 그대로 들어오고 `workflows/`의 템플릿이 어느 예제 번들로도 연결을 지키는지를 확인한다 |
+| `tests/test_*.py` (`python -m unittest discover -s tests -t .`) | 저장소, 모델, API, 변환, 미디어 검사. `test_compat.py`는 `tests/fixtures/compat/`의 출시 표본으로 호환성 계약을, `test_versions.py`는 버전 번호와 JS 상수 사본을, `test_examples.py`는 팩의 예제 ZIP이 그대로 들어오고 `workflows/`의 템플릿이 어느 예제 번들로도 연결을 지키는지를, `test_wiki.py`는 위키(`wiki/`) 쪽 사이의 링크·제목과 사이드바를 확인한다 |
 | `tests/js/*.test.mjs` (호스트의 `node --test`) | 슬롯 조정, 이름 표시, 목록 묶음의 순수 함수, 메시지 목록(코드가 쓰는 id가 영어 목록에 있고 쓰이지 않는 항목이 없는지, 번역의 꼴·자리표시가 영어와 맞는지, 한국어에 빠지거나 오래된 번역이 없는지), 받지 못한 메시지 목록을 다시 받는 간격과 늦은 도착의 알림(`messages.test.mjs`) |
 | `tests/e2e/compare_load_image.py`, `compare_media.py` | 변환 결과가 core LoadImage·LoadVideo·LoadAudio와 같은지 |
 | `tests/e2e/api_smoke.py` | 테스트 번들 두 개를 만들어 API로 확인한다 |
