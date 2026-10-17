@@ -3,7 +3,7 @@
 // parse), the uploads, and one answer to whether leaving would lose something.
 // The editor draws from it; nothing here touches the DOM, so it runs under
 // `node --test` as well as in the browser.
-import { t } from "./i18n.js";
+import { said, t } from "./i18n.js";
 import { sameTag } from "./tags.js";
 
 export const MEDIA_TYPES = new Set(["image", "video", "audio"]);
@@ -74,8 +74,8 @@ export function summaryOf(bundle) {
         revision: bundle.revision,
         updated_at: bundle.updated_at,
         fields: bundle.fields.map((f) => ({ name: f.name, type: f.type, preview: preview(f) })),
-        ...(bundle.warnings ? { warnings: bundle.warnings } : {}),
-        ...(bundle.read_only ? { read_only: bundle.read_only } : {}),
+        ...(bundle.warnings ? { warnings: bundle.warnings, warnings_i18n: bundle.warnings_i18n } : {}),
+        ...(bundle.read_only ? { read_only: bundle.read_only, read_only_i18n: bundle.read_only_i18n } : {}),
     };
 }
 
@@ -106,7 +106,7 @@ export class EditorModel {
 
     /** Why this version must not change the bundle (it holds data this version does not know), or null. */
     get readOnly() {
-        return this.saved?.read_only ?? null;
+        return this.saved?.read_only ? said(this.saved, "read_only") : null;
     }
 
     field(key) {

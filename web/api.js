@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { api } from "../../scripts/api.js";
-import { msg, t } from "./i18n.js";
+import { msg, serverText, t } from "./i18n.js";
 import { VERSION } from "./version.js";
 
 const PREFIX = "/bundle-library/v1";
@@ -76,8 +76,9 @@ export async function checkVersion() {
 
 /** A refused request: `status` is the HTTP status, `code` and `details` come from the error body. */
 export class ApiError extends Error {
+    /** `message` in the current language when the server said how it was made (Phase 9b). */
     constructor(message, status, code, details) {
-        super(message);
+        super(details?.message_i18n ? serverText(details.message, details.message_i18n) : message);
         this.status = status;
         this.code = code;
         this.details = details ?? {};

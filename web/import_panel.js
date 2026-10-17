@@ -4,7 +4,7 @@
 // modal runs the upload and the import (LibraryModal.showImport, runImport).
 import { BatchResult } from "./batch_panel.js";
 import { button, el, formatBytes, formatTime, plural } from "./dom.js";
-import { msg, t, tn } from "./i18n.js";
+import { msg, said, t, tn } from "./i18n.js";
 
 // How a bundle of the file stands to this library.
 const CONFLICT = {
@@ -102,7 +102,7 @@ export class ImportPanel {
                 b.category ? t("in {category}", { category: b.category }) : null, plural(b.fields, "field"),
                 b.tags.length ? b.tags.join(" · ") : null,
             ].filter(Boolean).join(" · ")));
-            if (!b.importable) text.append(el("div", "bl-list-warn", `⚠ ${b.reason}`));
+            if (!b.importable) text.append(el("div", "bl-list-warn", `⚠ ${said(b, "reason")}`));
             else if (b.missing_files) {
                 text.append(el("div", "bl-list-warn", tn(b.missing_files, "⚠ {count} file it uses is not in the file or the library",
                     "⚠ {count} files it uses are not in the file or the library")));
@@ -214,9 +214,9 @@ export class ImportResult extends BatchResult {
                 const row = el("div", "bl-batch-outcome-row");
                 row.dataset.id = r.id;
                 row.append(el("span", "bl-list-name", names.get(r.source) ?? r.source));
-                if (!r.ok) row.append(el("span", "bl-dim", r.message));
+                if (!r.ok) row.append(el("span", "bl-dim", said(r, "message")));
                 if (r.restored) row.append(el("span", "bl-dim", t("back from the trash")));
-                if (r.warning) row.append(el("span", "bl-warn", r.warning)); // done, but not synced to the disk (R22-05)
+                if (r.warning) row.append(el("span", "bl-warn", said(r, "warning"))); // done, but not synced to the disk (R22-05)
                 group.append(row);
             }
             parts.push(group);
@@ -225,13 +225,13 @@ export class ImportResult extends BatchResult {
             parts.push(el("div", "bl-hint", t("Categories made: {names}.", { names: answer.categories_created.map((c) => c.name).join(", ") })));
         }
         if (answer.placement_error) {
-            parts.push(el("div", "bl-warn", t("Imported, but not put in categories: {reason}", { reason: answer.placement_error })));
+            parts.push(el("div", "bl-warn", t("Imported, but not put in categories: {reason}", { reason: said(answer, "placement_error") })));
         }
-        if (answer.warning) parts.push(el("div", "bl-warn", t("Their places in categories: {warning}", { warning: answer.warning })));
+        if (answer.warning) parts.push(el("div", "bl-warn", t("Their places in categories: {warning}", { warning: said(answer, "warning") })));
         if (answer.replayed) parts.push(el("div", "bl-hint", t("This is the answer the server kept from when the import ran.")));
         if (answer.files.failed.length) {
             parts.push(el("div", "bl-warn", tn(answer.files.failed.length, "{count} file could not be imported: {reasons}",
-                "{count} files could not be imported: {reasons}", { reasons: answer.files.failed.map((f) => f.reason).join("; ") })));
+                "{count} files could not be imported: {reasons}", { reasons: answer.files.failed.map((f) => said(f, "reason")).join("; ") })));
         }
         done.append(back);
         this.root.replaceChildren(...parts, done);

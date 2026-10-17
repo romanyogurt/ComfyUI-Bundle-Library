@@ -13,6 +13,7 @@ import logging
 
 from . import schema
 from .model import UUID_RE, LibraryError, _name, _Rules, invalid, lone_surrogates
+from .text import Text, Word
 
 FORMAT = "comfyui-bundle-library/organization"
 SCHEMA_VERSION = 1
@@ -81,14 +82,15 @@ def read(text):
     form = data.get("format")
     if form != FORMAT:
         if isinstance(form, str) and form:
-            return Organization(schema.UNSUPPORTED, f"another format ('{form[:60]}')")
+            return Organization(schema.UNSUPPORTED, Text("another format ('{value}')", value=form[:60]))
         return Organization(schema.CORRUPT, "not an organization file")
     version = data.get("schema_version")
     if type(version) is not int or version < 1:
-        return Organization(schema.CORRUPT, f"invalid schema_version {version!r}")
+        return Organization(schema.CORRUPT, Text("invalid schema_version {version}", version=repr(version)))
     if version > SCHEMA_VERSION:
-        return Organization(schema.NEWER, f"saved by a newer Bundle Library (schema version {version}; "
-                                          f"this one reads up to {SCHEMA_VERSION})")
+        return Organization(schema.NEWER, Text("saved by a newer Bundle Library (schema version {version}; "
+                                               "this one reads up to {SCHEMA_VERSION})", version=version,
+                                               SCHEMA_VERSION=SCHEMA_VERSION))
     problem = _shape_problem(data)
     if problem:
         return Organization(schema.CORRUPT, problem)
@@ -96,7 +98,8 @@ def read(text):
         {key for c in data["categories"] for key in set(c) - CATEGORY_KEYS})
     favorites = list(dict.fromkeys(data["favorites"]))
     return Organization(schema.READ_ONLY if unknown else schema.OK,
-                        f"has data this version does not know: {', '.join(map(repr, unknown[:5]))}" if unknown else None,
+                        Text("has data this version does not know: {list}", list=", ".join(map(repr, unknown[:5])))
+                        if unknown else None,
                         data["revision"], data["categories"], data["placement"], favorites)
 
 
@@ -135,12 +138,13 @@ def read_file(path):
     except FileNotFoundError:
         return empty()
     except OSError as e:
-        return Organization(schema.CORRUPT, f"could not be read ({e.strerror or type(e).__name__})", io_error=True)
+        return Organization(schema.CORRUPT, Text("could not be read ({reason})", reason=e.strerror or type(e).__name__),
+                            io_error=True)
     try:
         return read(text)
     except Exception as e:  # noqa: BLE001 — the last defence of the file boundary, logged
         logging.exception("[Bundle Library] could not check organization.json")
-        return Organization(schema.CORRUPT, f"could not be checked ({type(e).__name__})")
+        return Organization(schema.CORRUPT, Text("could not be checked ({name})", name=type(e).__name__))
 
 
 def category_name(value, organization, own_id=None):
@@ -149,8 +153,8 @@ def category_name(value, organization, own_id=None):
     and unique (regardless of case) among the categories."""
     name = _name(value, "Category name", MAX_CATEGORY_NAME, _Rules(strict=True))
     if name.casefold() in (special.casefold() for special in SPECIAL_NAMES):
-        raise invalid(f"Category name: '{name}' is the name of a view of the list.")
+        raise invalid(Text("Category name: '{name}' is the name of a view of the list.", name=name))
     for category in organization.categories:
         if category["id"] != own_id and category["name"].casefold() == name.casefold():
-            raise LibraryError(409, "category_conflict", f"A category named '{category['name']}' already exists.")
+            raise LibraryError(409, "category_conflict", Text("A category named '{name}' already exists.", name=category['name']))
     return name

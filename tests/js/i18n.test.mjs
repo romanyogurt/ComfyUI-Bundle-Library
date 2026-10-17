@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 
-import { locale, plural, t, tn, useLocale } from "../../web/i18n.js";
+import { locale, plural, said, serverText, t, tn, useLocale } from "../../web/i18n.js";
 import KO from "../../web/locales/ko.js";
 
 const WEB = new URL("../../web/", import.meta.url);
@@ -17,6 +17,25 @@ const CALLS = [
 ];
 const join = (source) => [...source.matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((m) => JSON.parse(`"${m[1]}"`)).join("");
 const places = (text) => [...new Set(text.match(/\{\w+\}/g) ?? [])].sort();
+const SERVER = new URL("../../bundle_library/", import.meta.url);
+// The server's messages (bundle_library/text.py): Text("template", ...) and Word("word"), Python string literals,
+// adjacent ones joined.
+const PY_TEXT = /\b(?:Text|Word)\(((?:\s*(?:"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'))+)/g;
+const pyString = (literal) => (literal.startsWith("'")
+    ? JSON.parse(`"${literal.slice(1, -1).replace(/\\'/g, "'").replace(/"/g, '\\"')}"`) : JSON.parse(literal));
+
+/** Every message of the server, with the files that make it. */
+function serverNamed() {
+    const found = new Map();
+    for (const file of readdirSync(SERVER).filter((f) => f.endsWith(".py"))) {
+        const code = readFileSync(new URL(file, SERVER), "utf8");
+        for (const match of code.matchAll(PY_TEXT)) {
+            const text = [...match[1].matchAll(/"(?:[^"\\\n]|\\.)*"|'(?:[^'\\\n]|\\.)*'/g)].map((m) => pyString(m[0])).join("");
+            found.set(text, [...(found.get(text) ?? []), file]);
+        }
+    }
+    return found;
+}
 
 /** Every text the code names, with the files that name it. */
 function named() {
@@ -34,10 +53,36 @@ function named() {
     return found;
 }
 
+test("the server's messages are found where they are made (Phase 9b)", () => {
+    const server = serverNamed();
+    assert.ok(server.size > 150, `${server.size}`);
+    assert.ok(server.has("category must be {shape}, with an id for \"one\"."));
+    assert.ok(server.has("saved by a newer Bundle Library (schema version {version}; this one reads up to {SCHEMA_VERSION})"));
+    assert.ok(server.has("an audio"));
+});
+
+test("a message of the server in Korean: its template, a word in it, a message in it, a name as it is", () => {
+    const wrong = { template: "Field '{name}': the file is {kind}, not {type}.",
+        values: { name: "Text", kind: { word: "an audio" }, type: { word: "an image" } } };
+    const nested = { template: "{label}: must be a string.", values: { label: { template: "Field '{name}'", values: { name: "Text" } } } };
+    assert.equal(serverText("as it came", wrong), "Field 'Text': the file is an audio, not an image.");
+    try {
+        useLocale(() => "ko");
+        assert.equal(serverText("", wrong), "필드 'Text': 파일이 이미지이(가) 아니라 오디오입니다."); // "Text" is a name: not translated
+        assert.equal(serverText("", nested), "필드 'Text': 문자열이어야 합니다.");
+        assert.equal(serverText("as it came", undefined), "as it came");
+        assert.equal(said({ message: "In the trash.", message_i18n: { template: "In the trash.", values: {} } }, "message"), "휴지통에 있습니다.");
+        assert.deepEqual(said({ warnings: ["a", "Tags: at most 20."], warnings_i18n: [null, { template: "Tags: at most {MAX_TAGS}.",
+            values: { MAX_TAGS: 20 } }] }, "warnings"), ["a", "태그: 최대 20개입니다."]);
+    } finally {
+        useLocale(() => "en");
+    }
+});
+
 test("every text the code shows has a Korean entry with the same places (Phase 9)", () => {
     const missing = [];
     const unlike = [];
-    for (const [text, files] of named()) {
+    for (const [text, files] of [...named(), ...serverNamed()]) {
         if (!(text in KO)) missing.push(`${files[0]}: ${text}`);
         else if (JSON.stringify(places(KO[text])) !== JSON.stringify(places(text))) unlike.push(text);
     }
@@ -46,7 +91,7 @@ test("every text the code shows has a Korean entry with the same places (Phase 9
 });
 
 test("no Korean entry is left that the code does not name", () => {
-    const used = named();
+    const used = new Map([...named(), ...serverNamed()]);
     assert.deepEqual(Object.keys(KO).filter((text) => !used.has(text)), []);
 });
 

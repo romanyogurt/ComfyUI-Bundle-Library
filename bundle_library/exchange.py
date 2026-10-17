@@ -37,6 +37,7 @@ from . import schema
 from .constants import VERSION
 from .model import LibraryError, check_bundle_id, invalid
 from .store import kind_problem
+from .text import Text, Word
 
 FORMAT = "comfyui-bundle-library/export"
 FORMAT_VERSION = 1
@@ -70,10 +71,10 @@ class Exports:
         """The export of `token`, if it is still there."""
         self.forget_old()
         if not isinstance(token, str) or not TOKEN_RE.match(token):
-            raise LibraryError(404, "not_found", "No such export.")
+            raise LibraryError(404, "not_found", Text("No such export."))
         path = self.folder / f"{token}.zip"
         if not path.is_file():
-            raise LibraryError(404, "not_found", "No such export; it may have expired. Export again.")
+            raise LibraryError(404, "not_found", Text("No such export; it may have expired. Export again."))
         return path
 
     def forget_old(self, now=None):
@@ -95,22 +96,22 @@ class Exports:
         `missing` the files bundles point at that the library does not have
         ({"sha256", "bundles"}: the bundles go, without those files)."""
         if not isinstance(ids, list) or not ids:
-            raise invalid("ids must be a non-empty list of bundle ids.")
+            raise invalid(Text("ids must be a non-empty list of bundle ids."))
         ids = list(dict.fromkeys(check_bundle_id(bundle_id) for bundle_id in ids))
         if len(ids) > MAX_EXPORT:
-            raise invalid(f"An export takes {MAX_EXPORT} bundles at most.")
+            raise invalid(Text("An export takes {MAX_EXPORT} bundles at most.", MAX_EXPORT=MAX_EXPORT))
         self.forget_old()
         bundles, skipped = [], []
         for bundle_id, data, loaded, category in store.files_for_export(ids):
-            reason = (("not_found", "No longer in the library.") if data is None
+            reason = (("not_found", Text("No longer in the library.")) if data is None
                       else ("read_error" if loaded.io_error else loaded.state, loaded.problem) if not loaded.readable
-                      else ("in_trash", "In the trash.") if loaded.deleted else None)
+                      else ("in_trash", Text("In the trash.")) if loaded.deleted else None)
             if reason:
                 skipped.append({"id": bundle_id, "code": reason[0], "reason": reason[1]})
             else:
                 bundles.append((bundle_id, data, loaded, category))
         if not bundles:
-            raise LibraryError(409, "nothing_to_export", "None of these bundles can be exported.", skipped=skipped)
+            raise LibraryError(409, "nothing_to_export", Text("None of these bundles can be exported."), skipped=skipped)
         assets, missing = {}, {}
         for _, _, loaded, _ in bundles:
             for sha in sorted(loaded.refs or ()):
@@ -170,22 +171,22 @@ _APPLYING_LOCK = threading.Lock()
 
 
 def _running():
-    return LibraryError(409, "import_running", "This import is running; wait for it to finish.")
+    return LibraryError(409, "import_running", Text("This import is running; wait for it to finish."))
 
 
 def _check_token(token):
     if not isinstance(token, str) or not TOKEN_RE.match(token):
-        raise LibraryError(404, "not_found", "No such import.")
+        raise LibraryError(404, "not_found", Text("No such import."))
 
 
 def _check_choices(store, conflict, category):
     if conflict not in CONFLICTS:
-        raise invalid(f"conflict must be one of {', '.join(CONFLICTS)}.")
+        raise invalid(Text("conflict must be one of {list}.", list=', '.join(CONFLICTS)))
     if not isinstance(category, dict) or category.get("mode") not in CATEGORY_MODES:
-        raise invalid(f"category must be {{\"mode\": {' | '.join(CATEGORY_MODES)}}}, with an id for \"one\".")
+        raise invalid(Text('category must be {shape}, with an id for "one".', shape='{"mode": ' + " | ".join(CATEGORY_MODES) + "}"))
     if category["mode"] == "one":
         if not any(c["id"] == category.get("id") for c in store.categories()["categories"]):
-            raise LibraryError(404, "not_found", f"Category not found: {category.get('id')}")
+            raise LibraryError(404, "not_found", Text("Category not found: {value}", value=category.get('id')))
 
 
 def _keep(path, answer):
@@ -196,7 +197,7 @@ def _keep(path, answer):
 
 
 def _bad(message):
-    return LibraryError(400, "invalid_export", f"This is not an export this version can read: {message}")
+    return LibraryError(400, "invalid_export", Text("This is not an export this version can read: {message}", message=message))
 
 
 class ExportFile:
@@ -208,12 +209,12 @@ class ExportFile:
         try:
             self.zip = zipfile.ZipFile(path)
         except (zipfile.BadZipFile, OSError) as e:
-            raise _bad(f"not a ZIP file ({e})") from None
+            raise _bad(Text("not a ZIP file ({e})", e=e)) from None
         infos = self.zip.infolist()
         if len(infos) > MAX_ENTRIES:
-            raise _bad(f"more than {MAX_ENTRIES} entries")
+            raise _bad(Text("more than {MAX_ENTRIES} entries", MAX_ENTRIES=MAX_ENTRIES))
         if any(info.flag_bits & 0x1 for info in infos):
-            raise _bad("it is encrypted")
+            raise _bad(Text("it is encrypted"))
         self.entries = {info.filename: info for info in infos}
         self.unpacked = 0
         self.manifest = self._manifest()
@@ -227,9 +228,9 @@ class ExportFile:
             with self.zip.open(self.entries[name]) as f:
                 data = f.read(limit + 1)
         except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError) as e:
-            raise _bad(f"{name} cannot be unpacked ({e})") from None
+            raise _bad(Text("{name} cannot be unpacked ({e})", name=name, e=e)) from None
         if len(data) > limit:
-            raise _bad(f"{name} is larger than {limit // (1024 * 1024)} MB")
+            raise _bad(Text("{name} is larger than {n} MB", name=name, n=limit // (1024 * 1024)))
         self._count(len(data))
         return data
 
@@ -241,49 +242,48 @@ class ExportFile:
                 while chunk := source.read(1024 * 1024):
                     total += len(chunk)
                     if total > limit:
-                        raise LibraryError(413, "too_large", f"{name} is larger than this kind of file may be.")
+                        raise LibraryError(413, "too_large", Text("{name} is larger than this kind of file may be.", name=name))
                     self._count(len(chunk))
                     digest.update(chunk)
                     target.write(chunk)
         except (zipfile.BadZipFile, zlib.error, EOFError, NotImplementedError) as e:
-            raise _bad(f"{name} cannot be unpacked ({e})") from None
+            raise _bad(Text("{name} cannot be unpacked ({e})", name=name, e=e)) from None
         return digest.hexdigest()
 
     def _count(self, size):
         self.unpacked += size
         if self.unpacked > MAX_UNPACKED:
-            raise _bad(f"it unpacks to more than {MAX_UNPACKED // 1024 ** 3} GB")
+            raise _bad(Text("it unpacks to more than {n} GB", n=MAX_UNPACKED // 1024 ** 3))
 
     def _manifest(self):
         if "manifest.json" not in self.entries:
-            raise _bad("there is no manifest.json")
+            raise _bad(Text("there is no manifest.json"))
         try:
             data = json.loads(self.read("manifest.json", MAX_MANIFEST))
         except (ValueError, RecursionError):
-            raise _bad("manifest.json is not valid JSON") from None
+            raise _bad(Text("manifest.json is not valid JSON")) from None
         if not isinstance(data, dict) or data.get("format") != FORMAT:
-            raise _bad("manifest.json does not name the Bundle Library export format")
+            raise _bad(Text("manifest.json does not name the Bundle Library export format"))
         version = data.get("version")
         if type(version) is not int:
-            raise _bad("manifest.json has no version")
+            raise _bad(Text("manifest.json has no version"))
         if version > FORMAT_VERSION:
-            raise LibraryError(400, "newer_export", f"This export was made by a newer Bundle Library (format version "
-                                                    f"{version}); update the node pack to import it.")
+            raise LibraryError(400, "newer_export", Text("This export was made by a newer Bundle Library (format version {version}); update the node pack to import it.", version=version))
         bundles, assets = data.get("bundles"), data.get("assets")
         if not isinstance(bundles, list) or not isinstance(assets, list) or len(bundles) > MAX_EXPORT:
-            raise _bad(f"manifest.json must list up to {MAX_EXPORT} bundles and their files")
+            raise _bad(Text("manifest.json must list up to {MAX_EXPORT} bundles and their files", MAX_EXPORT=MAX_EXPORT))
         seen = set()
         for entry in bundles:
             ok = (isinstance(entry, dict) and isinstance(entry.get("id"), str) and isinstance(entry.get("name"), str)
                   and isinstance(entry.get("sha256"), str) and SHA_RE.match(entry["sha256"])
                   and (entry.get("category") is None or isinstance(entry.get("category"), str)))
             if not ok:
-                raise _bad("a bundle in manifest.json is not described as it should be")
+                raise _bad(Text("a bundle in manifest.json is not described as it should be"))
             check_bundle_id(entry["id"])
             if entry.get("file") != f"bundles/{entry['id']}.json" or entry["id"] in seen:
-                raise _bad(f"bundle {entry['id']} is not where manifest.json says, or listed twice")
+                raise _bad(Text("bundle {id} is not where manifest.json says, or listed twice", id=entry['id']))
             if entry["file"] not in self.entries:
-                raise _bad(f"{entry['file']} is not in the ZIP")
+                raise _bad(Text("{file} is not in the ZIP", file=entry['file']))
             seen.add(entry["id"])
         from .assets import KINDS  # noqa: PLC0415 — the extensions and kinds the library stores
         shas = set()
@@ -292,13 +292,13 @@ class ExportFile:
                   and isinstance(entry.get("file"), str) and entry["sha256"] not in shas)
             ext = entry["file"].rsplit(".", 1)[-1] if ok else None
             if not ok or entry["file"] != f"assets/{entry['sha256']}.{ext}" or KINDS.get(ext) != entry.get("kind"):
-                raise _bad("a file in manifest.json is not described as it should be")
+                raise _bad(Text("a file in manifest.json is not described as it should be"))
             if entry["file"] not in self.entries:
-                raise _bad(f"{entry['file']} is not in the ZIP")
+                raise _bad(Text("{file} is not in the ZIP", file=entry['file']))
             shas.add(entry["sha256"])
         declared = sum(self.entries[e["file"]].file_size for e in [*bundles, *assets])
         if declared > MAX_UNPACKED:
-            raise _bad(f"it unpacks to more than {MAX_UNPACKED // 1024 ** 3} GB")
+            raise _bad(Text("it unpacks to more than {n} GB", n=MAX_UNPACKED // 1024 ** 3))
         return data
 
 
@@ -320,7 +320,7 @@ class Imports:
         _check_token(token)
         path = self.folder / f"{token}.zip"
         if not path.is_file():
-            raise LibraryError(404, "not_found", "No such import; it may have expired. Upload the file again.")
+            raise LibraryError(404, "not_found", Text("No such import; it may have expired. Upload the file again."))
         return path
 
     def discard(self, token):
@@ -337,7 +337,7 @@ class Imports:
             except FileNotFoundError:
                 pass
         if not found:
-            raise LibraryError(404, "not_found", "No such import; it may have expired.")
+            raise LibraryError(404, "not_found", Text("No such import; it may have expired."))
 
     forget_old = Exports.forget_old
 
@@ -351,10 +351,10 @@ class Imports:
             loaded = schema.read_checked(data, entry["id"], entry["file"])
             reason = None
             if hashlib.sha256(data).hexdigest() != entry["sha256"]:
-                reason = "The file is not what the manifest says (its SHA-256 differs)."
+                reason = Text("The file is not what the manifest says (its SHA-256 differs).")
             elif not loaded.writable:
-                reason = f"This version cannot import it: it {loaded.problem}." if loaded.readable else (
-                    f"This version cannot read it: {loaded.problem}.")
+                reason = (Text("This version cannot import it: it {problem}.", problem=loaded.problem) if loaded.readable
+                          else Text("This version cannot read it: {problem}.", problem=loaded.problem))
             elif wrong := kind_problem(loaded.bundle["fields"],
                                        lambda s: store.assets.kind(s) or listed.get(s, {}).get("kind")):
                 reason = wrong.message  # R22-01: readable, but a field points at a file of another kind
@@ -438,9 +438,8 @@ class Imports:
         except (OSError, ValueError):
             pass
         if (self.folder / f"{token}.applying").exists():
-            raise LibraryError(409, "import_interrupted", "This import was cut off: the server stopped while it ran. "
-                               "Reload the list to see what came in, and upload the file again for the rest.")
-        raise LibraryError(404, "not_found", "No such import; it may have expired. Upload the file again.")
+            raise LibraryError(409, "import_interrupted", Text("This import was cut off: the server stopped while it ran. Reload the list to see what came in, and upload the file again for the rest."))
+        raise LibraryError(404, "not_found", Text("No such import; it may have expired. Upload the file again."))
 
     def _prepare(self, store, path, conflict):
         """The plan of an import, with the files of the bundles it will write
@@ -463,7 +462,7 @@ class Imports:
                 try:
                     got = export.extract(entry["file"], temp, store.assets.limits[entry["kind"]]["bytes"])
                     if got != sha:
-                        raise LibraryError(400, "invalid_export", "the file is not what its name says (its SHA-256 differs)")
+                        raise LibraryError(400, "invalid_export", Text("the file is not what its name says (its SHA-256 differs)"))
                     store.assets.finalize(temp, sha, None, entry["kind"])
                     stored += 1
                 except LibraryError as e:
@@ -484,7 +483,8 @@ class Imports:
             if p["reason"] or broken:
                 results.append({"id": source, "source": source, "ok": False, "changed": False,
                                 "code": "not_importable" if p["reason"] else "file_failed",
-                                "message": p["reason"] or f"A file it uses could not be imported: {broken[0]}"})
+                                "message": p["reason"] or Text("A file it uses could not be imported: {reason}",
+                                                               reason=broken[0])})
             else:
                 items.append((source, p["data"], p["loaded"], frozenset(p["missing"])))
         written, extra = store.import_bundles(items, conflict, {**category, "names": {

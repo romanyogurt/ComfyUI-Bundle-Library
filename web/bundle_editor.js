@@ -11,7 +11,7 @@ import {
 } from "./api.js";
 import { button, el, formatBytes, formatDuration, icon, menu } from "./dom.js";
 import { EditorModel, MEDIA_TYPES, editable } from "./editor_model.js";
-import { msg, t, tn } from "./i18n.js";
+import { msg, said, t, tn } from "./i18n.js";
 import { POOL_SIZE } from "./reconcile.js";
 
 const TYPES = [["text", msg("Text")], ["image", msg("Image")], ["video", msg("Video")], ["audio", msg("Audio")],
@@ -260,7 +260,7 @@ export class BundleEditor {
             notes.push(t("This bundle {reason}. It can be used in workflows, but this version of Bundle Library does not change "
                 + "it, so that nothing is lost. Update the node pack to edit it.", { reason: this.readOnly }));
         }
-        for (const warning of this.saved.warnings ?? []) {
+        for (const warning of said(this.saved, "warnings") ?? []) {
             notes.push(t("{warning} (allowed when it was saved). Fix this before saving.", { warning }));
         }
         if (!notes.length) return null;
@@ -742,7 +742,7 @@ export class BundleEditor {
                 if (saved.placement_error) {
                     // The bundle is made; only putting it in its category failed. Choosing it again retries that.
                     this.modal.status(t("Saved, but not put in its category: {reason} Choose the category again.",
-                        { reason: saved.placement_error }), "error");
+                        { reason: said(saved, "placement_error") }), "error");
                     return false;
                 }
                 return true;
@@ -817,7 +817,7 @@ export class BundleEditor {
                 await this.modal.bundleSaved(copy, { open: true, reveal: true });
                 if (copy.placement_error) {
                     this.modal.status(t("Created '{name}', but not put in the category of the original: {reason} Choose the "
-                        + "category again.", { name: copy.name, reason: copy.placement_error }), "error");
+                        + "category again.", { name: copy.name, reason: said(copy, "placement_error") }), "error");
                 } else {
                     this.modal.status(t("Created '{name}'.", { name: copy.name }));
                 }

@@ -4,7 +4,7 @@
 // (LibraryModal.runBatch); these only draw.
 import { exportURL, thumbnailURL } from "./api.js";
 import { button, el, formatBytes, icon, plural } from "./dom.js";
-import { msg, t, tn } from "./i18n.js";
+import { msg, said, t, tn } from "./i18n.js";
 import { tagCounts } from "./tags.js";
 
 /** The small picture of a bundle, if it has an image or a video. */
@@ -252,8 +252,8 @@ export class BatchResult {
                     const row = el("div", "bl-batch-outcome-row");
                     row.dataset.id = r.id;
                     row.append(el("span", "bl-list-name", names.get(r.id) ?? r.id));
-                    if (r.message && kind !== "changed" && kind !== "unchanged") row.append(el("span", "bl-dim", r.message));
-                    if (r.warning) row.append(el("span", "bl-warn", r.warning)); // done, but not synced to the disk
+                    if (r.message && kind !== "changed" && kind !== "unchanged") row.append(el("span", "bl-dim", said(r, "message")));
+                    if (r.warning) row.append(el("span", "bl-warn", said(r, "warning"))); // done, but not synced to the disk
                     group.append(row);
                 }
                 parts.push(group);
@@ -306,7 +306,7 @@ export class ExportResult extends BatchResult {
             for (const s of answer.skipped) {
                 const row = el("div", "bl-batch-outcome-row");
                 row.dataset.id = s.id;
-                row.append(el("span", "bl-list-name", names.get(s.id) ?? s.id), el("span", "bl-dim", s.reason));
+                row.append(el("span", "bl-list-name", names.get(s.id) ?? s.id), el("span", "bl-dim", said(s, "reason")));
                 group.append(row);
             }
             parts.push(group);

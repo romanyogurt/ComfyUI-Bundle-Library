@@ -60,5 +60,27 @@ export function around(text, place, values = {}) {
     return [before, after];
 }
 
+/**
+ * A message of the server in the current language (Phase 9b): `text` as it
+ * came, `info` its template and values ("<key>_i18n" beside it,
+ * bundle_library/text.py). A value is a name (shown as it is), a word to
+ * translate ({word}), or another message ({template, values}).
+ */
+export function serverText(text, info) {
+    if (!info?.template) return text;
+    const values = {};
+    for (const [name, value] of Object.entries(info.values ?? {})) {
+        values[name] = value && typeof value === "object" ? (value.template ? serverText("", value) : t(value.word ?? "")) : value;
+    }
+    return t(info.template, values);
+}
+
+/** `object[key]`, a message of the server, in the current language; a list of them as a list. */
+export function said(object, key) {
+    const value = object?.[key];
+    const info = object?.[`${key}_i18n`];
+    return Array.isArray(value) ? value.map((text, i) => serverText(text, info?.[i])) : serverText(value, info);
+}
+
 /** Marks text kept to be shown later (in a table): t() shows it then. Lets the dictionary check find it. */
 export const msg = (text) => text;

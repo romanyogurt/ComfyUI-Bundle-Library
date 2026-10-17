@@ -5,7 +5,7 @@ import {
     deleteUnusedFiles, emptyTrash, listTrash, listUnusedFiles, purgeBundle, restoreBundle, thumbnailURL,
 } from "./api.js";
 import { button, el, formatBytes, formatTime, kindName, plural } from "./dom.js";
-import { t, tn } from "./i18n.js";
+import { said, t, tn } from "./i18n.js";
 import { displayNames } from "./names.js";
 
 export class TrashPanel {
@@ -99,7 +99,7 @@ export class TrashPanel {
     async purge(entry, what) {
         const confirmed = await this.modal.confirm(t("Delete {what} for good?", { what }), [
             ...(entry.read_only ? [t("This version of Bundle Library cannot fully use it: it {reason}. "
-                + "If a newer Bundle Library saved it, that version loses it too.", { reason: entry.read_only })] : []),
+                + "If a newer Bundle Library saved it, that version loses it too.", { reason: said(entry, "read_only") })] : []),
             t("It cannot be restored afterwards. The files it used stay in the library until you clean up unused files."),
         ], t("Delete forever"), { danger: true });
         if (!confirmed) return;

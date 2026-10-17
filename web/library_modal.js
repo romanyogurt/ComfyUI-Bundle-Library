@@ -13,7 +13,7 @@ import { ATTENTION, CATEGORY, FAVORITES, UNCATEGORIZED, compactGroups, groupBund
 import { ImportPanel, ImportResult } from "./import_panel.js";
 import { displayNames } from "./names.js";
 import { slotStatuses } from "./reconcile.js";
-import { around, msg, t, tn } from "./i18n.js";
+import { around, msg, said, t, tn } from "./i18n.js";
 import { compareText, sameTag, tagCounts } from "./tags.js";
 import { TagsPanel } from "./tags_panel.js";
 import { TrashPanel } from "./trash_panel.js";
@@ -682,7 +682,7 @@ class LibraryModal {
         const row = el("div", "bl-error-item");
         row.dataset.file = entry.file;
         const text = el("div", "bl-list-text");
-        text.append(el("div", "bl-list-name bl-bad", `⚠ ${entry.file}`), el("div", "bl-list-sub", entry.error));
+        text.append(el("div", "bl-list-name bl-bad", `⚠ ${entry.file}`), el("div", "bl-list-sub", said(entry, "error")));
         row.append(el("div", "bl-list-thumb"), text);
         if (entry.id) {
             const purge = button(t("Delete forever"), "bl-btn danger");
@@ -1269,7 +1269,7 @@ class LibraryModal {
     /** Delete a file this version cannot fully read, once the user confirms. */
     async purgeUnreadable(entry) {
         const confirmed = await this.confirm(t("Delete {file} for good?", { file: entry.file }), [
-            t("This version of Bundle Library cannot fully read it: {reason}.", { reason: entry.error }),
+            t("This version of Bundle Library cannot fully read it: {reason}.", { reason: said(entry, "error") }),
             t("If a newer Bundle Library saved it, that version loses it too. Deleting cannot be undone."),
         ], t("Delete forever"), { danger: true });
         if (!confirmed) return;
@@ -1373,13 +1373,13 @@ class LibraryModal {
             await this.tagsPanel?.refresh();
             const bundles = plural(result.changed, "bundle");
             const kept = result.excluded.length ? t("{bundles} kept '{tag}': {reasons}.", { tag: from,
-                bundles: plural(result.excluded.length, "bundle"), reasons: result.excluded.map((e) => e.reason).join("; ") }) : null;
+                bundles: plural(result.excluded.length, "bundle"), reasons: result.excluded.map((e) => said(e, "reason")).join("; ") }) : null;
             const unknown = result.unknown.length ? tn(result.unknown.length, "{count} file this version cannot read was left out.",
                 "{count} files this version cannot read were left out.") : null;
             const done = !to ? t("Deleted the tag '{tag}' from {bundles}.", { tag: from, bundles })
                 : result.merged ? t("Renamed '{tag}' to '{to}' in {bundles} ({count} merged).", { tag: from, to, bundles, count: result.merged })
                     : t("Renamed '{tag}' to '{to}' in {bundles}.", { tag: from, to, bundles });
-            this.status([done, kept, unknown, result.warning].filter(Boolean).join(" "), kept || result.warning ? "error" : "info");
+            this.status([done, kept, unknown, said(result, "warning")].filter(Boolean).join(" "), kept || result.warning ? "error" : "info");
         });
     }
 
@@ -1486,7 +1486,7 @@ class LibraryModal {
         this.selection = new Set();
         this.showPlaceholder();
         this.renderList();
-        if (answer.warning) this.status(t("Deleted '{name}'. It is in the trash. {warning}", { name: bundle.name, warning: answer.warning }), "error");
+        if (answer.warning) this.status(t("Deleted '{name}'. It is in the trash. {warning}", { name: bundle.name, warning: said(answer, "warning") }), "error");
         else this.status(t("Deleted '{name}'. It is in the trash.", { name: bundle.name }));
     }
 

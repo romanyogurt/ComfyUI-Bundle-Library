@@ -36,6 +36,7 @@ from .model import (
     INT_MAX, INT_MIN, TRASH_ID_RE, UUID_RE, LibraryError, check_bundle_id, check_sha256, empty_value, invalid,
     name_key, normalize_bundle, normalize_tag, tag_name,
 )
+from .text import Text, Word
 
 TEXT_PREVIEW = 200
 MAX_BATCH = 1000  # bundles in one batch request
@@ -43,7 +44,7 @@ BATCH_ACTIONS = ("set_category", "set_favorite", "trash", "add_tags", "remove_ta
 MAX_BATCH_TAGS = 20  # tags in one add_tags or remove_tags request
 SYNC_FOLDERS = os.name != "nt"  # Windows cannot open a folder to sync it
 # Told with a change that is made but may not survive a power loss (_write_json).
-UNSYNCED = "Saved, but the library folder could not be synced to the disk; a power loss could undo it."
+UNSYNCED = Text("Saved, but the library folder could not be synced to the disk; a power loss could undo it.")
 
 
 def _now():
@@ -98,7 +99,7 @@ def _reason(error):
 
 
 def _not_found(bundle_id):
-    return LibraryError(404, "not_found", f"Bundle not found: {bundle_id}")
+    return LibraryError(404, "not_found", Text("Bundle not found: {bundle_id}", bundle_id=bundle_id))
 
 
 def _stamp_time(stamp):
@@ -114,10 +115,10 @@ def _unusable(loaded, name):
     """The error for a bundle file this version cannot use (`name` names it)."""
     if loaded.state == schema.NEWER:
         return LibraryError(409, "newer_version",
-                            f"Bundle file {name} was saved by a newer Bundle Library; update the node to use it.")
+                            Text("Bundle file {name} was saved by a newer Bundle Library; update the node to use it.", name=name))
     if loaded.state == schema.UNSUPPORTED:
-        return LibraryError(409, "unsupported", f"Bundle file {name} cannot be used by this version: {loaded.problem}.")
-    return LibraryError(500, "corrupt_bundle", f"Cannot read bundle file {name}: {loaded.problem}")
+        return LibraryError(409, "unsupported", Text("Bundle file {name} cannot be used by this version: {problem}.", name=name, problem=loaded.problem))
+    return LibraryError(500, "corrupt_bundle", Text("Cannot read bundle file {name}: {problem}", name=name, problem=loaded.problem))
 
 
 class BundleStore:
@@ -167,7 +168,7 @@ class BundleStore:
             raise _unusable(loaded, f"{bundle_id}.json")
         if loaded.deleted:
             raise LibraryError(404, "in_trash",
-                               f"Bundle '{loaded.bundle['name']}' is in the trash; restore it to use it.")
+                               Text("Bundle '{name}' is in the trash; restore it to use it.", name=loaded.bundle['name']))
         return (loaded.bundle, loaded) if details else loaded.bundle
 
     def _scan(self):
@@ -212,11 +213,11 @@ class BundleStore:
                   for name, loaded in self._files() if not loaded.readable]
         for path in self._legacy_trash_files():
             errors.append({"file": f"trash/{path.name}", "id": None, "code": "legacy_trash",
-                           "error": "left in the old trash folder: " + self._legacy_reason(path)})
+                           "error": Text("left in the old trash folder: {reason}", reason=self._legacy_reason(path))})
         org = self._organization()
         if not org.writable:
             errors.append({"file": "organization.json", "id": None, "code": "read_error" if org.io_error else org.state,
-                           "error": f"{org.problem}; categories and favorites cannot be changed"})
+                           "error": Text("{problem}; categories and favorites cannot be changed", problem=org.problem)})
         return errors
 
     def list(self, query="", tag="", sort="name"):
@@ -279,7 +280,7 @@ class BundleStore:
             info = self.assets.info(asset["sha256"])
             if info is None:
                 raise LibraryError(400, "unknown_asset",
-                                   f"Field '{field['name']}': file {asset['sha256'][:12]}… has not been uploaded.")
+                                   Text("Field '{name}': file {value}… has not been uploaded.", name=field['name'], value=asset['sha256'][:12]))
             kind = self.assets.kind(asset["sha256"])
             if kind != field["type"]:
                 raise _wrong_kind(field, kind)
@@ -315,7 +316,8 @@ class BundleStore:
             except LibraryError as e:
                 return {**bundle, "placement_error": e.message}
             except OSError as e:
-                return {**bundle, "placement_error": f"organization.json could not be written: {_reason(e)}"}
+                return {**bundle, "placement_error": Text("organization.json could not be written: {reason}",
+                                                           reason=_reason(e))}
             return bundle
 
     def _writable(self, bundle_id, expected_revision=None):
@@ -327,26 +329,25 @@ class BundleStore:
             raise _unusable(loaded, f"{bundle_id}.json")
         if not loaded.writable:
             raise LibraryError(409, "read_only",
-                               f"Bundle '{loaded.bundle['name']}' {loaded.problem}, so this version does not "
-                               "change it.")
+                               Text("Bundle '{name}' {problem}, so this version does not change it.", name=loaded.bundle['name'], problem=loaded.problem))
         bundle = loaded.bundle
         if expected_revision is not None:
             if isinstance(expected_revision, bool) or not isinstance(expected_revision, int):
-                raise LibraryError(400, "invalid", "expected_revision (an integer) is required.")
+                raise LibraryError(400, "invalid", Text("expected_revision (an integer) is required."))
             if bundle["revision"] != expected_revision:
                 raise LibraryError(409, "revision_conflict",
-                                   f"The bundle has changed since it was loaded (now revision {bundle['revision']}).",
+                                   Text("The bundle has changed since it was loaded (now revision {revision}).", revision=bundle['revision']),
                                    current_revision=bundle["revision"])
         return bundle
 
     def _in_use(self, bundle):
         if bundle["deleted_at"] is not None:
-            raise LibraryError(409, "in_trash", f"Bundle '{bundle['name']}' is in the trash; restore it first.")
+            raise LibraryError(409, "in_trash", Text("Bundle '{name}' is in the trash; restore it first.", name=bundle['name']))
         return bundle
 
     def update(self, bundle_id, data, expected_revision):
         if expected_revision is None:
-            raise LibraryError(400, "invalid", "expected_revision (an integer) is required.")
+            raise LibraryError(400, "invalid", Text("expected_revision (an integer) is required."))
         editable = normalize_bundle(data)
         with self._lock:
             current = self._in_use(self._writable(bundle_id, expected_revision))
@@ -357,7 +358,7 @@ class BundleStore:
         """Move the bundle to the trash: the same file, with the time it was
         deleted. The result is the batch's for one bundle (_trash_one)."""
         if expected_revision is None:
-            raise LibraryError(400, "invalid", "expected_revision (an integer) is required.")
+            raise LibraryError(400, "invalid", Text("expected_revision (an integer) is required."))
         with self._lock:
             return self._trash_one(bundle_id, expected_revision)
 
@@ -382,7 +383,7 @@ class BundleStore:
     def duplicate(self, bundle_id, mode="values", name=None):
         """A new bundle with the same fields; mode "structure" leaves the values empty."""
         if mode not in ("values", "structure"):
-            raise LibraryError(400, "invalid", "mode must be 'values' or 'structure'.")
+            raise LibraryError(400, "invalid", Text("mode must be 'values' or 'structure'."))
         with self._lock:
             source = self._in_use(self._writable(bundle_id))
             fields = source["fields"] if mode == "values" else [empty_value(f) for f in source["fields"]]
@@ -412,7 +413,7 @@ class BundleStore:
         with self._lock:
             bundle = self._writable(bundle_id)
             if bundle["deleted_at"] is None:
-                raise LibraryError(409, "not_in_trash", f"Bundle '{bundle['name']}' is not in the trash.")
+                raise LibraryError(409, "not_in_trash", Text("Bundle '{name}' is not in the trash.", name=bundle['name']))
             return self._save({**bundle, "deleted_at": None, "revision": bundle["revision"] + 1})
 
     def purge(self, bundle_id, unreadable=False, expected_revision=None):
@@ -429,12 +430,10 @@ class BundleStore:
                 self._check_trashed(loaded, expected_revision)
                 if not loaded.writable and not unreadable:
                     raise LibraryError(409, "unreadable_file",
-                                       f"Bundle '{loaded.bundle['name']}' {loaded.problem}; delete it for good only "
-                                       "if you are sure.")
+                                       Text("Bundle '{name}' {problem}; delete it for good only if you are sure.", name=loaded.bundle['name'], problem=loaded.problem))
             elif not unreadable:
                 raise LibraryError(409, "unreadable_file",
-                                   f"This version cannot fully read {bundle_id}.json ({loaded.problem}); "
-                                   "delete it for good only if you are sure.")
+                                   Text("This version cannot fully read {bundle_id}.json ({problem}); delete it for good only if you are sure.", bundle_id=bundle_id, problem=loaded.problem))
             self._path(bundle_id).unlink()
             self._cache.pop(f"{bundle_id}.json", None)
             self._forget([bundle_id])
@@ -443,11 +442,10 @@ class BundleStore:
     def _check_trashed(loaded, expected_revision):
         bundle = loaded.bundle
         if not loaded.deleted:
-            raise LibraryError(409, "not_in_trash", f"Bundle '{bundle['name']}' is not in the trash.")
+            raise LibraryError(409, "not_in_trash", Text("Bundle '{name}' is not in the trash.", name=bundle['name']))
         if expected_revision is not None and bundle["revision"] != expected_revision:
             raise LibraryError(409, "revision_conflict",
-                               f"Bundle '{bundle['name']}' changed since the trash was shown "
-                               f"(now revision {bundle['revision']}).", current_revision=bundle["revision"])
+                               Text("Bundle '{name}' changed since the trash was shown (now revision {revision}).", name=bundle['name'], revision=bundle['revision']), current_revision=bundle["revision"])
 
     def empty_trash(self, expected_revisions):
         """Delete for good the bundles the user saw in the trash (id -> the
@@ -455,11 +453,11 @@ class BundleStore:
         "results"}, a result per bundle as in a batch. Bundles put in the trash
         since are not touched, nor are files this version cannot fully read."""
         if not isinstance(expected_revisions, dict):
-            raise invalid("expected_revisions must map each bundle id shown in the trash to its revision.")
+            raise invalid(Text("expected_revisions must map each bundle id shown in the trash to its revision."))
         for bundle_id, revision in expected_revisions.items():
             check_bundle_id(bundle_id)
             if isinstance(revision, bool) or not isinstance(revision, int):
-                raise invalid(f"expected_revisions: the revision of {bundle_id} must be an integer.")
+                raise invalid(Text("expected_revisions: the revision of {bundle_id} must be an integer.", bundle_id=bundle_id))
         results = []
         with self._lock:
             for bundle_id, revision in expected_revisions.items():
@@ -469,7 +467,7 @@ class BundleStore:
                         raise _not_found(bundle_id)
                     if not loaded.writable:  # whether it is in the trash, or what it holds, is not fully known
                         raise LibraryError(409, "unreadable_file",
-                                           f"This version cannot fully read {bundle_id}.json; it is left alone.")
+                                           Text("This version cannot fully read {bundle_id}.json; it is left alone.", bundle_id=bundle_id))
                     self._check_trashed(loaded, revision)
                     self._path(bundle_id).unlink()
                     self._cache.pop(f"{bundle_id}.json", None)
@@ -522,8 +520,7 @@ class BundleStore:
 
     def _organization_unwritable(self, org):
         return LibraryError(409, "organization_unwritable",
-                            f"organization.json {org.problem}; this version does not change categories or "
-                            "favorites.", state=org.state)
+                            Text("organization.json {problem}; this version does not change categories or favorites.", problem=org.problem), state=org.state)
 
     def _change_organization(self, change):
         """Apply `change(org)` to a copy of the organization and save it, dropping
@@ -563,11 +560,11 @@ class BundleStore:
 
     def create_category(self, name, parent=None):
         if parent is not None:
-            raise LibraryError(400, "nesting_not_supported", "Categories cannot be put in other categories yet.")
+            raise LibraryError(400, "nesting_not_supported", Text("Categories cannot be put in other categories yet."))
 
         def change(org):
             if len(org.categories) >= organization.MAX_CATEGORIES:
-                raise invalid(f"A library has {organization.MAX_CATEGORIES} categories at most.")
+                raise invalid(Text("A library has {MAX_CATEGORIES} categories at most.", MAX_CATEGORIES=organization.MAX_CATEGORIES))
             category = {"id": str(uuid.uuid4()), "name": organization.category_name(name, org), "parent": None}
             org.categories.append(category)
             return category
@@ -581,7 +578,7 @@ class BundleStore:
         def change(org):
             category = org.category(category_id)
             if category is None:
-                raise LibraryError(404, "not_found", f"Category not found: {category_id}")
+                raise LibraryError(404, "not_found", Text("Category not found: {category_id}", category_id=category_id))
             category["name"] = organization.category_name(name, org, own_id=category_id)
             return dict(category)
 
@@ -594,7 +591,7 @@ class BundleStore:
 
         def change(org):
             if org.category(category_id) is None:
-                raise LibraryError(404, "not_found", f"Category not found: {category_id}")
+                raise LibraryError(404, "not_found", Text("Category not found: {category_id}", category_id=category_id))
             org.categories = [c for c in org.categories if c["id"] != category_id]
             moved = [b for b, c in org.placement.items() if c == category_id]
             for bundle_id in moved:
@@ -617,7 +614,7 @@ class BundleStore:
     def set_favorite(self, bundle_id, favorite):
         check_bundle_id(bundle_id)
         if not isinstance(favorite, bool):
-            raise invalid("favorite must be true or false.")
+            raise invalid(Text("favorite must be true or false."))
         _single(self._star_bundles(favorite, [bundle_id]))
         return favorite
 
@@ -644,22 +641,22 @@ class BundleStore:
         lock, each with its expected revision: a failure stops that bundle only.
         """
         if not isinstance(data, dict):
-            raise invalid("A batch is a JSON object.")
+            raise invalid(Text("A batch is a JSON object."))
         action = data.get("action")
         if action not in BATCH_ACTIONS:
-            raise invalid(f"Unknown batch action: {action!r}.")
+            raise invalid(Text("Unknown batch action: {action}.", action=repr(action)))
         ids = data.get("ids")
         if not isinstance(ids, list) or not ids:
-            raise invalid("ids must be a non-empty list of bundle ids.")
+            raise invalid(Text("ids must be a non-empty list of bundle ids."))
         ids = list(dict.fromkeys(check_bundle_id(bundle_id) for bundle_id in ids))
         if len(ids) > MAX_BATCH:
-            raise invalid(f"A batch takes {MAX_BATCH} bundles at most.")
+            raise invalid(Text("A batch takes {MAX_BATCH} bundles at most.", MAX_BATCH=MAX_BATCH))
         if action == "trash":
             results = self._batch_trash(ids, data.get("expected_revisions"))
         elif action in ("add_tags", "remove_tags"):
             given = data.get("tags")
             if not isinstance(given, list) or not given or len(given) > MAX_BATCH_TAGS:
-                raise invalid(f"tags must be a list of 1 to {MAX_BATCH_TAGS} tags.")
+                raise invalid(Text("tags must be a list of 1 to {MAX_BATCH_TAGS} tags.", MAX_BATCH_TAGS=MAX_BATCH_TAGS))
             if action == "add_tags":  # a new tag follows the rules of saving
                 new = [normalize_tag(tag) for tag in given]
                 results = self._batch_tags(ids, lambda tags: tag_rules.added(tags, new))
@@ -668,7 +665,7 @@ class BundleStore:
                 results = self._batch_tags(ids, lambda tags: tag_rules.removed(tags, gone))
         elif action == "set_category":
             if "category" not in data:  # null takes the bundles out of their categories; absent is a mistake
-                raise invalid("category is required: a category id, or null for no category.")
+                raise invalid(Text("category is required: a category id, or null for no category."))
             category = data["category"]
             if category is not None:
                 _check_category_id(category)
@@ -676,7 +673,7 @@ class BundleStore:
         else:
             favorite = data.get("favorite")
             if not isinstance(favorite, bool):
-                raise invalid("favorite must be true or false.")
+                raise invalid(Text("favorite must be true or false."))
             results = self._star_bundles(favorite, ids)
         return {"action": action, "results": results,
                 "changed": sum(1 for r in results if r["ok"] and r["changed"]),
@@ -691,7 +688,7 @@ class BundleStore:
             if not org.writable:
                 raise self._organization_unwritable(org)
             if category is not None and org.category(category) is None:
-                raise LibraryError(404, "not_found", f"Category not found: {category}")
+                raise LibraryError(404, "not_found", Text("Category not found: {category}", category=category))
             results = {}
             to_change = []
             for bundle_id in ids:
@@ -706,7 +703,7 @@ class BundleStore:
                     self._change_organization(lambda changing: [apply(changing, b) for b in to_change])
                 except OSError as e:  # nothing was written: the old file is in place
                     for bundle_id in to_change:
-                        results[bundle_id] = _io_failure(bundle_id, e, "organization.json could not be written")
+                        results[bundle_id] = _io_failure(bundle_id, e, organization_file=True)
                 else:
                     for bundle_id in to_change:
                         results[bundle_id] = self._written({"id": bundle_id, "ok": True, "changed": True})
@@ -729,8 +726,7 @@ class BundleStore:
                         continue
                     if len(tags) > MAX_TAGS and len(tags) > len(current["tags"]):
                         raise LibraryError(409, "too_many_tags",
-                                           f"Bundle '{current['name']}' would have {len(tags)} tags; a bundle has "
-                                           f"{MAX_TAGS} at most.")
+                                           Text("Bundle '{name}' would have {count} tags; a bundle has {MAX_TAGS} at most.", name=current['name'], count=len(tags), MAX_TAGS=MAX_TAGS))
                     saved = self._save({**current, "tags": tags, "revision": current["revision"] + 1,
                                         "updated_at": _now()})
                     results.append(self._written({"id": bundle_id, "ok": True, "changed": True,
@@ -743,11 +739,11 @@ class BundleStore:
 
     def _batch_trash(self, ids, expected_revisions):
         if not isinstance(expected_revisions, dict):
-            raise invalid("expected_revisions must map each bundle id to the revision it was seen at.")
+            raise invalid(Text("expected_revisions must map each bundle id to the revision it was seen at."))
         for bundle_id in ids:
             revision = expected_revisions.get(bundle_id)
             if isinstance(revision, bool) or not isinstance(revision, int):
-                raise invalid(f"expected_revisions has no revision for {bundle_id}.")
+                raise invalid(Text("expected_revisions has no revision for {bundle_id}.", bundle_id=bundle_id))
         results = []
         with self._lock:
             for bundle_id in ids:
@@ -779,7 +775,7 @@ class BundleStore:
                 try:
                     data = path.read_bytes()
                 except OSError as e:
-                    found.append((bundle_id, b"", schema.Loaded(schema.CORRUPT, problem=f"could not be read ({_reason(e)})",
+                    found.append((bundle_id, b"", schema.Loaded(schema.CORRUPT, problem=Text("could not be read ({reason})", reason=_reason(e)),
                                                                io_error=True), None))
                     continue
                 found.append((bundle_id, data, schema.read_checked(data, bundle_id, path.name),
@@ -820,7 +816,7 @@ class BundleStore:
                 except LibraryError as e:
                     extra["placement_error"] = e.message
                 except OSError as e:
-                    extra["placement_error"] = f"organization.json could not be written: {_reason(e)}"
+                    extra["placement_error"] = Text("organization.json could not be written: {reason}", reason=_reason(e))
         return results, extra
 
     def _import_one(self, source, data, loaded, conflict, missing_ok):
@@ -859,8 +855,7 @@ class BundleStore:
             asset = field.get("asset")
             if field["type"] in MEDIA_TYPES and asset is not None and asset["sha256"] not in missing_ok \
                     and self.assets.kind(asset["sha256"]) is None:
-                raise LibraryError(409, "file_missing", f"Field '{field['name']}': its file is not in the library. "
-                                   "The library changed while the import ran; import the file again.")
+                raise LibraryError(409, "file_missing", Text("Field '{name}': its file is not in the library. The library changed while the import ran; import the file again.", name=field['name']))
 
     # -- tags across the library -------------------------------------------------
 
@@ -900,7 +895,7 @@ class BundleStore:
         was (merged). The result is as in delete_tag(), with "merged"."""
         old, new = tag_name(old), normalize_tag(new)
         if old == new:
-            raise invalid("The new name is the same as the old one.")
+            raise invalid(Text("The new name is the same as the old one."))
         merges = tag_rules.key(new) != tag_rules.key(old)
         return self._retag_all(old, lambda tags: tag_rules.renamed(tags, old, new),
                                merged=lambda tags: merges and tag_rules.has(tags, new))
@@ -940,7 +935,8 @@ class BundleStore:
                     self._save({**bundle, "tags": tags, "revision": bundle["revision"] + 1, "updated_at": _now()})
                 except OSError as e:
                     excluded.append({"id": bundle["id"], "name": bundle["name"], "code": "io_error",
-                                     "reason": f"The bundle file could not be written: {_reason(e)}", "retry": True})
+                                     "reason": Text("The bundle file could not be written: {reason}", reason=_reason(e)),
+                                     "retry": True})
                     continue
                 unsynced = unsynced or not self._synced
                 changed += 1
@@ -964,13 +960,13 @@ class BundleStore:
     def _legacy_reason(self, path):
         match = TRASH_ID_RE.match(path.stem) if path.suffix == ".json" else None
         if not match:
-            return "not a trash file"
+            return Text("not a trash file")
         if self._path(match.group(1)).exists():
-            return "a bundle with its id exists"
+            return Text("a bundle with its id exists")
         loaded = schema.read_file(path, match.group(1))
         if not loaded.writable:
             return loaded.problem
-        return "an older copy of a bundle deleted again later"
+        return Text("an older copy of a bundle deleted again later")
 
     def _move_legacy_trash(self):
         """Move the old trash folder's files into bundles/ as deleted bundles of
@@ -1016,8 +1012,7 @@ class BundleStore:
                 unclear.append(name)
         if unclear:
             raise LibraryError(409, "unreadable_bundles",
-                               "Unused files cannot be told apart while these bundle files cannot be fully read: "
-                               f"{', '.join(unclear)}.", files=unclear)
+                               Text("Unused files cannot be told apart while these bundle files cannot be fully read: {list}.", list=', '.join(unclear)), files=unclear)
         return used
 
     def unused_assets(self):
@@ -1051,7 +1046,7 @@ class BundleStore:
         are still unused and past the grace time, with their thumbnails; also
         thumbnails whose file is gone. Files in use again are kept."""
         if not isinstance(shas, list):
-            raise invalid("sha256 must be a list of file ids.")
+            raise invalid(Text("sha256 must be a list of file ids."))
         for sha256 in shas:
             check_sha256(sha256)
         with self._lock:  # no bundle is saved meanwhile, so no file becomes used unseen
@@ -1074,10 +1069,11 @@ def _failure(bundle_id, error):
             **error.details}
 
 
-def _io_failure(bundle_id, error, what="The bundle file could not be written"):
+def _io_failure(bundle_id, error, organization_file=False):
     """A bundle's result for a failed write: nothing was written, and trying again may work."""
-    return {"id": bundle_id, "ok": False, "changed": False, "code": "io_error",
-            "message": f"{what}: {_reason(error)}", "retry": True}
+    message = (Text("organization.json could not be written: {reason}", reason=_reason(error)) if organization_file
+               else Text("The bundle file could not be written: {reason}", reason=_reason(error)))
+    return {"id": bundle_id, "ok": False, "changed": False, "code": "io_error", "message": message, "retry": True}
 
 
 # The HTTP status of a failure a single-bundle command reports from a batch result.
@@ -1104,8 +1100,7 @@ def _place_imported(org, results, place):
     """Put imported bundles in categories (`place`, see import_bundles); the categories made, as {"id", "name"}."""
     if place["mode"] == "one" and not any(c["id"] == place["id"] for c in org.categories):
         # There when the import began, deleted since (R22-03): what was written stays, and is not placed.
-        raise LibraryError(404, "not_found", "The category chosen was deleted while the import ran, "
-                           "so the bundles were not put in it.")
+        raise LibraryError(404, "not_found", Text("The category chosen was deleted while the import ran, so the bundles were not put in it."))
     created = []
     by_name = {c["name"].casefold(): c["id"] for c in org.categories}
     for result in results:
@@ -1136,7 +1131,7 @@ def _star(org, bundle_id, favorite):
 
 def _check_category_id(value):
     if not isinstance(value, str) or not UUID_RE.match(value):
-        raise LibraryError(400, "invalid_id", f"Invalid category id: {value!r}")
+        raise LibraryError(400, "invalid_id", Text("Invalid category id: {value}", value=repr(value)))
     return value
 
 
@@ -1162,13 +1157,17 @@ PREVIEW_KEYS = {"image": ("sha256", "width", "height"), "video": ("sha256", "wid
                 "audio": ("sha256", "duration")}
 
 
+# A file's kind with its article, as a word a page translates (text.py).
+_ARTICLED = {"image": Word("an image"), "video": Word("a video"), "audio": Word("an audio")}
+
+
 def _article(kind):
-    return f"an {kind}" if kind in ("image", "audio") else f"a {kind}"
+    return _ARTICLED.get(kind) or Word(f"a {kind}")
 
 
 def _wrong_kind(field, kind):
-    return LibraryError(400, "wrong_kind", f"Field '{field['name']}': the file is {_article(kind)}, "
-                        f"not {_article(field['type'])}.")
+    return LibraryError(400, "wrong_kind", Text("Field '{name}': the file is {kind}, not {type}.", name=field['name'], kind=_article(kind),
+                 type=_article(field['type'])))
 
 
 def kind_problem(fields, kind_of):

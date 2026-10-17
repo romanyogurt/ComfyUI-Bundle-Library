@@ -5,6 +5,7 @@ import math
 import re
 import unicodedata
 
+from .text import Text, Word
 from .constants import (
     AUDIO_EXTENSIONS, FIELD_TYPES, IMAGE_FORMATS, MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_NOTE,
     MAX_ORIGINAL_NAME, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES, MEDIA_TYPES, VIDEO_EXTENSIONS,
@@ -44,13 +45,13 @@ def invalid(message, **details):
 
 def check_bundle_id(value):
     if not isinstance(value, str) or not UUID_RE.match(value):
-        raise LibraryError(400, "invalid_id", f"Invalid bundle id: {value!r}")
+        raise LibraryError(400, "invalid_id", Text("Invalid bundle id: {value}", value=repr(value)))
     return value
 
 
 def check_sha256(value):
     if not isinstance(value, str) or not SHA256_RE.match(value):
-        raise LibraryError(400, "invalid_id", f"Invalid asset id: {value!r}")
+        raise LibraryError(400, "invalid_id", Text("Invalid asset id: {value}", value=repr(value)))
     return value
 
 
@@ -114,58 +115,58 @@ class _Rules:
 
 def _name(value, label, limit, rules):
     if not isinstance(value, str):
-        raise invalid(f"{label}: must be a string.")
+        raise invalid(Text("{label}: must be a string.", label=label))
     text = unicodedata.normalize("NFC", value.strip())
     if not text:
-        raise invalid(f"{label}: must not be empty.")
+        raise invalid(Text("{label}: must not be empty.", label=label))
     if any(unicodedata.category(c) == "Cc" or c in _FORBIDDEN_IN_NAMES for c in text):
-        raise invalid(f"{label}: line breaks and control characters are not allowed.")
-    rules.limit(len(text) <= limit, f"{label}: at most {limit} characters.")
+        raise invalid(Text("{label}: line breaks and control characters are not allowed.", label=label))
+    rules.limit(len(text) <= limit, Text("{label}: at most {limit} characters.", label=label, limit=limit))
     return text
 
 
 def _tags(value, rules):
     if not isinstance(value, list):
-        raise invalid("Tags: must be an array of strings.")
+        raise invalid(Text("Tags: must be an array of strings."))
     tags, seen = [], set()
     for item in value:
-        tag = _name(item, "Tag", MAX_TAG_LENGTH, rules)
+        tag = _name(item, Word("Tag"), MAX_TAG_LENGTH, rules)
         if tag.casefold() not in seen:
             seen.add(tag.casefold())
             tags.append(tag)
-    rules.limit(len(tags) <= MAX_TAGS, f"Tags: at most {MAX_TAGS}.")
+    rules.limit(len(tags) <= MAX_TAGS, Text("Tags: at most {MAX_TAGS}.", MAX_TAGS=MAX_TAGS))
     return tags
 
 
 def _note(value, rules):
     if not isinstance(value, str):
-        raise invalid("Note: must be a string.")
-    rules.limit(len(value) <= MAX_NOTE, f"Note: at most {MAX_NOTE} characters.")
+        raise invalid(Text("Note: must be a string."))
+    rules.limit(len(value) <= MAX_NOTE, Text("Note: at most {MAX_NOTE} characters.", MAX_NOTE=MAX_NOTE))
     return value
 
 
 def _value(field_type, value, label, rules):
     if field_type == "text":
         if not isinstance(value, str):
-            raise invalid(f"{label}: a text value must be a string.")
+            raise invalid(Text("{label}: a text value must be a string.", label=label))
         rules.limit(len(value.encode("utf-8")) <= MAX_TEXT_BYTES,
-                    f"{label}: text is limited to {MAX_TEXT_BYTES // (1024 * 1024)} MB.")
+                    Text("{label}: text is limited to {n} MB.", label=label, n=MAX_TEXT_BYTES // (1024 * 1024)))
         return value
     if field_type == "boolean":
         if not isinstance(value, bool):
-            raise invalid(f"{label}: must be true or false.")
+            raise invalid(Text("{label}: must be true or false.", label=label))
         return value
     if field_type == "int":
         if isinstance(value, bool) or not isinstance(value, int):
-            raise invalid(f"{label}: must be an integer.")
-        rules.limit(INT_MIN <= value <= INT_MAX, f"{label}: must be between {INT_MIN:,} and {INT_MAX:,}.")
+            raise invalid(Text("{label}: must be an integer.", label=label))
+        rules.limit(INT_MIN <= value <= INT_MAX, Text("{label}: must be between {INT_MIN} and {INT_MAX}.", label=label, INT_MIN=format(INT_MIN, ','), INT_MAX=format(INT_MAX, ',')))
         return value
     # float
     if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise invalid(f"{label}: must be a number.")
+        raise invalid(Text("{label}: must be a number.", label=label))
     number = _finite(value)
     if number is None:
-        raise invalid(f"{label}: must be a finite number.")
+        raise invalid(Text("{label}: must be a finite number.", label=label))
     return number
 
 
@@ -176,15 +177,15 @@ def _asset(value, label):
     if value is None:
         return None
     if not isinstance(value, dict):
-        raise invalid(f"{label}: asset must be an object or null.")
+        raise invalid(Text("{label}: asset must be an object or null.", label=label))
     sha = value.get("sha256")
     if not isinstance(sha, str) or not SHA256_RE.match(sha):
-        raise invalid(f"{label}: asset.sha256 is not a SHA-256 digest.")
+        raise invalid(Text("{label}: asset.sha256 is not a SHA-256 digest.", label=label))
     asset = {"sha256": sha}
     original = value.get("original_name")
     if original is not None:
         if not isinstance(original, str):
-            raise invalid(f"{label}: asset.original_name must be a string.")
+            raise invalid(Text("{label}: asset.original_name must be a string.", label=label))
         asset["original_name"] = clean_original_name(original)
     ext = value.get("ext")
     if isinstance(ext, str) and ext in ASSET_EXTENSIONS:  # a list or object is not hashable
@@ -209,38 +210,37 @@ def _asset(value, label):
 
 def _field(value, index, rules):
     if not isinstance(value, dict):
-        raise invalid(f"Field {index + 1}: must be an object.")
-    name = _name(value.get("name"), f"Field {index + 1} name", MAX_FIELD_NAME, rules)
+        raise invalid(Text("Field {n}: must be an object.", n=index + 1))
+    name = _name(value.get("name"), Text("Field {n} name", n=index + 1), MAX_FIELD_NAME, rules)
     if name.startswith("@"):
-        raise invalid(f"Field '{name}': names starting with '@' are reserved.")
+        raise invalid(Text("Field '{name}': names starting with '@' are reserved.", name=name))
     field_type = value.get("type")
     if field_type not in FIELD_TYPES:
         raise LibraryError(400, "unsupported_type",
-                           f"Field '{name}': unsupported type {field_type!r}. "
-                           f"Supported types: {', '.join(FIELD_TYPES)}.")
-    label = f"Field '{name}'"
+                           Text("Field '{name}': unsupported type {field_type}. Supported types: {list}.", name=name, field_type=repr(field_type), list=', '.join(FIELD_TYPES)))
+    label = Text("Field '{name}'", name=name)
     if field_type in MEDIA_TYPES:
         return {"name": name, "type": field_type, "asset": _asset(value.get("asset"), label)}
     if "value" not in value:
-        raise invalid(f"{label}: value is missing.")
+        raise invalid(Text("{label}: value is missing.", label=label))
     return {"name": name, "type": field_type, "value": _value(field_type, value["value"], label, rules)}
 
 
 def _bundle(data, rules):
     if not isinstance(data, dict):
-        raise invalid("A bundle must be a JSON object.")
+        raise invalid(Text("A bundle must be a JSON object."))
     fields_value = data.get("fields", [])
     if not isinstance(fields_value, list):
-        raise invalid("Fields: must be an array.")
-    rules.limit(len(fields_value) <= MAX_FIELDS, f"Fields: at most {MAX_FIELDS}.")
+        raise invalid(Text("Fields: must be an array."))
+    rules.limit(len(fields_value) <= MAX_FIELDS, Text("Fields: at most {MAX_FIELDS}.", MAX_FIELDS=MAX_FIELDS))
     fields = [_field(f, i, rules) for i, f in enumerate(fields_value)]
     seen = set()
     for field in fields:
         if field["name"] in seen:  # the loader finds fields by name
-            raise invalid(f"Duplicate field name: '{field['name']}'")
+            raise invalid(Text("Duplicate field name: '{name}'", name=field['name']))
         seen.add(field["name"])
     return {
-        "name": _name(data.get("name"), "Bundle name", MAX_BUNDLE_NAME, rules),
+        "name": _name(data.get("name"), Word("Bundle name"), MAX_BUNDLE_NAME, rules),
         "tags": _tags(data.get("tags", []), rules),
         "note": _note(data.get("note", ""), rules),
         "fields": fields,
@@ -250,13 +250,13 @@ def _bundle(data, rules):
 def normalize_tag(value):
     """A tag to put on bundles, checked against the rules of saving: a string,
     not empty, no line breaks or control characters, at most MAX_TAG_LENGTH."""
-    return _name(value, "Tag", MAX_TAG_LENGTH, _Rules(strict=True))
+    return _name(value, Word("Tag"), MAX_TAG_LENGTH, _Rules(strict=True))
 
 
 def tag_name(value):
     """A tag to look for (to rename or remove it): the same checks without the
     length limit, so a tag saved under looser rules can still be named."""
-    return _name(value, "Tag", MAX_TAG_LENGTH, _Rules(strict=False))
+    return _name(value, Word("Tag"), MAX_TAG_LENGTH, _Rules(strict=False))
 
 
 def normalize_bundle(data):

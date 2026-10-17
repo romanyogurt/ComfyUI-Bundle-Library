@@ -465,6 +465,25 @@ assets/<SHA-256>.<ext>    번들들이 쓰는 파일의 원본 (썸네일은 넣
   있던 태그 필터는 새 이름을 따른다. 다른 탭에서 바뀐 번들은, 편집기에 변경이 없으면 목록을 다시 읽을 때 새
   내용으로 바뀌고, 변경이 있으면 저장할 때 revision 충돌로 묻는다(덮어쓰면 그 초안의 태그가 돌아온다).
 
+### 메시지의 번역
+
+(0.0.25부터) 서버가 보내는 문장(오류의 `message`, 일괄·내보내기·가져오기 결과의 번들별 `message`와 `reason`,
+`warning`, `placement_error`, 번들의 `read_only`와 `warnings`, 목록 `errors`의 `error`, 태그 작업의 이유)은
+영어 문장 그대로이고, 그 곁에 `<키>_i18n`으로 그 문장의 틀과 값을 함께 준다. 문장의 목록(`warnings`) 곁에는 같은
+순서의 목록을 준다(틀이 없는 항목은 `null`).
+
+```json
+{"error": {"code": "wrong_kind", "message": "Field 'ref': the file is an audio, not an image.",
+           "message_i18n": {"template": "Field '{name}': the file is {kind}, not {type}.",
+                            "values": {"name": "ref", "kind": {"word": "an audio"}, "type": {"word": "an image"}}}}}
+```
+
+- `template`은 영어 문장의 틀이고 `{이름}` 자리만 있다. 화면은 이것을 키로 제 언어의 사전(`web/locales/ko.js`)에서
+  찾고, 없으면 영어 그대로 보인다.
+- 값은 이름이나 수(그대로 보인다), `{"word"}`(번역할 낱말: "an image" 같은 것), 또는 다른 틀
+  `{"template", "values"}`다. 사용자의 이름(번들·필드·카테고리·태그·파일 이름)은 번역하지 않는다.
+- 시스템이 주는 글(디스크 오류의 이유 등)은 값으로 들어가 영어로 남는다.
+
 ### 오류
 
 오류 본문은 `{"error": {"code", "message", ...}}`이다. `message`는 화면에 그대로 보여 줄 수

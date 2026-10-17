@@ -170,9 +170,31 @@ const MODULE = "/extensions/ComfyUI-Bundle-Library";
     await korean("the delete question", ".bl-overlay .bl-layer", [`'${PREFIX} B' 번들을 지울까요?`, "삭제", "취소"]);
     await button("취소", page.locator(".bl-overlay .bl-layer")).click();
 
+    // ---- what the server says, in Korean too (Phase 9b) -------------------------------------------------
+    await page.locator(".bl-overlay .bl-new-category").click();
+    await until(() => document.querySelector(".bl-overlay .bl-layer .bl-ask-input"));
+    await page.locator(".bl-overlay .bl-layer .bl-ask-input").fill(`${PREFIX} shelf`);
+    await button("만들기", page.locator(".bl-overlay .bl-layer")).click();
+    await until(() => document.querySelector(".bl-overlay .bl-layer .bl-error")?.textContent);
+    const refused = await ev(() => document.querySelector(".bl-overlay .bl-layer .bl-error").textContent);
+    check("a refusal of the server is said in Korean, the name in it as it is",
+        refused === `'${PREFIX} shelf' 카테고리가 이미 있습니다.`, refused);
+    await page.keyboard.press("Escape");
+    await row(ids.A).click();
+    await row(ids.B).click({ modifiers: ["Control"] });
+    await until(() => document.querySelectorAll(".bl-overlay .bl-batch-name").length === 2);
+    const b = await api("GET", `/bundles/${ids.B}`);
+    await api("DELETE", `/bundles/${ids.B}?expected_revision=${b.revision}`); // as from another tab
+    await Promise.all([page.waitForEvent("download", { timeout: 20000 }), button("ZIP으로 내보내기").click()]);
+    await until(() => document.querySelector(".bl-overlay .bl-batch-result:not(.waiting) [data-outcome='skipped']"));
+    const skipped = await ev(() => document.querySelector(".bl-overlay [data-outcome='skipped'] .bl-dim")?.textContent);
+    check("a bundle's reason from the server is said in Korean", skipped === "휴지통에 있습니다.", skipped);
+    await korean("the export's result with a bundle left out", ".bl-overlay", ["빠짐 (1)"]);
+    await button("확인").click();
+
     await page.keyboard.press("Escape");
     await ev(() => window.__bl.app.graph.clear());
-    await finish({ expectRemoved: 2 });
+    await finish({ expectRemoved: 1 }); // B is in the trash: its entry is removed there
 })().catch((e) => {
     console.error(e);
     process.exit(1);

@@ -76,6 +76,22 @@ class RoutesTest(AioHTTPTestCase):
         await self.body(await self.client.post(P + "/bundles", json=data, headers={
             **WRITE, "Origin": same_origin, "Sec-Fetch-Site": "same-origin"}), 201)
 
+    async def test_a_message_comes_with_its_template_for_the_page_to_translate(self):
+        # Phase 9b: the English as before, and beside it what it was made of (bundle_library/text.py).
+        await self.body(await self.client.post(P + "/categories", json={"name": "Heroes"}, headers=WRITE), 201)
+        error = await self.error(await self.client.post(P + "/categories", json={"name": "heroes"}, headers=WRITE),
+                                 409, "category_conflict")
+        self.assertEqual(error["message_i18n"], {"template": "A category named '{name}' already exists.",
+                                                 "values": {"name": "Heroes"}})
+        bundle = await self.body(await self.client.post(P + "/bundles", json=await self.bundle_data(), headers=WRITE), 201)
+        answer = await self.body(await self.client.post(P + "/bundles/batch", json={
+            "ids": [bundle["id"]], "action": "trash", "expected_revisions": {bundle["id"]: bundle["revision"] + 1}},
+            headers=WRITE), 200)
+        result = answer["results"][0]
+        self.assertEqual((result["code"], result["message_i18n"]["template"]),
+                         ("revision_conflict", "The bundle has changed since it was loaded (now revision {revision})."),
+                         result)
+
     async def test_every_write_route_is_guarded(self):
         bundle = await self.body(await self.client.post(P + "/bundles", json=await self.bundle_data(), headers=WRITE), 201)
         path = f"{P}/bundles/{bundle['id']}"

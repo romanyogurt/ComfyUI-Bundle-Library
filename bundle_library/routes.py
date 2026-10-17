@@ -18,6 +18,7 @@ from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
 from .exchange import MAX_IMPORT_BYTES, Exports, Imports, file_name
 from .model import LibraryError, check_bundle_id, check_sha256, lone_surrogates
 from .store import present
+from .text import Text, Word, said
 
 CHUNK = 64 * 1024
 IMMUTABLE = {"Cache-Control": "public, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"}
@@ -42,9 +43,13 @@ def write_guard_error(request):
     return None
 
 
+def _json(data, **kwargs):
+    """An answer, with "<key>_i18n" beside each message a page may say in its own language (text.py)."""
+    return web.json_response(said(data), **kwargs)
+
+
 def _error_response(error):
-    return web.json_response(
-        {"error": {"code": error.code, "message": error.message, **error.details}}, status=error.status)
+    return _json({"error": {"code": error.code, "message": error.message, **error.details}}, status=error.status)
 
 
 def _api(handler):
@@ -58,12 +63,11 @@ def _api(handler):
             return _error_response(e)
         except OSError as e:  # the library folder could not be read or written; trying again may work
             logging.exception("[Bundle Library] %s %s failed", request.method, request.path)
-            return _error_response(LibraryError(500, "io_error", "The library folder could not be read or written "
-                                                f"({e.strerror or type(e).__name__}).", retry=True))
+            return _error_response(LibraryError(500, "io_error", Text("The library folder could not be read or written ({value}).", value=e.strerror or type(e).__name__), retry=True))
         except Exception:
             logging.exception("[Bundle Library] %s %s failed", request.method, request.path)
             return _error_response(
-                LibraryError(500, "internal", "Server error; see the ComfyUI log for details."))
+                LibraryError(500, "internal", Text("Server error; see the ComfyUI log for details.")))
     return wrapped
 
 
@@ -72,25 +76,25 @@ def _writes(handler):
     async def wrapped(request):
         problem = write_guard_error(request)
         if problem:
-            raise LibraryError(403, problem, "Changes to the library must come from the ComfyUI page.")
+            raise LibraryError(403, problem, Text("Changes to the library must come from the ComfyUI page."))
         # The page sends the version of its scripts; files updated without a
         # restart (or a page left open across one) must not write.
         page = request.headers.get("X-Bundle-Library-Version")
         if page is not None and page != VERSION:
             raise LibraryError(409, "version_mismatch",
-                               f"This page runs Bundle Library {page[:20]} but the server runs {VERSION}.",
+                               Text("This page runs Bundle Library {value} but the server runs {VERSION}.", value=page[:20], VERSION=VERSION),
                                page_version=page[:20], server_version=VERSION)
         return await handler(request)
     return wrapped
 
 
 def _too_large(limit):
-    return LibraryError(413, "too_large", f"Request too large; the limit is {limit // (1024 * 1024)} MB.")
+    return LibraryError(413, "too_large", Text("Request too large; the limit is {n} MB.", n=limit // (1024 * 1024)))
 
 
 async def _read_json(request):
     if request.content_type != "application/json":
-        raise LibraryError(415, "unsupported_media_type", "The body must be JSON (application/json).")
+        raise LibraryError(415, "unsupported_media_type", Text("The body must be JSON (application/json)."))
     if request.content_length is not None and request.content_length > MAX_JSON_BODY:
         raise _too_large(MAX_JSON_BODY)
     chunks, total = [], 0
@@ -102,11 +106,11 @@ async def _read_json(request):
     try:
         data = json.loads(b"".join(chunks))
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
-        raise LibraryError(400, "invalid_json", "The body is not valid JSON.") from None
+        raise LibraryError(400, "invalid_json", Text("The body is not valid JSON.")) from None
     if not isinstance(data, dict):
-        raise LibraryError(400, "invalid", "The body must be a JSON object.")
+        raise LibraryError(400, "invalid", Text("The body must be a JSON object."))
     if lone_surrogates(data):
-        raise LibraryError(400, "invalid_json", "The body has text that is not valid Unicode.")
+        raise LibraryError(400, "invalid_json", Text("The body has text that is not valid Unicode."))
     return data
 
 
@@ -115,7 +119,7 @@ def _require(data, *keys):
     missing key is not taken for an empty or default value."""
     missing = [key for key in keys if key not in data]
     if missing:
-        raise LibraryError(400, "invalid", f"Missing in the request: {', '.join(missing)}.")
+        raise LibraryError(400, "invalid", Text("Missing in the request: {list}.", list=', '.join(missing)))
     return data
 
 
@@ -123,7 +127,7 @@ def _revision(query):
     try:
         return int(query["expected_revision"])
     except (KeyError, ValueError):
-        raise LibraryError(400, "invalid", "expected_revision (an integer) is required.") from None
+        raise LibraryError(400, "invalid", Text("expected_revision (an integer) is required.")) from None
 
 
 def register(routes, get_store):
@@ -134,17 +138,17 @@ def register(routes, get_store):
     @_api
     async def health(request):
         report = await asyncio.to_thread(get_store().health)
-        return web.json_response({"version": VERSION, **report})
+        return _json({"version": VERSION, **report})
 
     @routes.get(prefix + "/bundles")
     @_api
     async def list_bundles(request):
         sort = request.query.get("sort", "name")
         if sort not in ("name", "updated"):
-            raise LibraryError(400, "invalid", "sort must be 'name' or 'updated'.")
+            raise LibraryError(400, "invalid", Text("sort must be 'name' or 'updated'."))
         listing = await asyncio.to_thread(
             get_store().list, request.query.get("q", ""), request.query.get("tag", ""), sort)
-        return web.json_response(listing)
+        return _json(listing)
 
     @routes.post(prefix + "/bundles")
     @_api
@@ -153,14 +157,14 @@ def register(routes, get_store):
         data = await _read_json(request)
         # "category" puts the new bundle in a category too (placement_error if only that failed)
         bundle = await asyncio.to_thread(get_store().create, data, data.get("category"))
-        return web.json_response(present(bundle), status=201)
+        return _json(present(bundle), status=201)
 
     @routes.get(prefix + "/bundles/{bundle_id}")
     @_api
     async def get_bundle(request):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
         bundle, loaded = await asyncio.to_thread(get_store().get, bundle_id, True)
-        return web.json_response(present(bundle, loaded))
+        return _json(present(bundle, loaded))
 
     @routes.put(prefix + "/bundles/{bundle_id}")
     @_api
@@ -170,7 +174,7 @@ def register(routes, get_store):
         # The whole bundle is replaced: nothing left out may be taken for empty.
         data = _require(await _read_json(request), "name", "tags", "note", "fields", "expected_revision")
         bundle = await asyncio.to_thread(get_store().update, bundle_id, data, data["expected_revision"])
-        return web.json_response(present(bundle))
+        return _json(present(bundle))
 
     @routes.delete(prefix + "/bundles/{bundle_id}")
     @_api
@@ -178,7 +182,7 @@ def register(routes, get_store):
     async def delete_bundle(request):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
         result = await asyncio.to_thread(get_store().delete, bundle_id, _revision(request.query))
-        return web.json_response({"deleted": bundle_id, "changed": result["changed"],
+        return _json({"deleted": bundle_id, "changed": result["changed"],
                                   **({"warning": result["warning"]} if "warning" in result else {})})
 
     @routes.post(prefix + "/bundles/{bundle_id}/duplicate")
@@ -190,14 +194,14 @@ def register(routes, get_store):
         # Left out or null: the defaults (values; "<name> copy", also for an empty name).
         bundle = await asyncio.to_thread(
             get_store().duplicate, bundle_id, data.get("mode") or "values", data.get("name"))
-        return web.json_response(present(bundle), status=201)
+        return _json(present(bundle), status=201)
 
     @routes.post(prefix + "/bundles/batch")
     @_api
     @_writes
     async def batch(request):
         data = await _read_json(request)
-        return web.json_response(await asyncio.to_thread(get_store().batch, data))
+        return _json(await asyncio.to_thread(get_store().batch, data))
 
     @routes.post(prefix + "/export")
     @_api
@@ -208,7 +212,7 @@ def register(routes, get_store):
         data = _require(await _read_json(request), "ids")
         store = get_store()
         result = await asyncio.to_thread(Exports(store.tmp_dir).create, store, data["ids"])
-        return web.json_response(result, status=201)
+        return _json(result, status=201)
 
     @routes.get(prefix + "/export/{token}")
     @_api
@@ -229,7 +233,7 @@ def register(routes, get_store):
         """Receives an export ZIP (multipart field "file") and answers with what
         importing it would do (exchange.py); nothing in the library changes yet."""
         if not request.content_type.startswith("multipart/"):
-            raise LibraryError(415, "unsupported_media_type", "Upload the ZIP as multipart/form-data.")
+            raise LibraryError(415, "unsupported_media_type", Text("Upload the ZIP as multipart/form-data."))
         store = get_store()
         imports = Imports(store.tmp_dir)
         reader = await request.multipart()
@@ -238,7 +242,7 @@ def register(routes, get_store):
             await part.release()
             part = await reader.next()
         if part is None:
-            raise LibraryError(400, "invalid", "The 'file' field is missing.")
+            raise LibraryError(400, "invalid", Text("The 'file' field is missing."))
         token, temp = await asyncio.to_thread(imports.new_part)
         total = 0
         try:
@@ -249,7 +253,7 @@ def register(routes, get_store):
                         raise _too_large(MAX_IMPORT_BYTES)
                     f.write(chunk)
             if total == 0:
-                raise LibraryError(400, "invalid", "The file is empty.")
+                raise LibraryError(400, "invalid", Text("The file is empty."))
             path = temp.with_suffix(".zip")
             temp.replace(path)
         finally:
@@ -259,7 +263,7 @@ def register(routes, get_store):
         except BaseException:
             path.unlink(missing_ok=True)
             raise
-        return web.json_response(preview, status=201)
+        return _json(preview, status=201)
 
     @routes.post(prefix + "/import/{token}")
     @_api
@@ -270,7 +274,7 @@ def register(routes, get_store):
         store = get_store()
         result = await asyncio.to_thread(Imports(store.tmp_dir).apply, store, request.match_info["token"],
                                          data["conflict"], data["category"])
-        return web.json_response(result)
+        return _json(result)
 
     @routes.delete(prefix + "/import/{token}")
     @_api
@@ -279,12 +283,12 @@ def register(routes, get_store):
         """Drops an uploaded export that will not be imported."""
         store = get_store()
         await asyncio.to_thread(Imports(store.tmp_dir).discard, request.match_info["token"])
-        return web.json_response({"discarded": True})
+        return _json({"discarded": True})
 
     @routes.get(prefix + "/tags")
     @_api
     async def list_tags(request):
-        return web.json_response(await asyncio.to_thread(get_store().tags))
+        return _json(await asyncio.to_thread(get_store().tags))
 
     @routes.post(prefix + "/tags/rename")
     @_api
@@ -293,7 +297,7 @@ def register(routes, get_store):
         """Renames a tag in every bundle, in use and in the trash; with a tag that
         is there already, the two merge."""
         data = _require(await _read_json(request), "from", "to")
-        return web.json_response(await asyncio.to_thread(get_store().rename_tag, data["from"], data["to"]))
+        return _json(await asyncio.to_thread(get_store().rename_tag, data["from"], data["to"]))
 
     @routes.post(prefix + "/tags/delete")
     @_api
@@ -301,7 +305,7 @@ def register(routes, get_store):
     async def delete_tag(request):
         """Takes a tag off every bundle, in use and in the trash."""
         data = _require(await _read_json(request), "tag")
-        return web.json_response(await asyncio.to_thread(get_store().delete_tag, data["tag"]))
+        return _json(await asyncio.to_thread(get_store().delete_tag, data["tag"]))
 
     @routes.put(prefix + "/bundles/{bundle_id}/category")
     @_api
@@ -310,7 +314,7 @@ def register(routes, get_store):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
         data = _require(await _read_json(request), "category")  # null: no category
         category = await asyncio.to_thread(get_store().set_category, bundle_id, data["category"])
-        return web.json_response({"id": bundle_id, "category": category})
+        return _json({"id": bundle_id, "category": category})
 
     @routes.put(prefix + "/bundles/{bundle_id}/favorite")
     @_api
@@ -319,12 +323,12 @@ def register(routes, get_store):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
         data = await _read_json(request)
         favorite = await asyncio.to_thread(get_store().set_favorite, bundle_id, data.get("favorite"))
-        return web.json_response({"id": bundle_id, "favorite": favorite})
+        return _json({"id": bundle_id, "favorite": favorite})
 
     @routes.get(prefix + "/categories")
     @_api
     async def list_categories(request):
-        return web.json_response(await asyncio.to_thread(get_store().categories))
+        return _json(await asyncio.to_thread(get_store().categories))
 
     @routes.post(prefix + "/categories")
     @_api
@@ -332,7 +336,7 @@ def register(routes, get_store):
     async def create_category(request):
         data = await _read_json(request)
         category = await asyncio.to_thread(get_store().create_category, data.get("name"), data.get("parent"))
-        return web.json_response(category, status=201)
+        return _json(category, status=201)
 
     @routes.patch(prefix + "/categories/{category_id}")
     @_api
@@ -341,7 +345,7 @@ def register(routes, get_store):
         data = await _read_json(request)
         category = await asyncio.to_thread(get_store().rename_category, request.match_info["category_id"],
                                            data.get("name"))
-        return web.json_response(category)
+        return _json(category)
 
     @routes.delete(prefix + "/categories/{category_id}")
     @_api
@@ -349,19 +353,19 @@ def register(routes, get_store):
     async def delete_category(request):
         category_id = request.match_info["category_id"]
         moved = await asyncio.to_thread(get_store().delete_category, category_id)
-        return web.json_response({"deleted": category_id, "uncategorized": moved})
+        return _json({"deleted": category_id, "uncategorized": moved})
 
     @routes.get(prefix + "/trash")
     @_api
     async def list_trash(request):
-        return web.json_response(await asyncio.to_thread(get_store().trash))
+        return _json(await asyncio.to_thread(get_store().trash))
 
     @routes.post(prefix + "/bundles/{bundle_id}/restore")
     @_api
     @_writes
     async def restore_bundle(request):
         bundle_id = check_bundle_id(request.match_info["bundle_id"])
-        return web.json_response(present(await asyncio.to_thread(get_store().restore, bundle_id)))
+        return _json(present(await asyncio.to_thread(get_store().restore, bundle_id)))
 
     @routes.delete(prefix + "/trash/{bundle_id}")
     @_api
@@ -374,7 +378,7 @@ def register(routes, get_store):
         # The revision the user saw; not known for a file this version cannot fully read.
         expected = _revision(request.query) if not unreadable or "expected_revision" in request.query else None
         await asyncio.to_thread(get_store().purge, bundle_id, unreadable, expected)
-        return web.json_response({"deleted": bundle_id})
+        return _json({"deleted": bundle_id})
 
     @routes.delete(prefix + "/trash")
     @_api
@@ -382,12 +386,12 @@ def register(routes, get_store):
     async def empty_trash(request):
         """Deletes for good the bundles the page showed in the trash ({"expected_revisions": {id: revision}})."""
         data = _require(await _read_json(request), "expected_revisions")
-        return web.json_response(await asyncio.to_thread(get_store().empty_trash, data["expected_revisions"]))
+        return _json(await asyncio.to_thread(get_store().empty_trash, data["expected_revisions"]))
 
     @routes.get(prefix + "/cleanup")
     @_api
     async def list_unused_assets(request):
-        return web.json_response(await asyncio.to_thread(get_store().unused_assets))
+        return _json(await asyncio.to_thread(get_store().unused_assets))
 
     @routes.post(prefix + "/cleanup")
     @_api
@@ -395,7 +399,7 @@ def register(routes, get_store):
     async def delete_unused_assets(request):
         """Deletes the files listed in "sha256" (what GET showed) that are still unused."""
         data = await _read_json(request)
-        return web.json_response(await asyncio.to_thread(get_store().delete_unused_assets, data.get("sha256")))
+        return _json(await asyncio.to_thread(get_store().delete_unused_assets, data.get("sha256")))
 
     @routes.post(prefix + "/assets")
     @_api
@@ -407,7 +411,7 @@ def register(routes, get_store):
         default) says what the file must be, and so which limit applies."""
         assets = get_store().assets
         if not request.content_type.startswith("multipart/"):
-            raise LibraryError(415, "unsupported_media_type", "Upload files as multipart/form-data.")
+            raise LibraryError(415, "unsupported_media_type", Text("Upload files as multipart/form-data."))
         reader = await request.multipart()
         kind = "image"
         part = await reader.next()
@@ -415,11 +419,11 @@ def register(routes, get_store):
             if getattr(part, "name", None) == "kind":
                 kind = (await part.read_chunk()).decode("utf-8", "replace").strip()  # one chunk at most
                 if kind not in MEDIA_TYPES:
-                    raise LibraryError(400, "invalid", "kind must be image, video or audio.")
+                    raise LibraryError(400, "invalid", Text("kind must be image, video or audio."))
             await part.release()
             part = await reader.next()
         if part is None:
-            raise LibraryError(400, "invalid", "The 'file' field is missing.")
+            raise LibraryError(400, "invalid", Text("The 'file' field is missing."))
         limit = assets.limits[kind]["bytes"]
         temp = assets.temp_path()
         digest, total = hashlib.sha256(), 0
@@ -432,11 +436,11 @@ def register(routes, get_store):
                     digest.update(chunk)
                     f.write(chunk)
             if total == 0:
-                raise LibraryError(400, "invalid", "The file is empty.")
+                raise LibraryError(400, "invalid", Text("The file is empty."))
             info, created = await asyncio.to_thread(assets.finalize, temp, digest.hexdigest(), part.filename, kind)
         finally:
             temp.unlink(missing_ok=True)
-        return web.json_response({"asset": info}, status=201 if created else 200)
+        return _json({"asset": info}, status=201 if created else 200)
 
     @routes.get(prefix + "/assets/{sha256}")
     @_api
@@ -444,7 +448,7 @@ def register(routes, get_store):
         sha256 = check_sha256(request.match_info["sha256"])
         path = await asyncio.to_thread(get_store().assets.path, sha256)
         if path is None:
-            raise LibraryError(404, "not_found", "File not found.")
+            raise LibraryError(404, "not_found", Text("File not found."))
         return web.FileResponse(path, headers={"Content-Type": MIME_TYPES[path.suffix[1:]], **IMMUTABLE})
 
     @routes.get(prefix + "/assets/{sha256}/thumb")
@@ -454,8 +458,8 @@ def register(routes, get_store):
         try:
             size = int(request.query.get("size", "256"))
         except ValueError:
-            raise LibraryError(400, "invalid", "size must be an integer.") from None
+            raise LibraryError(400, "invalid", Text("size must be an integer.")) from None
         path = await asyncio.to_thread(get_store().assets.thumbnail, sha256, size)
         if path is None:
-            raise LibraryError(404, "not_found", "No thumbnail for this file.")
+            raise LibraryError(404, "not_found", Text("No thumbnail for this file."))
         return web.FileResponse(path, headers={"Content-Type": "image/webp", **IMMUTABLE})
