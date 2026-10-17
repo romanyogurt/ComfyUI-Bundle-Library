@@ -234,7 +234,33 @@ const TAG_HELPERS = () => {
     await page.keyboard.press("Escape"); // the menu
     await page.keyboard.press("Escape"); // the selection
 
-    await finish({ expectRemoved: 6 });
+    // ---- tags that only look alike are two tags (R19-04) -------------------------------------------
+    const tr = await make(`${PREFIX} red tr`, ["kırmızı"]);
+    await make(`${PREFIX} red ascii`, ["kirmizi"]);
+    await ev(() => document.dispatchEvent(new Event("visibilitychange"))); // made behind the window's back
+    await page.locator(".bl-overlay .bl-search").fill(`${PREFIX} red`);
+    await until(() => document.querySelectorAll(".bl-overlay .bl-list-item").length >= 2);
+    await page.locator(".bl-overlay .bl-tag-button").click();
+    const reds = (await t(() => window.__tags.menu())).filter((i) => i.role === "menuitemradio")
+        .map((i) => i.text).filter((x) => /^k[ıi]rm[ıi]z[ıi]$/.test(x));
+    // By its value: Playwright's own case-insensitive name match would take kirmizi too.
+    await page.locator('.bl-overlay .bl-menu-item[data-value="kırmızı"]').click();
+    await until(() => window.__tags.filter() === "Tag: kırmızı×");
+    const filtered = await ev(() => [...new Set([...document.querySelectorAll(".bl-overlay .bl-list-item")].map((r) => r.dataset.id))]);
+    check("'kırmızı' and 'kirmizi' are two tags: two entries in the menu, and the filter shows only its own (R19-04)",
+        JSON.stringify(reds.sort()) === JSON.stringify(["kirmizi", "kırmızı"]) && JSON.stringify(filtered) === JSON.stringify([tr]),
+        { reds, filtered });
+    await row(tr).click();
+    await until((name) => window.__tags.editor()?.name === name, `${PREFIX} red tr`);
+    await page.locator(".bl-overlay .bl-tags .bl-tag-input").fill("kirmizi");
+    await page.keyboard.press("Enter");
+    editor = await t(() => window.__tags.editor());
+    check("in the editor, 'kirmizi' goes on a bundle that has 'kırmızı'",
+        editor?.tags.includes("kirmizi") && editor.tags.includes("kırmızı") && editor.state === "● Unsaved changes", editor);
+    await button("Revert").click();
+    await button("Clear the tag filter").click();
+
+    await finish({ expectRemoved: 8 });
 })().catch((e) => {
     console.error(e);
     process.exit(1);

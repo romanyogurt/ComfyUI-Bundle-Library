@@ -124,14 +124,16 @@ class LibraryModal {
         // Answers to reads that arrive after a newer read was made are dropped:
         // each kind of read counts its generations.
         this.listGeneration = 0;
+        this.refreshGeneration = 0; // editor reads by refreshEditor(): only the last one counts
         this.searchGeneration = 0;
         this.trashGeneration = 0;
         this.onBeforeUnload = (e) => {
             if (this.unsaved) e.preventDefault();
         };
         this.build();
-        this.showPlaceholder();
-        void this.reload(selected);
+        // The bundle asked for opens when the list is in, unless the pane changed meanwhile (R19-01).
+        const view = this.showPlaceholder();
+        void this.reload({ select: selected ? { id: selected, view } : null });
         void this.refreshTrashCount();
     }
 
@@ -390,7 +392,7 @@ class LibraryModal {
      * the selection, the filter and a new draft's category, and the status
      * line says why.
      */
-    async reload(selectId = null) {
+    async reload({ select = null } = {}) {
         const generation = ++this.listGeneration;
         let library;
         try {
@@ -399,7 +401,7 @@ class LibraryModal {
             if (generation === this.listGeneration) this.status(`Could not read the library: ${error.message}`, "error");
             return;
         }
-        if (generation !== this.listGeneration) return; // a newer reload answers instead
+        if (generation !== this.listGeneration || this.closed) return; // a newer reload answers instead
         this.all = library.bundles ?? [];
         this.errors = library.errors ?? [];
         this.categories = [...(library.categories ?? [])].sort((a, b) => compareText(a.name, b.name) || compareText(a.id, b.id));
@@ -414,7 +416,11 @@ class LibraryModal {
         else this.listChanged();
         this.editor?.organizationChanged();
         void this.refreshEditor();
-        if (selectId && this.all.some((b) => b.id === selectId)) await this.open(selectId, { force: true });
+        // The bundle the window was opened at: only while the pane shows what it showed then. A new draft,
+        // another bundle or anything else begun before the list came in stays (R19-01).
+        if (select && this.commands.pane.shows(select.view) && !this.unsaved && this.all.some((b) => b.id === select.id)) {
+            await this.open(select.id, { force: true });
+        }
     }
 
     /** The list's summary of a bundle (with its category and star), or null. */
@@ -1228,8 +1234,9 @@ class LibraryModal {
         if (generation === this.trashGeneration) this.trashCounted(listing.trash.length);
     }
 
+    /** The pane with nothing in it but how to fill it; returns its view number. */
     showPlaceholder() {
-        this.showPane(el("div", "bl-empty-state", "Select a bundle on the left, or create one with + New bundle."));
+        return this.showPane(el("div", "bl-empty-state", "Select a bundle on the left, or create one with + New bundle."));
     }
 
     /**
@@ -1282,6 +1289,7 @@ class LibraryModal {
         const summary = editor?.saved && this.summary(editor.saved.id);
         const idle = () => !editor.changed && !editor.busy && !this.commands.running && !this.layer;
         if (!summary || summary.revision <= editor.saved.revision || !idle()) return;
+        const generation = ++this.refreshGeneration;
         const view = this.commands.pane.shown;
         let bundle;
         try {
@@ -1289,7 +1297,9 @@ class LibraryModal {
         } catch {
             return; // the list will say what became of it
         }
-        if (!this.commands.pane.shows(view) || this.editor !== editor || !idle()) return;
+        // Only the last read, for the editor still shown, and never back to an older revision (R19-02).
+        if (generation !== this.refreshGeneration || !this.commands.pane.shows(view) || this.editor !== editor || !idle()
+            || bundle.revision <= editor.saved.revision) return;
         editor.showSaved(bundle);
         this.status(`'${bundle.name}' was saved elsewhere; the editor shows it as saved now.`);
     }
@@ -1364,6 +1374,7 @@ class LibraryModal {
     }
 
     close() {
+        this.closed = true; // answers still on their way change nothing now
         this.editor?.dispose();
         this.endDrag();
         window.removeEventListener("pointermove", this.onPointerMove, true);

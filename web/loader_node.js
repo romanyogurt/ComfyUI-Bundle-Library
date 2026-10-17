@@ -420,6 +420,7 @@ async function refreshPanel(node, { fresh = false } = {}) {
     } catch (error) {
         if (!latest()) return;
         node.bundlePanel.previewSignature = null;
+        stopSoundIn(node.bundlePanel.rows); // the message takes the preview's place, its sound too (R19-05)
         node.bundlePanel.rows.replaceChildren(
             el("div", "bl-note bl-bad", `⚠ Could not load the bundle list: ${error.message}`));
         return;

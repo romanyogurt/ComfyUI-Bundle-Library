@@ -426,6 +426,67 @@ const WINDOW_HELPERS = () => {
         JSON.stringify(picked?.fields.map((f) => f.name)) === JSON.stringify(["prompt"]) && picked.revision === elsewhere.revision,
         picked && { fields: picked.fields.map((f) => f.name), revision: picked.revision, expected: elsewhere.revision });
 
+    // ---- the first list read answering late (R19-01) -----------------------------------------
+    const firstList = async (step) => {
+        const held = await holdAnswers(page, (url, method) => isList(url) && method === "GET");
+        await ev(async ([module, selected]) => {
+            const { openLibrary } = await import(`${module}/library_modal.js`);
+            openLibrary({ selected });
+        }, [MODULE, ids.Q]);
+        await overlay.waitFor();
+        await page.evaluate(WINDOW_HELPERS);
+        await settle(() => held.held.length >= 1);
+        await step();
+        await held.release();
+        await page.waitForTimeout(500);
+    };
+    await firstList(async () => {
+        await button("+ New bundle").click();
+        await page.locator(".bl-overlay .bl-name-input").fill("Unsaved draft that must survive");
+    });
+    st = await editor();
+    check("a new draft begun before the first list read answers is not replaced by the bundle asked for (R19-01)",
+        st?.name === "Unsaved draft that must survive" && st.state === "● New, not saved yet", st && { name: st.name, state: st.state });
+    await button("Discard").click();
+    await closeLibrary();
+    await firstList(async () => {
+        await page.locator(".bl-overlay .bl-trash-button").click();
+        await until(() => document.querySelector(".bl-overlay .bl-trash"));
+    });
+    const trashStays = await w(() => !!document.querySelector(".bl-overlay .bl-trash") && window.__win.editor() === null);
+    check("nor is the trash opened meanwhile", trashStays);
+    await closeLibrary();
+    await firstList(async () => {
+        await page.keyboard.press("Escape");
+        await overlay.waitFor({ state: "detached" });
+    });
+    check("an answer after the window closed opens nothing", !(await overlay.count()));
+    await firstList(async () => {});
+    st = await editor();
+    check("left alone, the window opens at the bundle asked for", st?.name === `${PREFIX} Q`, st?.name);
+
+    // ---- editor reads answering out of order (R19-02) -----------------------------------------
+    const note = async (text) => {
+        const current = await api("GET", `/bundles/${ids.Q}`);
+        return api("PUT", `/bundles/${ids.Q}`, { name: current.name, tags: current.tags, note: text, fields: current.fields,
+            expected_revision: current.revision }); // as from another tab
+    };
+    const rev2 = await note("revision 2");
+    let reads = 0;
+    const firstRead = await holdAnswers(page, (url, method) => method === "GET" && url.pathname === `${API}/bundles/${ids.Q}`
+        && reads++ === 0);
+    await ev(() => document.dispatchEvent(new Event("visibilitychange")));
+    await settle(() => firstRead.held.length === 1);
+    const rev3 = await note("revision 3");
+    await ev(() => document.dispatchEvent(new Event("visibilitychange")));
+    await until(() => window.__win.editor()?.note === "revision 3");
+    await firstRead.release(); // the read for revision 2, last
+    await page.waitForTimeout(400);
+    st = await editor();
+    check("a read for an older revision answering last does not take the editor back (R19-02)",
+        st?.note === "revision 3" && st.state === "Saved" && rev3.revision === rev2.revision + 1, st && { note: st.note });
+    await closeLibrary();
+
     // ---- a bundle in the trash this version cannot change (N30) -------------------------------
     const lockedPath = LIBRARY && `${LIBRARY}/bundles/${LOCKED_ID}.json`;
     if (CONTAINER && LIBRARY) {
@@ -521,6 +582,17 @@ const WINDOW_HELPERS = () => {
     await ev(() => window.__bl.app.graph.remove(window.__nodes[0]));
     const removedStopped = soundingBefore && (await second.evaluate((b) => b.textContent)) === "▶" && !(await playing());
     check("removing the node stops its sound (R15-12)", removedStopped, { soundingBefore });
+    await playIn(1).click();
+    await until(() => document.querySelector('[data-test-node="1"] [data-field="bgm"] .bl-play')?.textContent === "⏸");
+    const failing = await holdAnswers(page, (url, method) => isList(url) && method === "GET", { status: 500 });
+    await ev(() => window.dispatchEvent(new CustomEvent("bundle-library:changed"))); // the panels read the list again
+    await settle(() => failing.held.length >= 1);
+    await failing.release();
+    await until(() => document.querySelector('[data-test-node="1"] .bl-note.bl-bad'));
+    const failedStopped = !(await playing());
+    await ev(() => window.__bl.app.graph.remove(window.__nodes[1]));
+    check("a list read that fails stops the sound of the preview it replaces (R19-05)",
+        failedStopped && !(await playing()), { failedStopped });
     await ev(() => window.__bl.app.graph.clear());
 
     if (CONTAINER && LIBRARY) { // in case the trash part stopped before deleting it

@@ -65,6 +65,21 @@
    "a",
    "b",
    false
+  ],
+  [
+   "kırmızı",
+   "kirmizi",
+   false
+  ],
+  [
+   "KIRMIZI",
+   "kirmizi",
+   true
+  ],
+  [
+   "ǅ",
+   "ǆ",
+   true
   ]
  ]
 }

@@ -322,7 +322,9 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 
 (0.0.19부터) 태그는 번들 내용에 있다. 두 태그는 `casefold()`가 같으면 같은 태그다: `Portrait`와
 `portrait`, `Straße`와 `STRASSE`는 한 태그다. 한 번들 안에서 같은 태그는 하나만 남는다(저장할 때). 화면도
-같은 기준을 따른다(`web/tags.js`의 `tagKey`, `tests/fixtures/tag_keys.json`이 양쪽을 같은 예로 검사한다).
+같은 기준을 따른다: `web/tags.js`의 `tagKey`는 Python `casefold()`와 같은 결과를 내고(0.0.20부터, 그 전에는 점 없는
+`ı` 등에서 달랐다), 대소문자가 있는 모든 문자를 `tests/fixtures/casefold.json`으로 검사한다. `kırmızı`와
+`kirmizi`는 다른 태그다.
 
 태그를 바꾸는 작업(일괄 `add_tags`·`remove_tags`, `/tags/rename`, `/tags/delete`)은 번들 전체를 다시 검사하지
 않고 태그만 고친다. 그래서 그 뒤 엄격해진 규칙에 맞지 않는 값(안전 범위 밖의 정수, 41자 태그, 21개 태그 등)은

@@ -185,7 +185,12 @@ const LIST_HELPERS = () => {
         lit && gone && stored.category === null && !(await list(() => window.__list.zone())), { gone, category: stored.category });
 
     // a real mouse drag onto the place under the list
-    const rowBox = await page.locator(`.bl-overlay .bl-group[data-group="${shelfKey}"] .bl-list-item[data-id="${ids.placed}"]`).boundingBox();
+    const placedRow = page.locator(`.bl-overlay .bl-group[data-group="${shelfKey}"] .bl-list-item[data-id="${ids.placed}"]`);
+    let rowBox = null;
+    for (let i = 0; i < 20 && !rowBox; i++) { // the list may be drawn again just then (the drop's list read)
+        await placedRow.waitFor({ state: "visible" });
+        rowBox = await placedRow.boundingBox();
+    }
     await page.mouse.move(rowBox.x + 60, rowBox.y + rowBox.height / 2);
     await page.mouse.down();
     await page.mouse.move(rowBox.x + 70, rowBox.y + rowBox.height / 2 + 10, { steps: 5 });

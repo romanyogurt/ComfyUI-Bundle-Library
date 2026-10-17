@@ -189,6 +189,30 @@ class ContractsTest(unittest.TestCase):
             self.org_file.chmod(0o644)
         self.assertEqual(self.store.list()["organization"]["state"], "ok")
 
+    def test_a_read_error_right_after_a_save_is_not_remembered_either(self):
+        # R19-03: the save itself succeeds; only reading the file back fails, once.
+        red = self.make("Red")
+        real_read, real_write = schema.read_file, store_module._write_json
+        written, failed = [], []
+
+        def write(*args):
+            result = real_write(*args)
+            written.append(args[0])
+            return result
+
+        def flaky(path, file_id=None):
+            if written and not failed:  # the first read after the write
+                failed.append(path)
+                return schema.Loaded(schema.CORRUPT, problem="could not be read (Input/output error)", io_error=True)
+            return real_read(path, file_id)
+
+        with mock.patch.object(store_module, "_write_json", write), mock.patch.object(schema, "read_file", flaky):
+            self.store.update(red["id"], {"name": "Changed", "tags": [], "note": "",
+                                          "fields": [{"name": "prompt", "type": "text", "value": "x"}]}, 1)
+        self.assertEqual(failed, written, "the read after the save is the one that failed")
+        listing = self.store.list()
+        self.assertEqual(([b["name"] for b in listing["bundles"]], listing["errors"]), (["Changed"], []))
+
     # ---- one implementation for single and batch commands ----------------------------------------
 
     def test_single_commands_follow_the_batch_rules(self):

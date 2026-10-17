@@ -179,11 +179,16 @@ class BundleStore:
             cached = self._cache.get(entry.name)
             if cached and cached[0] == _stat_key(stat):
                 continue
-            loaded = schema.read_file(Path(entry.path), entry.name[:-5])
-            # A read error is not remembered: it may pass (permissions fixed) without the file changing.
-            self._cache[entry.name] = (None if loaded.io_error else _stat_key(stat), loaded)
+            self._remember(entry.name, stat, schema.read_file(Path(entry.path), entry.name[:-5]))
         for name in set(self._cache) - seen:
             del self._cache[name]
+
+    def _remember(self, name, stat, loaded):
+        """Keep how the file `name` read, for as long as it does not change. A
+        read error is kept without the file's key, so the next scan reads it
+        again: it may pass (permissions fixed) without the file changing. The
+        scan and a save both go through here."""
+        self._cache[name] = (None if loaded.io_error else _stat_key(stat), loaded)
 
     def _files(self):
         """(file name, schema.Loaded) of every bundle file, as last scanned."""
@@ -283,8 +288,7 @@ class BundleStore:
     def _save(self, bundle):
         path = self._path(bundle["id"])
         self._synced = _write_json(path, bundle, self.tmp_dir)
-        stat = path.stat()
-        self._cache[path.name] = (_stat_key(stat), schema.read_file(path, bundle["id"]))
+        self._remember(path.name, path.stat(), schema.read_file(path, bundle["id"]))
         return bundle
 
     def create(self, data, category=None):

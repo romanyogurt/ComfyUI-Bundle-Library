@@ -1,6 +1,8 @@
 import json
 import os
+import re
 import tempfile
+import unicodedata
 import unittest
 import uuid
 from pathlib import Path
@@ -13,6 +15,14 @@ from bundle_library.store import BundleStore
 
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "tag_keys.json"
+CASEFOLD = Path(__file__).resolve().parent / "fixtures" / "casefold.json"
+TAGS_JS = Path(__file__).resolve().parents[1] / "web" / "tags.js"
+REGENERATE = ("The page's fold table follows the server's Python; when Python's Unicode changes, regenerate "
+              "FOLD in web/tags.js and tests/fixtures/casefold.json from it.")
+
+
+def _chars():
+    return [chr(cp) for cp in range(0x110000) if not 0xD800 <= cp <= 0xDFFF]
 
 
 class TagRulesTest(unittest.TestCase):
@@ -21,6 +31,15 @@ class TagRulesTest(unittest.TestCase):
         for a, b, same in json.loads(FIXTURE.read_text(encoding="utf-8"))["pairs"]:
             with self.subTest(f"{a} / {b}"):
                 self.assertEqual(tag_rules.key(a) == tag_rules.key(b), same)
+
+    def test_the_page_folds_as_this_python_folds(self):
+        # R19-04: the page cannot call casefold(); its table holds where casefold() differs from lower-casing.
+        found = re.search(r"const FOLD = new Map\(Object\.entries\((\{.*?\})\)\);", TAGS_JS.read_text(encoding="utf-8"), re.S)
+        table = json.loads(found.group(1))
+        self.assertEqual(table, {c: c.casefold() for c in _chars() if c.casefold() != c.lower()}, REGENERATE)
+        expected = {c: unicodedata.normalize("NFC", c).casefold() for c in _chars()
+                    if unicodedata.normalize("NFC", c).casefold() != c or c.lower() != c}
+        self.assertEqual(json.loads(CASEFOLD.read_text(encoding="utf-8"))["chars"], expected, REGENERATE)
 
     def test_a_tag_is_the_same_whatever_its_case(self):
         self.assertEqual(tag_rules.key("Straße"), tag_rules.key("STRASSE"))
