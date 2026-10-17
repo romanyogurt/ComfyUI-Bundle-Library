@@ -282,8 +282,7 @@ class BundleStore:
                                    f"Field '{field['name']}': file {asset['sha256'][:12]}… has not been uploaded.")
             kind = self.assets.kind(asset["sha256"])
             if kind != field["type"]:
-                raise LibraryError(400, "wrong_kind",
-                                   f"Field '{field['name']}': the file is {_article(kind)}, not {_article(field['type'])}.")
+                raise _wrong_kind(field, kind)
             resolved = {k: v for k, v in info.items() if k != "mime"}
             if asset.get("original_name"):
                 resolved["original_name"] = asset["original_name"]
@@ -789,20 +788,23 @@ class BundleStore:
 
     def import_bundles(self, items, conflict, place):
         """Write the bundles of an import (exchange.py), under the lock: `items`
-        are (id, the file's bytes, schema.Loaded) of bundles this version may
-        write. A bundle new here goes byte for byte. One whose id is here
-        already is skipped, overwritten (its id, its revision + 1, back from
-        the trash if it was there) or copied under a new id, as `conflict`
-        says. Then `place` ({"mode": "zip" | "one" | "none", "id"?} and the
-        category name each bundle had, by id) puts them in categories, in one
-        change of organization.json. A result per bundle: {"id" (here), "source",
-        "ok", "as": "new" | "overwritten" | "copied" | "skipped", ...}, and
-        {"categories_created": [{"id", "name"}], "placement_error"?}."""
+        are (id, the file's bytes, schema.Loaded, the files it may lack) of
+        bundles this version may write. A bundle new here goes byte for byte.
+        One whose id is here already is skipped, overwritten (its id, its
+        revision + 1, back from the trash if it was there) or copied under a
+        new id, as `conflict` says. What is written is checked first: each file
+        it uses is here and of its field's kind, or one it may lack (in neither
+        the export nor the library). Then `place` ({"mode": "zip" | "one" |
+        "none", "id"?} and the category name each bundle had, by id) puts them
+        in categories, in one change of organization.json. A result per bundle:
+        {"id" (here), "source", "ok", "as": "new" | "overwritten" | "copied" |
+        "skipped", ...}, and {"categories_created": [{"id", "name"}],
+        "placement_error"?, "warning"?}."""
         results = []
         with self._lock:
-            for source, data, loaded in items:
+            for source, data, loaded, missing_ok in items:
                 try:
-                    results.append(self._import_one(source, data, loaded, conflict))
+                    results.append(self._import_one(source, data, loaded, conflict, missing_ok))
                 except LibraryError as e:
                     results.append({**_failure(source, e), "source": source})
                 except OSError as e:
@@ -813,14 +815,19 @@ class BundleStore:
                 try:
                     extra["categories_created"] = self._change_organization(
                         lambda org: _place_imported(org, placed, place))
+                    if not self._synced:
+                        extra["warning"] = UNSYNCED  # the places, as a result's warning says of its bundle
                 except LibraryError as e:
                     extra["placement_error"] = e.message
                 except OSError as e:
                     extra["placement_error"] = f"organization.json could not be written: {_reason(e)}"
         return results, extra
 
-    def _import_one(self, source, data, loaded, conflict):
+    def _import_one(self, source, data, loaded, conflict, missing_ok):
         existing = self._load(source)
+        if existing is not None and conflict == "skip":
+            return {"id": source, "source": source, "ok": True, "changed": False, "as": "skipped"}
+        self._check_refs(loaded.bundle["fields"], missing_ok)
         if existing is None:
             if loaded.bundle["deleted_at"] is None:  # as exported: the file goes as it is
                 path = self._path(source)
@@ -829,8 +836,6 @@ class BundleStore:
             else:
                 self._save({**loaded.bundle, "deleted_at": None})
             return self._written({"id": source, "source": source, "ok": True, "changed": True, "as": "new"})
-        if conflict == "skip":
-            return {"id": source, "source": source, "ok": True, "changed": False, "as": "skipped"}
         if conflict == "overwrite":
             current = self._writable(source)  # one this version cannot change stays as it is
             saved = self._save({**loaded.bundle, "id": source, "revision": current["revision"] + 1,
@@ -841,6 +846,21 @@ class BundleStore:
         copy = self._save({**loaded.bundle, "id": str(uuid.uuid4()), "revision": 1, "created_at": now, "updated_at": now,
                            "deleted_at": None})
         return self._written({"id": copy["id"], "source": source, "ok": True, "changed": True, "as": "copied"})
+
+    def _check_refs(self, fields, missing_ok):
+        """An import's last check before it writes a bundle (R22-01): each media
+        field's file is here and of the field's kind, or one in `missing_ok`
+        (in neither the export nor the library: it comes without it). Being
+        readable does not make a bundle's references right."""
+        wrong = kind_problem(fields, self.assets.kind)
+        if wrong:
+            raise wrong
+        for field in fields:
+            asset = field.get("asset")
+            if field["type"] in MEDIA_TYPES and asset is not None and asset["sha256"] not in missing_ok \
+                    and self.assets.kind(asset["sha256"]) is None:
+                raise LibraryError(409, "file_missing", f"Field '{field['name']}': its file is not in the library. "
+                                   "The library changed while the import ran; import the file again.")
 
     # -- tags across the library -------------------------------------------------
 
@@ -1082,6 +1102,10 @@ def _place(org, bundle_id, category):
 
 def _place_imported(org, results, place):
     """Put imported bundles in categories (`place`, see import_bundles); the categories made, as {"id", "name"}."""
+    if place["mode"] == "one" and not any(c["id"] == place["id"] for c in org.categories):
+        # There when the import began, deleted since (R22-03): what was written stays, and is not placed.
+        raise LibraryError(404, "not_found", "The category chosen was deleted while the import ran, "
+                           "so the bundles were not put in it.")
     created = []
     by_name = {c["name"].casefold(): c["id"] for c in org.categories}
     for result in results:
@@ -1140,6 +1164,24 @@ PREVIEW_KEYS = {"image": ("sha256", "width", "height"), "video": ("sha256", "wid
 
 def _article(kind):
     return f"an {kind}" if kind in ("image", "audio") else f"a {kind}"
+
+
+def _wrong_kind(field, kind):
+    return LibraryError(400, "wrong_kind", f"Field '{field['name']}': the file is {_article(kind)}, "
+                        f"not {_article(field['type'])}.")
+
+
+def kind_problem(fields, kind_of):
+    """The first media field whose file is of another kind than the field, as a
+    LibraryError (wrong_kind), or None. `kind_of(sha256)` is the file's kind,
+    or None when it is not known: such a file is not judged here."""
+    for field in fields:
+        asset = field.get("asset")
+        if field["type"] in MEDIA_TYPES and asset is not None:
+            kind = kind_of(asset["sha256"])
+            if kind is not None and kind != field["type"]:
+                return _wrong_kind(field, kind)
+    return None
 
 
 def exact_int(value):

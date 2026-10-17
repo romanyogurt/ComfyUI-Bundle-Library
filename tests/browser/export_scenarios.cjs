@@ -127,7 +127,29 @@ function stored(bundleId) {
         && dirty.title === "Save or revert your changes first", dirty);
     await button("Revert").click();
 
-    await page.keyboard.press("Escape");
+    // ---- an answer after the window closed starts no download (R22-06) --------------------------------
+    let releaseExport;
+    const held = new Promise((resolve) => { releaseExport = resolve; });
+    await page.route("**/api/bundle-library/v1/export", async (route) => {
+        await held;
+        await route.continue();
+    });
+    let downloads = 0;
+    page.on("download", () => { downloads += 1; });
+    await exportButton.click();
+    const offered = await until(() => {
+        const stall = document.querySelector(".bl-overlay .bl-batch-stall");
+        return !!stall && !stall.hidden;
+    }, undefined, 40000);
+    await button("Stop waiting").click();
+    await page.keyboard.press("Escape"); // nothing holds the window now: it closes
+    await overlay.waitFor({ state: "detached" });
+    releaseExport();
+    await page.waitForTimeout(2000);
+    check("an export answered after the window closed starts no download (R22-06)", offered && downloads === 0,
+        { offered, downloads });
+    await page.unroute("**/api/bundle-library/v1/export");
+
     await finish({ expectRemoved: 2 }); // the third is in the trash: its entry is removed there
 })().catch((e) => {
     console.error(e);

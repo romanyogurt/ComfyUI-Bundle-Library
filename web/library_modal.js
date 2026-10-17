@@ -1036,7 +1036,7 @@ class LibraryModal {
         const { conflict, category } = panel.choices();
         const importable = panel.preview.bundles.filter((b) => b.importable).length;
         const job = {
-            token: ++this.batchJobs, action: "import", args: {},
+            token: ++this.batchJobs, action: "import", args: {}, upload: panel.preview.token, conflict, category,
             summaries: panel.preview.bundles.map((b) => ({ id: b.id, label: b.name, revision: null })),
             describe: { doing: `Importing ${plural(importable, "bundle")}`, done: "Imported", what: "The import" },
         };
@@ -1052,14 +1052,40 @@ class LibraryModal {
             const view = new ImportResult(this, job, { waiting: true });
             ticket.view = this.showPane(view.root, { result: view });
             this.renderList();
-            let outcome;
-            try {
-                outcome = { answer: await applyImport(panel.preview.token, conflict, category) };
-            } catch (error) {
-                outcome = error.status >= 400 && error.status < 500 ? { refused: error } : { unknown: true };
-            }
+            const outcome = await this.importOutcome(job);
             // Refused, nothing changed and the result cannot try again: the upload goes now, not in an hour.
-            if (outcome.refused) discardImport(panel.preview.token).catch(() => {});
+            if (outcome.refused && outcome.refused.code !== "import_running") discardImport(job.upload).catch(() => {});
+            void this.refreshTrashCount();
+            await this.reload();
+            if (this.commands.pane.shows(ticket.view)) view.render(outcome);
+        });
+    }
+
+    /** Send an import, or send it again: the server runs it once and then answers with what it did (R22-02). */
+    async importOutcome(job) {
+        try {
+            return { answer: await applyImport(job.upload, job.conflict, job.category) };
+        } catch (error) {
+            return error.status >= 400 && error.status < 500 ? { refused: error } : { unknown: true };
+        }
+    }
+
+    /** No answer came for an import (or it was still running): ask again, in its result. */
+    async checkImport(job) {
+        const view = this.result;
+        if (view?.job !== job || !this.allowed()) return;
+        job.checked = true;
+        job.describe.doing = "Asking the server for the import's answer";
+        await this.commands.hold({
+            kind: "import", wait: "Wait for the import's answer.", stallMs: STALL_MS,
+            onStall: () => {
+                if (this.result === view) view.stalled();
+            },
+        }, async (ticket) => {
+            job.ticket = ticket;
+            view.renderWaiting();
+            this.renderList();
+            const outcome = await this.importOutcome(job);
             void this.refreshTrashCount();
             await this.reload();
             if (this.commands.pane.shows(ticket.view)) view.render(outcome);
@@ -1516,6 +1542,7 @@ class LibraryModal {
 
     close() {
         this.closed = true; // answers still on their way change nothing now
+        this.commands.end(); // nor do they own the pane or a question: no late result, no late download (R22-06)
         this.editor?.dispose();
         this.dropImport();
         this.endDrag();

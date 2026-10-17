@@ -123,3 +123,20 @@ test("the question slot: a late answer to a cancelled question does not close th
     assert.equal(commands.question.hide(a), false, "A's late finish leaves B alone");
     assert.ok(commands.question.shows(b));
 });
+
+test("a closed window: what it showed and asked is gone, so a late answer owns nothing (R22-06)", async () => {
+    const commands = new Commands();
+    const answer = deferred();
+    let owned = null;
+    const out = commands.hold({ kind: "export", wait: "Wait." }, async (ticket) => {
+        ticket.view = commands.pane.show();
+        await answer.promise;
+        owned = commands.pane.shows(ticket.view); // where the result would be drawn and downloaded
+    });
+    const asked = commands.question.show();
+    commands.end();
+    answer.resolve();
+    await out;
+    assert.equal(owned, false);
+    assert.equal(commands.question.shows(asked), false);
+});

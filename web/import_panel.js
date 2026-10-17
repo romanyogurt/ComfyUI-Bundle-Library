@@ -177,11 +177,19 @@ export class ImportResult extends BatchResult {
         if (unknown || refused) {
             const reload = button("Reload the list");
             reload.addEventListener("click", () => void modal.reload());
-            done.append(...(unknown ? [reload] : []), back);
-            this.root.replaceChildren(el("div", "bl-batch-title", unknown ? "Could not tell whether it finished" : "Nothing was imported"),
-                el(unknown ? "div" : "div", unknown ? "bl-warn" : "bl-error", unknown
-                    ? "The import was sent, but no answer came back. The server may have imported all, some or none of it. "
-                    + "Reload the list to see where things stand." : refused.message), done);
+            // The server runs an import once and keeps its answer for an hour: asking again is safe (R22-02).
+            const check = button("Check again");
+            check.addEventListener("click", () => void modal.checkImport(job));
+            const [title, kind, text, actions] = unknown ? ["Could not tell whether it finished", "bl-warn",
+                "The import was sent, but no answer came back. The server may have imported all, some or none of it. "
+                    + "Check again for its answer, or reload the list to see where things stand.", [check, reload]]
+                : refused.code === "import_running" ? ["Still running", "bl-warn", refused.message, [check, reload]]
+                    : refused.code === "import_interrupted" ? ["Cut off", "bl-warn", refused.message, [reload]]
+                        : [job.checked ? "No answer kept" : "Nothing was imported", job.checked ? "bl-warn" : "bl-error",
+                            job.checked ? `${refused.message} Reload the list to see where things stand.` : refused.message,
+                            job.checked ? [reload] : []];
+            done.append(...actions, back);
+            this.root.replaceChildren(el("div", "bl-batch-title", title), el("div", kind, text), done);
             return;
         }
         const names = new Map(job.summaries.map((b) => [b.id, b.label]));
@@ -202,6 +210,7 @@ export class ImportResult extends BatchResult {
                 row.append(el("span", "bl-list-name", names.get(r.source) ?? r.source));
                 if (!r.ok) row.append(el("span", "bl-dim", r.message));
                 if (r.restored) row.append(el("span", "bl-dim", "back from the trash"));
+                if (r.warning) row.append(el("span", "bl-warn", r.warning)); // done, but not synced to the disk (R22-05)
                 group.append(row);
             }
             parts.push(group);
@@ -210,6 +219,8 @@ export class ImportResult extends BatchResult {
             parts.push(el("div", "bl-hint", `Categories made: ${answer.categories_created.map((c) => c.name).join(", ")}.`));
         }
         if (answer.placement_error) parts.push(el("div", "bl-warn", `Imported, but not put in categories: ${answer.placement_error}`));
+        if (answer.warning) parts.push(el("div", "bl-warn", `Their places in categories: ${answer.warning}`));
+        if (answer.replayed) parts.push(el("div", "bl-hint", "This is the answer the server kept from when the import ran."));
         if (answer.files.failed.length) {
             parts.push(el("div", "bl-warn", `${plural(answer.files.failed.length, "file")} could not be imported: `
                 + `${answer.files.failed.map((f) => f.reason).join("; ")}`));

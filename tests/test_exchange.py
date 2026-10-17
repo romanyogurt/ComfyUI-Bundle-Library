@@ -2,6 +2,7 @@ import hashlib
 import json
 import os
 import tempfile
+import threading
 import time
 import unittest
 import uuid
@@ -9,7 +10,8 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
-from bundle_library import exchange
+from bundle_library import exchange, schema
+from bundle_library import store as store_module
 from bundle_library.exchange import EXPORT_TTL, FORMAT, Exports, Imports, file_name
 from bundle_library.model import LibraryError
 from bundle_library.store import BundleStore
@@ -150,10 +152,10 @@ class ImportTest(unittest.TestCase):
         self.target = BundleStore(self.root / "b")
         self.red = self.upload(self.source, helpers.png("red"), "red.png")
 
-    def upload(self, store, data, name):
+    def upload(self, store, data, name, kind="image"):
         temp = store.assets.temp_path()
         temp.write_bytes(data)
-        return store.assets.finalize(temp, hashlib.sha256(data).hexdigest(), name)[0]["sha256"]
+        return store.assets.finalize(temp, hashlib.sha256(data).hexdigest(), name, kind)[0]["sha256"]
 
     def make(self, store, name, *shas, category=None, tags=("t",)):
         fields = [{"name": f"ref_{i}", "type": "image", "asset": {"sha256": sha}} for i, sha in enumerate(shas)]
@@ -277,6 +279,10 @@ class ImportTest(unittest.TestCase):
     def test_a_file_of_another_kind_than_listed_is_refused(self):
         a = self.make(self.source, "A", self.red)
         path = self.export(self.source, [a])
+        with zipfile.ZipFile(path) as z:  # a video field, so the file itself is what is wrong
+            bundle = z.read(f"bundles/{a}.json")
+        bent = bundle.replace(b'"type": "image"', b'"type": "video"')
+        self.assertNotEqual(bent, bundle)
         out = self.root / "kind.zip"
         with zipfile.ZipFile(path) as source, zipfile.ZipFile(out, "w") as target:
             for info in source.infolist():
@@ -284,7 +290,10 @@ class ImportTest(unittest.TestCase):
                 if name == "manifest.json":  # the PNG listed, and named, as a video
                     manifest = json.loads(data)
                     manifest["assets"][0].update(kind="video", file=f"assets/{self.red}.mp4")
+                    manifest["bundles"][0]["sha256"] = hashlib.sha256(bent).hexdigest()
                     data = json.dumps(manifest).encode()
+                elif name == f"bundles/{a}.json":
+                    data = bent
                 elif name == f"assets/{self.red}.png":
                     name = f"assets/{self.red}.mp4"
                 target.writestr(name, data)
@@ -361,3 +370,160 @@ class ImportTest(unittest.TestCase):
         os.utime(imports.folder / f"{token}.zip", (stale, stale))
         with self.assertRaises(LibraryError):
             imports.path(token)
+
+    # -- 0.0.22 review: R22-01..05 ------------------------------------------------
+
+    def bent_export(self):
+        """An export of A (an image field) and W (an audio field) with A's field
+        pointed at W's file: readable, but a reference of the wrong kind (R22-01).
+        Also A's bytes as bent."""
+        wav = self.upload(self.source, helpers.audio(), "tone.wav", "audio")
+        a = self.make(self.source, "A", self.red)
+        w = self.source.create({"name": "W", "tags": ["t"], "fields": [
+            {"name": "sound", "type": "audio", "asset": {"sha256": wav}}]})["id"]
+        path = self.export(self.source, [a, w])
+        with zipfile.ZipFile(path) as z:
+            bent = z.read(f"bundles/{a}.json").replace(self.red.encode(), wav.encode())
+
+        def change(name, data):
+            if name == f"bundles/{a}.json":
+                return bent
+            if name.startswith(f"assets/{self.red}"):
+                return None
+            if name == "manifest.json":
+                manifest = json.loads(data)
+                for entry in manifest["bundles"]:
+                    if entry["id"] == a:
+                        entry["sha256"] = hashlib.sha256(bent).hexdigest()
+                manifest["assets"] = [x for x in manifest["assets"] if x["sha256"] != self.red]
+                return json.dumps(manifest).encode()
+            return data
+        return a, w, wav, bent, self.rewrite_zip(path, change)
+
+    def test_a_field_pointing_at_a_file_of_another_kind_stays_out(self):
+        a, w, wav, bent, path = self.bent_export()
+        for round_ in ("the file comes with the export", "the file is here already"):
+            preview, result = self.run_import(self.target, path, "copy")
+            rows = {p["id"]: p for p in preview["bundles"]}
+            self.assertEqual((rows[a]["importable"], rows[a]["reason"]),
+                             (False, "Field 'ref_0': the file is an audio, not an image."), round_)
+            self.assertTrue(rows[w]["importable"], round_)
+            self.assertEqual([(r["source"], r["ok"], r.get("code")) for r in result["results"]],
+                             [(a, False, "not_importable"), (w, True, None)], round_)
+        # Where the bundle is written, the same check again: new, overwritten and copied.
+        loaded = schema.read_checked(bent, a)
+        fresh = BundleStore(self.root / "c")
+        self.upload(fresh, helpers.audio(), "tone.wav", "audio")
+        self.run_import(self.target, self.export(self.source, [a]))  # the right A, here now
+        for store, conflict in ((fresh, "skip"), (self.target, "overwrite"), (self.target, "copy")):
+            written, _ = store.import_bundles([(a, bent, loaded, frozenset())], conflict, {"mode": "none", "names": {}})
+            self.assertEqual([(r["ok"], r["code"]) for r in written], [(False, "wrong_kind")], conflict)
+        self.assertEqual(self.target.get(a)["fields"][0]["asset"]["sha256"], self.red, "the bundle here stays")
+
+    def test_files_come_only_for_the_bundles_written(self):
+        a = self.make(self.source, "A")
+        self.run_import(self.target, self.export(self.source, [a]))  # A here, using no file
+        current = self.source.get(a)
+        self.source.update(a, {"name": "A", "tags": ["t"], "note": "", "fields": [
+            {"name": "ref_0", "type": "image", "asset": {"sha256": self.red}}]}, current["revision"])
+        blue = self.upload(self.source, helpers.png("blue"), "blue.png")
+        b = self.make(self.source, "B", self.red, blue)
+        _, skipped = self.run_import(self.target, self.export(self.source, [a]), "skip")
+        self.assertEqual((skipped["skipped"], skipped["files"]["stored"]), (1, 0))
+        self.assertIsNone(self.target.assets.path(self.red), "a bundle left as it is brings no file")
+        _, mixed = self.run_import(self.target, self.export(self.source, [a, b]), "skip")
+        self.assertEqual([r["as"] for r in mixed["results"]], ["skipped", "new"])
+        self.assertEqual(mixed["files"]["stored"], 2, "B's two files, the one A uses as well only once")
+
+    def test_a_bundle_gone_meanwhile_is_not_written_without_its_file(self):
+        a = self.make(self.source, "A")
+        self.run_import(self.target, self.export(self.source, [a]))
+        current = self.source.get(a)
+        self.source.update(a, {"name": "A", "tags": ["t"], "note": "", "fields": [
+            {"name": "ref_0", "type": "image", "asset": {"sha256": self.red}}]}, current["revision"])
+        prepare = Imports._prepare
+
+        def then_gone(imports, store, zip_path, conflict):
+            prepared = prepare(imports, store, zip_path, conflict)  # A is here: its file is not brought
+            here = store.get(a)
+            store.delete(a, here["revision"])
+            store.purge(a, expected_revision=here["revision"] + 1)
+            return prepared
+        with mock.patch.object(Imports, "_prepare", then_gone):
+            _, result = self.run_import(self.target, self.export(self.source, [a]), "skip")
+        self.assertEqual([(r["ok"], r.get("code")) for r in result["results"]], [(False, "file_missing")])
+        self.assertEqual(self.target.list()["bundles"], [])
+
+    def test_a_category_deleted_while_importing_is_said_not_dropped_silently(self):
+        a = self.make(self.source, "A")
+        box = self.target.create_category("Box")["id"]
+        prepare = Imports._prepare
+
+        def then_deleted(imports, store, zip_path, conflict):
+            prepared = prepare(imports, store, zip_path, conflict)
+            store.delete_category(box)
+            return prepared
+        with mock.patch.object(Imports, "_prepare", then_deleted):
+            _, result = self.run_import(self.target, self.export(self.source, [a]), category={"mode": "one", "id": box})
+        self.assertEqual(result["imported"], 1)
+        self.assertIn("deleted while the import ran", result["placement_error"])
+        self.assertIsNone(self.target.list()["bundles"][0]["category"])
+
+    def test_one_import_runs_once_and_its_answer_is_kept(self):
+        a = self.make(self.source, "A")
+        self.run_import(self.target, self.export(self.source, [a]))  # A here: a copy makes a second one
+        imports = Imports(self.target.tmp_dir)
+        token = self.receive(self.target, self.export(self.source, [a]))
+        inside, go_on = threading.Event(), threading.Event()
+        prepare = Imports._prepare
+
+        def held(imports_, store, zip_path, conflict):
+            inside.set()
+            go_on.wait(10)
+            return prepare(imports_, store, zip_path, conflict)
+        answers = []
+        apply = lambda: imports.apply(self.target, token, "copy", {"mode": "none"})  # noqa: E731
+        with mock.patch.object(Imports, "_prepare", held):
+            first = threading.Thread(target=lambda: answers.append(apply()))
+            first.start()
+            self.assertTrue(inside.wait(10))
+            for attempt in (apply, lambda: imports.discard(token)):
+                with self.assertRaises(LibraryError) as ctx:
+                    attempt()
+                self.assertEqual((ctx.exception.status, ctx.exception.code), (409, "import_running"))
+            go_on.set()
+            first.join(10)
+        self.assertEqual(answers[0]["imported"], 1)
+        again = apply()
+        self.assertEqual((again["replayed"], again["results"]), (True, answers[0]["results"]), "the answer it gave")
+        self.assertEqual(len(self.target.list()["bundles"]), 2, "one copy, not two")
+        imports.discard(token)
+        with self.assertRaises(LibraryError) as ctx:
+            apply()
+        self.assertEqual(ctx.exception.status, 404)
+
+    def test_an_import_cut_off_says_so_and_one_failing_early_can_run_again(self):
+        a = self.make(self.source, "A", self.red)
+        path = self.export(self.source, [a])
+        imports = Imports(self.target.tmp_dir)
+        token = self.receive(self.target, path)
+        with mock.patch.object(type(self.target.assets), "finalize", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                imports.apply(self.target, token, "skip", {"mode": "zip"})
+        self.assertEqual(imports.apply(self.target, token, "skip", {"mode": "zip"})["imported"], 1, "ready again")
+        token = self.receive(self.target, path)
+        (imports.folder / f"{token}.zip").rename(imports.folder / f"{token}.applying")  # as a stopped server leaves it
+        with self.assertRaises(LibraryError) as ctx:
+            imports.apply(self.target, token, "skip", {"mode": "zip"})
+        self.assertEqual((ctx.exception.status, ctx.exception.code), (409, "import_interrupted"))
+        imports.discard(token)
+        self.assertFalse((imports.folder / f"{token}.applying").exists())
+
+    def test_a_write_not_synced_says_so_on_its_result(self):
+        shelf = self.source.create_category("Shelf")["id"]
+        a = self.make(self.source, "A", category=shelf)
+        write = store_module._write_file
+        with mock.patch.object(store_module, "_write_file", lambda *args: write(*args) and False):
+            _, result = self.run_import(self.target, self.export(self.source, [a]))
+        self.assertTrue(result["results"][0]["warning"].startswith("Saved, but the library folder could not be synced"))
+        self.assertEqual(result["warning"], result["results"][0]["warning"], "and the places")

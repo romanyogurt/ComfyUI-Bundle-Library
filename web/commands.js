@@ -36,6 +36,11 @@ export class Slot {
         this.open = false;
         return true;
     }
+
+    /** Nothing is shown any more, whatever it was (the window closed). */
+    close() {
+        this.open = false;
+    }
 }
 
 export class Commands {
@@ -46,6 +51,15 @@ export class Commands {
         this.question = new Slot(); // the question (or picture) over the window
         this.running = null; // the ticket of the command holding the window
         this.count = 0;
+    }
+
+    /**
+     * The window closed: what it showed is gone, so an answer still on its way
+     * owns neither the pane nor a question, and changes nothing (R22-06).
+     */
+    end() {
+        this.pane.close();
+        this.question.close();
     }
 
     /** Why the window waits now, or null. */

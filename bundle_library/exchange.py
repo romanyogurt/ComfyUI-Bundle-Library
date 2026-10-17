@@ -21,9 +21,11 @@ the page gets back, and is downloaded from there.
 
 import hashlib
 import json
+import logging
 import os
 import re
 import secrets
+import threading
 import time
 import unicodedata
 import zipfile
@@ -34,6 +36,7 @@ from pathlib import Path
 from . import schema
 from .constants import VERSION
 from .model import LibraryError, check_bundle_id, invalid
+from .store import kind_problem
 
 FORMAT = "comfyui-bundle-library/export"
 FORMAT_VERSION = 1
@@ -160,6 +163,38 @@ CATEGORY_MODES = ("zip", "one", "none")
 SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
+# The imports this process is applying now, by token (R22-02). The files of
+# tmp/imports/ say the rest: .zip ready, .applying taken, .json done.
+_APPLYING = set()
+_APPLYING_LOCK = threading.Lock()
+
+
+def _running():
+    return LibraryError(409, "import_running", "This import is running; wait for it to finish.")
+
+
+def _check_token(token):
+    if not isinstance(token, str) or not TOKEN_RE.match(token):
+        raise LibraryError(404, "not_found", "No such import.")
+
+
+def _check_choices(store, conflict, category):
+    if conflict not in CONFLICTS:
+        raise invalid(f"conflict must be one of {', '.join(CONFLICTS)}.")
+    if not isinstance(category, dict) or category.get("mode") not in CATEGORY_MODES:
+        raise invalid(f"category must be {{\"mode\": {' | '.join(CATEGORY_MODES)}}}, with an id for \"one\".")
+    if category["mode"] == "one":
+        if not any(c["id"] == category.get("id") for c in store.categories()["categories"]):
+            raise LibraryError(404, "not_found", f"Category not found: {category.get('id')}")
+
+
+def _keep(path, answer):
+    """Write an import's answer for a request that asks again (not synced: it is only a convenience)."""
+    part = path.with_name(path.name + ".part")
+    part.write_text(json.dumps(answer), encoding="utf-8")
+    os.replace(part, path)
+
+
 def _bad(message):
     return LibraryError(400, "invalid_export", f"This is not an export this version can read: {message}")
 
@@ -282,15 +317,27 @@ class Imports:
 
     def path(self, token):
         self.forget_old()
-        if not isinstance(token, str) or not TOKEN_RE.match(token):
-            raise LibraryError(404, "not_found", "No such import.")
+        _check_token(token)
         path = self.folder / f"{token}.zip"
         if not path.is_file():
             raise LibraryError(404, "not_found", "No such import; it may have expired. Upload the file again.")
         return path
 
     def discard(self, token):
-        self.path(token).unlink(missing_ok=True)
+        """Drop an upload, or the kept answer of an import that is done; not one that runs."""
+        _check_token(token)
+        with _APPLYING_LOCK:
+            if token in _APPLYING:
+                raise _running()
+        found = False
+        for suffix in (".zip", ".json", ".applying"):  # .applying: one cut off when the server stopped
+            try:
+                (self.folder / f"{token}{suffix}").unlink()
+                found = True
+            except FileNotFoundError:
+                pass
+        if not found:
+            raise LibraryError(404, "not_found", "No such import; it may have expired.")
 
     forget_old = Exports.forget_old
 
@@ -308,6 +355,9 @@ class Imports:
             elif not loaded.writable:
                 reason = f"This version cannot import it: it {loaded.problem}." if loaded.readable else (
                     f"This version cannot read it: {loaded.problem}.")
+            elif wrong := kind_problem(loaded.bundle["fields"],
+                                       lambda s: store.assets.kind(s) or listed.get(s, {}).get("kind")):
+                reason = wrong.message  # R22-01: readable, but a field points at a file of another kind
             here = store.files_for_export([entry["id"]])[0]
             conflict = ("none" if here[1] is None else "unreadable" if not here[2].readable
                         else "trash" if here[2].deleted else "active")
@@ -340,21 +390,69 @@ class Imports:
         }
 
     def apply(self, store, token, conflict, category):
-        """Import the uploaded export: its files first (checked as uploads are),
-        then the bundles that can come and whose files came, then their places."""
-        if conflict not in CONFLICTS:
-            raise invalid(f"conflict must be one of {', '.join(CONFLICTS)}.")
-        if not isinstance(category, dict) or category.get("mode") not in CATEGORY_MODES:
-            raise invalid(f"category must be {{\"mode\": {' | '.join(CATEGORY_MODES)}}}, with an id for \"one\".")
-        if category["mode"] == "one":
-            if not any(c["id"] == category.get("id") for c in store.categories()["categories"]):
-                raise LibraryError(404, "not_found", f"Category not found: {category.get('id')}")
-        path = self.path(token)
+        """Import an uploaded export, once (R22-02). The first request takes it:
+        its ZIP becomes <token>.applying. A request while it runs is refused
+        (409 import_running); one after it is done gets the answer it gave,
+        kept as <token>.json for an hour, without running again ("replayed").
+        Its files come first, then the bundles that can come and whose files
+        came, then their places. A failure before any bundle is written leaves
+        it ready to apply again; one cut off after that (the server stopped)
+        is told so (409 import_interrupted)."""
+        _check_choices(store, conflict, category)
+        _check_token(token)
+        self.forget_old()
+        ready, taken = self.folder / f"{token}.zip", self.folder / f"{token}.applying"
+        with _APPLYING_LOCK:
+            if token in _APPLYING:
+                raise _running()
+            _APPLYING.add(token)
+        try:
+            try:
+                ready.rename(taken)  # atomic: one request takes it
+            except FileNotFoundError:
+                return self._after(token)
+            os.utime(taken)  # its hour runs from now: forget_old() must not take it while it is read
+            try:
+                prepared = self._prepare(store, taken, conflict)
+            except BaseException:
+                try:
+                    taken.rename(ready)  # only content-addressed files were written: it can be applied again
+                except OSError:
+                    pass  # gone meanwhile: the error below still says what happened
+                raise
+            answer = self._write(store, prepared, conflict, category)
+            try:
+                _keep(self.folder / f"{token}.json", answer)
+            except OSError:
+                logging.exception("[Bundle Library] could not keep the answer of import %s", token)
+            taken.unlink(missing_ok=True)
+            return answer
+        finally:
+            with _APPLYING_LOCK:
+                _APPLYING.discard(token)
+
+    def _after(self, token):
+        """What became of an import that is not ready to apply: the answer it gave, or why there is none."""
+        try:
+            return {**json.loads((self.folder / f"{token}.json").read_text(encoding="utf-8")), "replayed": True}
+        except (OSError, ValueError):
+            pass
+        if (self.folder / f"{token}.applying").exists():
+            raise LibraryError(409, "import_interrupted", "This import was cut off: the server stopped while it ran. "
+                               "Reload the list to see what came in, and upload the file again for the rest.")
+        raise LibraryError(404, "not_found", "No such import; it may have expired. Upload the file again.")
+
+    def _prepare(self, store, path, conflict):
+        """The plan of an import, with the files of the bundles it will write
+        brought in (R22-04: not those of bundles a skip leaves as they are),
+        checked as uploads are. Writes nothing but content-addressed files."""
         export = ExportFile(path)
         try:
             plan, listed = self._plan(store, export)
-            failed_files, stored, present = {}, 0, 0
-            for sha in sorted({s for p in plan for s in p["refs"]}):
+            wanted = {s for p in plan if p["reason"] is None and (conflict != "skip" or p["conflict"] == "none")
+                      for s in p["refs"]}
+            failed, stored, present = {}, 0, 0
+            for sha in sorted(wanted):
                 if store.assets.path(sha) is not None:
                     present += 1
                     continue
@@ -369,11 +467,16 @@ class Imports:
                     store.assets.finalize(temp, sha, None, entry["kind"])
                     stored += 1
                 except LibraryError as e:
-                    failed_files[sha] = e.message
+                    failed[sha] = e.message
                 finally:
                     temp.unlink(missing_ok=True)
         finally:
             export.close()
+        return {"plan": plan, "failed": failed, "stored": stored, "present": present}
+
+    def _write(self, store, prepared, conflict, category):
+        """Write the bundles of a prepared import, then their places; the answer."""
+        plan, failed_files = prepared["plan"], prepared["failed"]
         results, items = [], []
         for p in plan:
             source = p["entry"]["id"]
@@ -383,16 +486,16 @@ class Imports:
                                 "code": "not_importable" if p["reason"] else "file_failed",
                                 "message": p["reason"] or f"A file it uses could not be imported: {broken[0]}"})
             else:
-                items.append((source, p["data"], p["loaded"]))
+                items.append((source, p["data"], p["loaded"], frozenset(p["missing"])))
         written, extra = store.import_bundles(items, conflict, {**category, "names": {
             p["entry"]["id"]: p["entry"].get("category") for p in plan}})
         by_source = {r["source"]: r for r in written}
         results += [by_source[i[0]] for i in items]
         order = [p["entry"]["id"] for p in plan]
         results.sort(key=lambda r: order.index(r["source"]))
-        path.unlink(missing_ok=True)
         return {"results": results, **extra,
-                "files": {"stored": stored, "present": present, "failed": [{"sha256": s, "reason": r} for s, r in failed_files.items()]},
+                "files": {"stored": prepared["stored"], "present": prepared["present"],
+                          "failed": [{"sha256": s, "reason": r} for s, r in failed_files.items()]},
                 "imported": sum(1 for r in results if r["ok"] and r["as"] != "skipped"),
                 "skipped": sum(1 for r in results if r["ok"] and r["as"] == "skipped"),
                 "failed": sum(1 for r in results if not r["ok"])}

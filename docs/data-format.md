@@ -238,8 +238,8 @@ JSON 본문은 `Content-Type: application/json`이어야 한다 (415). 화면은
 | POST | `/export` | `{"ids"}` (필수, 1~1000개) | 201, `{"token", "file_name", "bytes", "bundles", "assets", "skipped", "missing"}`. 고른 번들의 ZIP을 만든다. 아래 "내보내기" (0.0.21부터) |
 | GET | `/export/{token}?name=` | — | 그 ZIP. `Content-Disposition: attachment`(이름은 `name`을 다시 안전하게 고친 것), 1시간 동안 |
 | POST | `/import` | multipart의 `file` (4 GiB까지) | 201, 미리 보기 `{"token", "file_name", "exported_at", "generator", "bundles", "assets"}`. 라이브러리는 아직 바뀌지 않는다. 아래 "가져오기" (0.0.22부터) |
-| POST | `/import/{token}` | `{"conflict", "category"}` (둘 다 필수) | `{"results", "categories_created", "placement_error"?, "files", "imported", "skipped", "failed"}`. 올린 ZIP을 가져오고 지운다 |
-| DELETE | `/import/{token}` | — | `{"discarded": true}`. 가져오지 않고 올린 ZIP을 지운다 |
+| POST | `/import/{token}` | `{"conflict", "category"}` (둘 다 필수) | `{"results", "categories_created", "placement_error"?, "warning"?, "files", "imported", "skipped", "failed"}`. 올린 ZIP을 가져오고 지운다. 한 번만 실행한다: 진행 중이면 409 `import_running`, 끝난 뒤에는 그때의 답을 `"replayed": true`와 함께 다시 준다 (0.0.23부터) |
+| DELETE | `/import/{token}` | — | `{"discarded": true}`. 가져오지 않고 올린 ZIP을, 끝난 가져오기면 남겨 둔 답을 지운다. 진행 중이면 409 `import_running` |
 | GET | `/tags` | — | `{"tags": [{"name", "spellings", "active", "trash", "protected"}], "unreadable", "legacy"}`. 아래 "태그" (0.0.19부터) |
 | POST | `/tags/rename` | `{"from", "to"}` (둘 다 필수) | `{"changed", "merged", "excluded", "unknown", "legacy", "warning"?}`. 쓰는 번들과 휴지통의 번들 모두에서 태그 이름을 바꾸고, `to`가 이미 있으면 합친다 |
 | POST | `/tags/delete` | `{"tag"}` (필수) | `{"changed", "excluded", "unknown", "legacy", "warning"?}`. 쓰는 번들과 휴지통의 번들 모두에서 태그를 뗀다 |
@@ -374,7 +374,15 @@ assets/<SHA-256>.<ext>    번들들이 쓰는 파일의 원본 (썸네일은 넣
    `unreadable`(이 버전이 읽지 못하는 파일). `importable`이 거짓이면 `reason`이 그 이유다. `assets`는 번들들이 쓰는
    파일 중 ZIP에서 들어올 것(`new`, 그 크기 합 `bytes`), 이미 있는 것, ZIP에도 라이브러리에도 없는 것의 수다.
 2. `POST /import/{token}`으로 가져오거나 `DELETE /import/{token}`으로 버린다. 둘 다 하지 않으면 1시간 뒤에
-   지운다(다음 가져오기나 내보내기 때 정리). 화면은 미리 보기를 떠나면(Cancel, 다른 번들 열기, 창 닫기) 버린다.
+   지운다(다음 가져오기나 내보내기 때 정리). 화면은 미리 보기를 떠나면(Cancel, 다른 번들 열기, 창 닫기)과
+   가져오기가 거부되면 버린다.
+3. (0.0.23부터) 가져오기 하나는 한 번만 실행된다. 처음 온 요청이 `<token>.zip`을 `<token>.applying`으로 바꿔
+   실행권을 갖고(rename은 원자적이다), 끝나면 답을 `<token>.json`에 1시간 남기고 ZIP을 지운다. 그사이 같은 토큰의
+   적용이나 버리기는 409 `import_running`이고, 끝난 뒤의 적용은 다시 실행하지 않고 남긴 답을 `"replayed": true`와
+   함께 준다(답을 받지 못한 화면의 Check again). 번들을 쓰기 전에 실패하면(파일을 들이는 중의 디스크 오류 등)
+   다시 적용할 수 있는 상태로 돌아간다. 서버가 실행 중에 멈춰 `.applying`만 남았으면 409 `import_interrupted`로
+   답한다(목록을 다시 읽어 확인하고, 나머지는 파일을 다시 올린다). 프로세스 재시작을 넘어 정확히 한 번을
+   보장하지는 않는다.
 
 선택:
 
@@ -385,19 +393,25 @@ assets/<SHA-256>.<ext>    번들들이 쓰는 파일의 원본 (썸네일은 넣
 - `category`의 `{"mode": "zip"}`은 파일에 적힌 카테고리 이름을 따른다. 대소문자를 무시하고 같은 이름의 카테고리에
   두고, 없으면 만든다. 이 라이브러리가 받지 않는 이름이거나 카테고리가 이미 최대 개수면 카테고리 없이 둔다.
   `{"mode": "one", "id"}`는 모두 그 카테고리에 둔다(없는 카테고리면 404 `not_found`이고 아무것도 가져오지 않는다).
+  가져오는 동안 그 카테고리가 지워졌으면, 들어온 번들은 그대로 두고 배치만 하지 않은 채 `placement_error`로
+  알린다(0.0.23부터).
   `{"mode": "none"}`은 카테고리 없이 둔다. 덮어쓴 번들도 이 선택을 따르고, 건너뛴 번들은 그대로 둔다. 즐겨찾기는
   바꾸지 않는다.
 
 순서와 답:
 
-- ZIP을 다시 열어 같은 검사를 하고, 미리 본 뒤 바뀐 라이브러리의 상태를 따른다. 번들들이 쓰는 파일 중 여기 없는
-  것을 먼저 들인다. 파일은 업로드와 같은 검사(종류, 크기, 디코딩)를 거치고, 바이트의 SHA-256이 이름과 같아야
-  한다. 그다음 저장소 잠금 안에서 번들을 쓰고(새로 오는 번들은 바이트 그대로), 마지막으로 카테고리 배치를 정리
-  파일 한 번의 변경으로 쓴다.
+- ZIP을 다시 열어 같은 검사를 하고, 미리 본 뒤 바뀐 라이브러리의 상태를 따른다. 쓸 번들(`skip`이면 여기 없는
+  번들만, 0.0.23부터)이 쓰는 파일 중 여기 없는 것을 먼저 들인다. 파일은 업로드와 같은 검사(종류, 크기, 디코딩)를
+  거치고, 바이트의 SHA-256이 이름과 같아야 한다. 그다음 저장소 잠금 안에서 번들을 쓰고(새로 오는 번들은 바이트
+  그대로), 마지막으로 카테고리 배치를 정리 파일 한 번의 변경으로 쓴다.
+- 번들마다 쓰기 직전에(잠금 안에서) 미디어 필드가 가리키는 파일을 다시 확인한다(0.0.23부터): 여기 있으면 그
+  종류가 필드와 같아야 하고(아니면 `wrong_kind`), 없으면 ZIP에도 라이브러리에도 없던 파일이어야 한다(아니면
+  `file_missing`: 건너뛸 줄 알고 파일을 들이지 않은 번들이 그사이 지워진 경우 등. 다시 가져오면 된다).
 - `results`는 ZIP의 순서대로 번들마다 `{"id"(여기의 id), "source"(ZIP의 id), "ok", "as": "new" | "overwritten" |
   "copied" | "skipped", "revision"?, "restored"?}`이다. 실패는 `"ok": false`와 `code`, `message`를 준다:
   `not_importable`(이 버전이 가져올 수 없음, 미리 보기의 `reason`), `file_failed`(쓰는 파일을 들이지 못함), 그
-  밖에는 쓰기의 오류 코드(`read_only` 등)다. `categories_created`는 만든 카테고리 `[{"id", "name"}]`,
+  밖에는 쓰기의 오류 코드(`wrong_kind`, `file_missing`, `read_only` 등)다. 쓴 번들의 폴더 동기화가 실패했으면 그
+  결과에 `warning`이 붙고, 배치의 것은 답의 `warning`이다. `categories_created`는 만든 카테고리 `[{"id", "name"}]`,
   `placement_error`는 번들은 썼으나 배치를 쓰지 못한 이유, `files`는 `{"stored", "present", "failed": [{"sha256",
   "reason"}]}`다. 가져오고 나면 올린 ZIP을 지운다.
 - ZIP에도 라이브러리에도 없는 파일(내보낼 때 이미 없던 파일)을 쓰는 번들도 그 파일 없이 가져온다. 미리 보기가
@@ -413,15 +427,17 @@ assets/<SHA-256>.<ext>    번들들이 쓰는 파일의 원본 (썸네일은 넣
   확장자의 종류가 `kind`와 맞아야 한다. 적힌 항목은 ZIP에 있어야 하고, 적히지 않은 항목은 읽지 않는다. 항목은
   manifest가 정한 이름으로만 찾으므로 ZIP 안의 경로(`../` 등)가 어디에 쓰이는 일은 없다.
 - 번들 파일은 바이트의 SHA-256이 manifest와 같아야 하고, 이 버전이 읽고 쓸 수 있어야 하며, 안의 id가 파일 이름의
-  id와 같아야 한다. 아니면 그 번들만 `not_importable`이다.
+  id와 같아야 한다. 미디어 필드가 가리키는 파일의 종류(여기 있는 파일은 그 파일, ZIP의 파일은 manifest의 `kind`)도
+  필드와 같아야 한다(0.0.23부터: 읽히는 번들이라고 참조가 맞는 것은 아니다). 아니면 그 번들만 `not_importable`이다.
 
 ### 태그
 
 (0.0.19부터) 태그는 번들 내용에 있다. 두 태그는 `casefold()`가 같으면 같은 태그다: `Portrait`와
 `portrait`, `Straße`와 `STRASSE`는 한 태그다. 한 번들 안에서 같은 태그는 하나만 남는다(저장할 때). 화면도
-같은 기준을 따른다: `web/tags.js`의 `tagKey`는 Python `casefold()`와 같은 결과를 내고(0.0.20부터, 그 전에는 점 없는
-`ı` 등에서 달랐다), 대소문자가 있는 모든 문자를 `tests/fixtures/casefold.json`으로 검사한다. `kırmızı`와
-`kirmizi`는 다른 태그다.
+같은 기준을 따른다: `web/tags.js`의 `tagKey`는 Python `casefold()`와 같은 결과를 낸다(0.0.20부터, 그 전에는 점 없는
+`ı` 등에서 달랐다). 서버의 Python(지금은 3.13, Unicode 15.1)이 바꾸는 모든 문자의 표를 쓰고, 표에 없는 문자는
+그대로 둔다(0.0.23부터: 브라우저의 Unicode가 더 새로우면 서버가 그대로 두는 문자를 바꾸던 차이가 없어졌다). 모든
+문자를 `tests/fixtures/casefold.json`으로 검사한다. `kırmızı`와 `kirmizi`는 다른 태그다.
 
 태그를 바꾸는 작업(일괄 `add_tags`·`remove_tags`, `/tags/rename`, `/tags/delete`)은 번들 전체를 다시 검사하지
 않고 태그만 고친다. 그래서 그 뒤 엄격해진 규칙에 맞지 않는 값(안전 범위 밖의 정수, 41자 태그, 21개 태그 등)은
@@ -462,6 +478,8 @@ assets/<SHA-256>.<ext>    번들들이 쓰는 파일의 원본 (썸네일은 넣
 | 400 | `invalid_json` | JSON을 읽을 수 없음 |
 | 400 | `invalid_export` | 이 버전이 읽을 수 있는 내보내기 ZIP이 아님 (0.0.22부터) |
 | 400 | `newer_export` | 더 새 버전의 내보내기 형식 (0.0.22부터) |
+| 409 | `import_running` | 같은 가져오기가 실행 중 (0.0.23부터) |
+| 409 | `import_interrupted` | 서버가 그 가져오기를 실행하다 멈춤. 목록을 다시 읽어 확인한다 (0.0.23부터) |
 | 400 | `unsupported_type` | 지원하지 않는 필드 타입 |
 | 400 | `unknown_asset` | 올린 적 없는 파일을 가리킴 |
 | 400 | `wrong_kind` | 파일의 종류가 필드 타입과 다름 (예: `video` 필드의 이미지) |
@@ -538,7 +556,7 @@ assets/<SHA-256>.<ext>    번들들이 쓰는 파일의 원본 (썸네일은 넣
 | 작업 | 정상 | 경고 | 읽기 전용·새 버전·미지원 | 손상 |
 | --- | --- | --- | --- | --- |
 | 편집 저장 | 허용 | 값을 고친 뒤 허용 | 거부 | 거부 |
-| 복제 | 허용 | 거부 (작성 규칙) | 거부 | 거부 |
+| 복제 | 허용 | 복제한 결과가 작성 규칙을 만족할 때 허용 (값 복제는 문제 값을 그대로 옮겨 보통 거부, 구조 복제는 허용) | 거부 | 거부 |
 | 휴지통으로 지우기, 되살리기 | 허용 | 허용 | 거부 | 거부 |
 | 하나 영구 삭제 | 휴지통에 있고 본 revision 그대로일 때 | 같음 | 읽기 전용은 휴지통에 있을 때 `unreadable=1`로만, 새 버전·미지원은 `unreadable=1`로만 | `unreadable=1`로만 |
 | 휴지통 비우기 | 화면이 보여 준 것 중 그대로인 것을 지운다 | 같음 | 건드리지 않는다 | 건드리지 않는다 |

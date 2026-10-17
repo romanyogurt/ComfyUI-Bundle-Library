@@ -21,6 +21,8 @@ const LIBRARY = process.env.BL_TEST_LIBRARY;
 // The refusals provoked on purpose: the browser reports them as console errors.
 const REFUSED = { text: /^Failed to load resource: the server responded with a status of 4\d\d /,
     url: /\/api\/bundle-library\/v1\/import(\/|$)/ };
+// An answer dropped on its way back on purpose (R22-02).
+const LOST = { text: /^Failed to load resource: net::ERR_FAILED/, url: /\/api\/bundle-library\/v1\/import\// };
 
 /**
  * Write `target`: the ZIP `source` with `edit` applied, Python run with
@@ -67,7 +69,7 @@ function held(token) {
 }
 
 (async () => {
-    const session = await startSession("import", { expectedErrors: [REFUSED] });
+    const session = await startSession("import", { expectedErrors: [REFUSED, LOST] });
     const { page, ev, check, shot, out, finish } = session;
     const overlay = page.locator(".bl-overlay");
     const button = (name, scope = overlay) => scope.getByRole("button", { name, exact: true });
@@ -279,6 +281,46 @@ function held(token) {
         && (await count()) === before && await drop && held(preview.token) !== true, shown);
     await button("Done").click();
 
+    // ---- an answer lost on its way: Check again gets the one the server kept (R22-02) ----------------
+    const before2 = await count();
+    await upload(zip);
+    await page.locator('.bl-overlay input[name="bl-import-conflict"][value="copy"]').check();
+    await page.route("**/api/bundle-library/v1/import/*", async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        await route.fetch(); // the server imports it
+        return route.abort(); // and its answer is lost
+    }, { times: 1 });
+    shown = await runImport();
+    check("an import whose answer is lost cannot tell what happened, and offers Check again",
+        shown?.title === "Could not tell whether it finished" && (await button("Check again").count()) === 1, shown);
+    await button("Check again").click();
+    await until(() => document.querySelector(".bl-overlay .bl-batch-result:not(.waiting) [data-outcome]"), undefined, 30000);
+    shown = await result();
+    check("Check again shows the answer the server kept, and nothing is imported twice (R22-02)",
+        shown?.groups.copied?.length === 3 && shown.notes.includes("This is the answer the server kept from when the import ran.")
+        && (await count()) === before2 + 3, { shown, count: await count(), before2 });
+    await button("Done").click();
+
+    // ---- a write the disk may not keep says so (R22-05) --------------------------------------------------
+    const UNSYNCED = "Saved, but the library folder could not be synced to the disk; a power loss could undo it.";
+    await upload(zip);
+    await page.locator('.bl-overlay input[name="bl-import-conflict"][value="overwrite"]').check();
+    await page.route("**/api/bundle-library/v1/import/*", async (route) => {
+        if (route.request().method() !== "POST") return route.continue();
+        const response = await route.fetch();
+        const answer = await response.json();
+        answer.results[0].warning = UNSYNCED; // as the server says when the folder could not be synced
+        answer.warning = UNSYNCED;
+        return route.fulfill({ response, json: answer });
+    }, { times: 1 });
+    shown = await runImport();
+    const warned = await ev(() => [...document.querySelectorAll(".bl-overlay .bl-batch-outcome-row .bl-warn")]
+        .map((w) => w.textContent));
+    check("a write not synced to the disk says so on its row, and for the places (R22-05)",
+        JSON.stringify(warned) === JSON.stringify([UNSYNCED]) && shown?.notes.includes(`Their places in categories: ${UNSYNCED}`),
+        { warned, notes: shown?.notes });
+    await button("Done").click();
+
     // ---- files the import refuses -----------------------------------------------------------------------
     const notZip = path.join(out, "not-a-zip.zip");
     fs.writeFileSync(notZip, "not a zip");
@@ -304,7 +346,7 @@ function held(token) {
     await until(() => !document.querySelector(".bl-overlay .bl-import"));
 
     await page.keyboard.press("Escape");
-    await finish({ expectRemoved: 6 }); // the three, and their copies
+    await finish({ expectRemoved: 9 }); // the three, and two rounds of copies
 })().catch((e) => {
     console.error(e);
     process.exit(1);

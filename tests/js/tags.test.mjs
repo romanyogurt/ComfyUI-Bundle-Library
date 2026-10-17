@@ -14,10 +14,16 @@ test("tags are the same when the server takes them for the same (tests/fixtures/
     }
 });
 
-test("every character with a case folds as the server's Python folds it (R19-04)", () => {
-    const wrong = Object.entries(CASEFOLD.chars).filter(([c, folded]) => tagKey(c) !== folded);
-    assert.deepEqual(wrong.slice(0, 5).map(([c, folded]) => [c.codePointAt(0).toString(16), tagKey(c), folded]), []);
-    assert.ok(Object.keys(CASEFOLD.chars).length > 2000);
+test("every character folds as the server's Python folds it, and those it leaves stay (R19-04, R22-07)", () => {
+    const wrong = [];
+    for (let cp = 0; cp < 0x110000; cp++) {
+        if (cp >= 0xd800 && cp <= 0xdfff) continue;
+        const c = String.fromCodePoint(cp);
+        const folded = CASEFOLD.chars[c] ?? c; // not in the fixture: this Python leaves it as it is
+        if (tagKey(c) !== folded) wrong.push([cp.toString(16), tagKey(c), folded]);
+    }
+    assert.deepEqual(wrong.slice(0, 5), []);
+    assert.ok(Object.keys(CASEFOLD.chars).length > 1500);
 });
 
 test("names are ordered by their letters, then exactly", () => {

@@ -12,13 +12,14 @@ from bundle_library import tags as tag_rules
 from bundle_library.constants import MAX_TAGS
 from bundle_library.model import LibraryError
 from bundle_library.store import BundleStore
+from tests import make_casefold
 
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "tag_keys.json"
 CASEFOLD = Path(__file__).resolve().parent / "fixtures" / "casefold.json"
 TAGS_JS = Path(__file__).resolve().parents[1] / "web" / "tags.js"
 REGENERATE = ("The page's fold table follows the server's Python; when Python's Unicode changes, regenerate "
-              "FOLD in web/tags.js and tests/fixtures/casefold.json from it.")
+              "it and tests/fixtures/casefold.json with that Python: python -m tests.make_casefold")
 
 
 def _chars():
@@ -33,12 +34,15 @@ class TagRulesTest(unittest.TestCase):
                 self.assertEqual(tag_rules.key(a) == tag_rules.key(b), same)
 
     def test_the_page_folds_as_this_python_folds(self):
-        # R19-04: the page cannot call casefold(); its table holds where casefold() differs from lower-casing.
-        found = re.search(r"const FOLD = new Map\(Object\.entries\((\{.*?\})\)\);", TAGS_JS.read_text(encoding="utf-8"), re.S)
-        table = json.loads(found.group(1))
-        self.assertEqual(table, {c: c.casefold() for c in _chars() if c.casefold() != c.lower()}, REGENERATE)
+        # R19-04, R22-07: the page cannot call casefold(), nor trust the browser's toLowerCase(), whose Unicode
+        # may be newer. Its table holds every character casefold() changes; every other one folds to itself.
+        text = TAGS_JS.read_text(encoding="utf-8")
+        ranges = [[int(a, 16), int(b, 16), int(s), int(o)] for a, b, s, o in re.findall(
+            r"\[0x([0-9a-f]+), 0x([0-9a-f]+), (\d), (-?\d+)\]", re.search(r"const RANGES = \[(.*?)\];", text, re.S).group(1))]
+        more = json.loads(re.search(r"const FOLD_MORE = (\{.*?\});", text, re.S).group(1))
+        self.assertEqual(make_casefold.expand(ranges, more), make_casefold.folds(), REGENERATE)
         expected = {c: unicodedata.normalize("NFC", c).casefold() for c in _chars()
-                    if unicodedata.normalize("NFC", c).casefold() != c or c.lower() != c}
+                    if unicodedata.normalize("NFC", c).casefold() != c}
         self.assertEqual(json.loads(CASEFOLD.read_text(encoding="utf-8"))["chars"], expected, REGENERATE)
 
     def test_a_tag_is_the_same_whatever_its_case(self):
