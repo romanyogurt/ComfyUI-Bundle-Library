@@ -1,6 +1,6 @@
 Bundle Library keeps its data on the ComfyUI server and serves it over a small HTTP API. The node's own pages
-use it, and so can scripts and agents. For worked examples, see [Automating with the API](Automating-with-the-API).
-The files behind it are described in [File formats](File-formats).
+use it, and so can scripts and agents. For worked examples, see [Automating with the API](Automating-with-the-API.md).
+The files behind it are described in [File formats](File-formats.md).
 
 - [Basics](#basics)
 - [Writing](#writing)
@@ -65,7 +65,7 @@ Paths are relative to `/api/bundle-library/v1`. `{id}` is a bundle id (a UUID) u
 
 | Method | Path | Request | Answer |
 | --- | --- | --- | --- |
-| GET | `/health` | — | `{"version", "organization", "bundles", "trash", "corrupt", "newer", "unsupported", "legacy_trash", "writable"}`. `bundles` and `trash` are counts. `corrupt`, `newer` and `unsupported` list the bundle files in that state (see [Compatibility and versions](Compatibility-and-versions#file-states)). `organization` is the state of `organization.json`: `missing`, `ok`, `read_only`, `newer_version`, `unsupported` or `corrupt`. `legacy_trash` lists files left in the `trash/` folder of a development version before 0.1.0 (empty otherwise) |
+| GET | `/health` | — | `{"version", "organization", "bundles", "trash", "corrupt", "newer", "unsupported", "legacy_trash", "writable"}`. `bundles` and `trash` are counts. `corrupt`, `newer` and `unsupported` list the bundle files in that state (see [Compatibility and versions](Compatibility-and-versions.md#file-states)). `organization` is the state of `organization.json`: `missing`, `ok`, `read_only`, `newer_version`, `unsupported` or `corrupt`. `legacy_trash` lists files left in the `trash/` folder of a development version before 0.1.0 (empty otherwise) |
 | GET | `/messages?lang=` | — | The message catalogs for a language: see [Translated messages](#translated-messages) |
 
 ### Bundles
@@ -107,7 +107,7 @@ a file first, then put its `sha256` in a field.
 
 | Method | Path | Request | Answer |
 | --- | --- | --- | --- |
-| POST | `/assets` | Multipart: a `kind` field (`image`, `video` or `audio`; `image` if absent), then the `file` field. `kind` must come first: it picks the size limit | `{"asset": {"sha256", "ext", "mime", "bytes", …, "original_name"}, "warning"?}`: 201 for a new file, 200 when the same file was stored before. The other keys describe the file (see [File formats](File-formats#fields)) |
+| POST | `/assets` | Multipart: a `kind` field (`image`, `video` or `audio`; `image` if absent), then the `file` field. `kind` must come first: it picks the size limit | `{"asset": {"sha256", "ext", "mime", "bytes", …, "original_name"}, "warning"?}`: 201 for a new file, 200 when the same file was stored before. The other keys describe the file (see [File formats](File-formats.md#fields)) |
 | GET | `/assets?kind=` | `kind` is required | `{"assets": [{"sha256", "ext", "mime", "bytes", …, "stored_at", "names", "used_by": [{"id", "name", "field", "deleted"}]}]}`: every stored file of that kind, the most recently stored first. `names` are the names bundles gave the file, the most used first; `used_by` are the bundles that use it (those in use first, then those in the trash) |
 | POST | `/assets/{sha256}/use` | — | `{"asset": {…}}`. Tells the server that a draft now uses this stored file: its grace time before a cleanup starts again, as if it were uploaded again. 404 `not_found` when there is no such file |
 | GET | `/assets/{sha256}` | — | The file as stored. Range requests work, so browsers can stream and seek. Sent with `Cache-Control: immutable` |
@@ -127,7 +127,7 @@ The grace time exists because the library window uploads a file before its bundl
 saved yet looks unused. Cleanup refuses to run (409 `unreadable_bundles`, with the file names in `files`) while a
 bundle file might point at files this version cannot see, since those files could look unused. A damaged file whose
 references are all understood does not stop it (its files are kept). See
-[Compatibility and versions](Compatibility-and-versions#what-each-state-allows).
+[Compatibility and versions](Compatibility-and-versions.md#what-each-state-allows).
 
 ### Export and import
 
@@ -213,7 +213,7 @@ The answer is always 200 once the request is accepted:
 ## Export
 
 `POST /export` writes the chosen bundles and the files they use into one ZIP (its layout is in
-[File formats](File-formats#export-zip)).
+[File formats](File-formats.md#export-zip)).
 
 - Bundle files go in as stored, byte for byte, so values and keys this version does not know travel too. Read-only
   bundles are included.
@@ -338,7 +338,7 @@ language. A list of messages (`warnings`) gets a list in the same order (`null` 
 - `languages` are the languages with a catalog. `messages` holds English and the language for `lang`: the same
   code ignoring case, else its base language (`ko-KR` gives `ko`). Without a match, only English.
 - The catalogs are read from disk on each request, so a server updated but not restarted already sends the new ones.
-- How to add a language is in [Translations](Translations).
+- How to add a language is in [Translations](Translations.md).
 
 ## Errors
 

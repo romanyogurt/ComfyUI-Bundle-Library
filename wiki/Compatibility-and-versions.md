@@ -22,12 +22,12 @@ version never damages what a newer one wrote.
 - Older versions may work, but are not tested. The node is marked BETA in ComfyUI.
 - Bundle Library uses ComfyUI's node API (`comfy_api.latest`) and parts of the frontend (DOM widgets, rebuilding a
   node's outputs, Nodes 2.0). A ComfyUI or frontend update can break it; if it does, please
-  [report it](Reporting-problems).
+  [report it](Reporting-problems.md).
 - It needs nothing beyond what ComfyUI installs (Pillow, PyAV, NumPy, aiohttp).
 
 ## Updating safely
 
-1. Back up the library folder (see [Data and backups](Data-and-backups)).
+1. Back up the library folder (see [Data and backups](Data-and-backups.md)).
 2. Update the node (ComfyUI-Manager, `comfy node update`, or `git pull` in its folder) and restart ComfyUI.
 3. Reload the browser page. A page opened before the restart runs the old scripts: it says so and tells you to
    reload, and the server refuses its changes until you do. Likewise, files updated without a restart make the page
@@ -42,8 +42,8 @@ version never damages what a newer one wrote.
 | A bundle file's `schema_version` (now 3) | The bundle file format | A change an older version could not fully understand: new keys, field types, file kinds, or a new way of pointing at files. Each bundle is written in the lowest version that holds it: 3 only when a field is turned off |
 | `organization.json`'s `schema_version` (now 1) | The categories and favorites file | Nested categories, or new keys |
 | `slot_spec`'s `v` (now 1) | What a node records about its outputs | A new shape of that record |
-| The API prefix `/v1` | The [HTTP API](HTTP-API) | An incompatible change of the API |
-| The export manifest's `version` (now 1) | The [export ZIP](File-formats#export-zip) | A new shape of the ZIP |
+| The API prefix `/v1` | The [HTTP API](HTTP-API.md) | An incompatible change of the API |
+| The export manifest's `version` (now 1) | The [export ZIP](File-formats.md#export-zip) | A new shape of the ZIP |
 | The package version | Releases | Every release |
 
 ## Promises

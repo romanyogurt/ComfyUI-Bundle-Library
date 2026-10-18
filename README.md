@@ -71,28 +71,28 @@ Choose one on a Load Bundle node to see its outputs follow it.
 
 To make your own, select an example, **Duplicate → Duplicate with values**, change its prompt and picture, and save.
 Your bundle fits the same workflow, since it has the same fields. See
-[Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Getting-started) for more.
+[Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Getting-started.md) for more.
 
 ![The library window: the seven example bundles in their groups, and Sunset loop open in the editor with its video, audio and text](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/library-window.png)
 
 ## Documentation
 
-Everything else is in the [wiki](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki):
+Everything else is in the [wiki](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Home.md):
 
-- **Using it**: [Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Getting-started),
-  [Bundles and fields](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Bundles-and-fields),
-  [The Load Bundle node](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/The-Load-Bundle-node),
-  [The library window](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/The-library-window),
-  [Import and export](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Import-and-export),
-  [Images, video and audio](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Images-video-and-audio),
-  [Data and backups](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Data-and-backups),
-  [FAQ and troubleshooting](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/FAQ-and-troubleshooting).
-- **Reference**: [HTTP API](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/HTTP-API),
-  [File formats](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/File-formats),
-  [Compatibility and versions](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Compatibility-and-versions),
-  [Automating with the API](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Automating-with-the-API).
-- **Contributing**: [Translations](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Translations),
-  [Reporting problems](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Reporting-problems).
+- **Using it**: [Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Getting-started.md),
+  [Bundles and fields](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Bundles-and-fields.md),
+  [The Load Bundle node](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/The-Load-Bundle-node.md),
+  [The library window](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/The-library-window.md),
+  [Import and export](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Import-and-export.md),
+  [Images, video and audio](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Images-video-and-audio.md),
+  [Data and backups](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Data-and-backups.md),
+  [FAQ and troubleshooting](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/FAQ-and-troubleshooting.md).
+- **Reference**: [HTTP API](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/HTTP-API.md),
+  [File formats](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/File-formats.md),
+  [Compatibility and versions](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Compatibility-and-versions.md),
+  [Automating with the API](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Automating-with-the-API.md).
+- **Contributing**: [Translations](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Translations.md),
+  [Reporting problems](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Reporting-problems.md).
 
 For AI agents, [`llms.txt`](llms.txt) points to the plain-text versions of these pages.
 
@@ -103,7 +103,7 @@ What changed in each release is in the [changelog](CHANGELOG.md) and on the
 
 To update safely, back up the library folder (`ComfyUI/user/bundle_library/`), update the node pack, restart ComfyUI
 and reload the page. Your bundles and workflows keep working across updates; see
-[Compatibility and versions](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Compatibility-and-versions).
+[Compatibility and versions](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Compatibility-and-versions.md).
 
 ## Good to know
 
@@ -111,11 +111,11 @@ and reload the page. Your bundles and workflows keep working across updates; see
   other computers (`--listen`), so is the library: keep it on a trusted network.
 - With `--multi-user`, all users share one library.
 
-More in [Data and backups](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Data-and-backups).
+More in [Data and backups](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Data-and-backups.md).
 
 ## License
 
 Bundle Library is under the [MIT License](LICENSE). Some example material comes from others and keeps its own
 license: ComfyUI's example picture (GPL-3.0) and the parts of the template that come from Comfy-Org's Z-Image Turbo
-template (MIT). The other example pictures were made with Z-Image Turbo for this pack. See
-[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+template (MIT). The other example pictures were made with Z-Image Turbo for this pack; the example video was made from
+one of them, and the example sound was synthesized. See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

@@ -1,7 +1,7 @@
 What Bundle Library writes to disk: the library folder, bundle files, `organization.json`, stored files, the export
 ZIP, and what a Load Bundle node keeps in a workflow. How files of other versions are treated is in
-[Compatibility and versions](Compatibility-and-versions); the API that reads and writes them is in
-[HTTP API](HTTP-API).
+[Compatibility and versions](Compatibility-and-versions.md); the API that reads and writes them is in
+[HTTP API](HTTP-API.md).
 
 - [The library folder](#the-library-folder)
 - [Bundle file](#bundle-file)
@@ -27,11 +27,11 @@ bundle_library/
 ```
 
 - To back up, copy `bundles/`, `assets/` and the files directly in the folder (`organization.json`). `thumbs/` and
-  `tmp/` need no backup. See [Data and backups](Data-and-backups).
+  `tmp/` need no backup. See [Data and backups](Data-and-backups.md).
 - Only one ComfyUI process should use a library folder. Another process opening the same folder could delete the
   temporary files of a write in progress.
 - Every file is written in full and synced to the disk before it takes its place, so a power cut never leaves half a
-  file. What a request guarantees is in [HTTP API](HTTP-API#writing).
+  file. What a request guarantees is in [HTTP API](HTTP-API.md#writing).
 - A bundle file edited by hand is picked up the next time the list is read (changes of content, permissions and
   replaced files are noticed). A file that cannot be used is skipped and reported in the list's `errors` and in
   `/health`, by its state. One file never stops the others from listing.
@@ -151,7 +151,7 @@ neither its file nor its revision, and does not make the nodes that use it run a
 - It follows the life of the bundles: trashing and restoring keep a bundle's category and star; deleting for good and
   emptying the trash remove them. A duplicate goes in the category of its source, without the star. Deleting a
   category makes its bundles (those in the trash too) uncategorized.
-- It has the same states as a bundle file (see [Compatibility and versions](Compatibility-and-versions#file-states)).
+- It has the same states as a bundle file (see [Compatibility and versions](Compatibility-and-versions.md#file-states)).
   When this version cannot change it, the file is left as it is, changes of categories and favorites are refused with
   409 `organization_unwritable`, and bundles still work. A read-only file still shows its categories.
 
@@ -195,7 +195,7 @@ assets/<sha256>.<ext>     the files the bundles use (no thumbnails)
 - JSON entries are compressed (deflate); media files, already compressed, are stored as they are. ZIP64 is used for
   large archives.
 - An import reads only the entries the manifest lists, by those names, and checks each against its SHA-256. What
-  is left out of an export and how an import treats a ZIP are in [HTTP API](HTTP-API#export).
+  is left out of an export and how an import treats a ZIP are in [HTTP API](HTTP-API.md#export).
 
 ## The node in a workflow
 
@@ -210,4 +210,4 @@ A Load Bundle node (`BundleLibraryLoad`) keeps two widget values in a workflow, 
   named and typed after the fields. The first output carries the first slot, and so on.
 - The node's properties also hold `bundle_name` (shown when the bundle is missing) and `preview_collapsed`.
 - In an API-format prompt, give `bundle_id` and `slot_spec` as inputs, and link the first slot as `["<node id>", 0]`,
-  the second as `["<node id>", 1]`, and so on. See [Automating with the API](Automating-with-the-API#run-a-workflow-with-a-bundle).
+  the second as `["<node id>", 1]`, and so on. See [Automating with the API](Automating-with-the-API.md#run-a-workflow-with-a-bundle).

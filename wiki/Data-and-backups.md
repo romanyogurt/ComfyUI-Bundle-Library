@@ -12,7 +12,7 @@ and what to know when ComfyUI is shared.
 
 In `bundle_library/` inside ComfyUI's user folder: `ComfyUI/user/bundle_library/`, or under the folder that ComfyUI's
 `--user-directory` option names. It is made the first time Bundle Library is used. What is inside is described in
-[File formats](File-formats#the-library-folder).
+[File formats](File-formats.md#the-library-folder).
 
 ## Backing up
 
@@ -24,12 +24,12 @@ Copy these, from the library folder:
 
 `thumbs/` and `tmp/` need no backup: thumbnails are made again when needed.
 
-Each file is always complete on the disk (see [HTTP API](HTTP-API#writing)), but a copy made while you save could
+Each file is always complete on the disk (see [HTTP API](HTTP-API.md#writing)), but a copy made while you save could
 hold a bundle without a file it just got. For a copy you can trust, make it while nothing is being saved, or with
 ComfyUI stopped. Back up before updating Bundle Library (see
-[Compatibility and versions](Compatibility-and-versions#updating-safely)), and before cleaning up unused files.
+[Compatibility and versions](Compatibility-and-versions.md#updating-safely)), and before cleaning up unused files.
 
-An [export](Import-and-export) of all your bundles (Ctrl+A in the list, then **Export ZIP**) is a portable copy too:
+An [export](Import-and-export.md) of all your bundles (Ctrl+A in the list, then **Export ZIP**) is a portable copy too:
 it holds the bundles and their files, and categories by name, but not favorites.
 
 ## Restoring and moving
@@ -44,7 +44,7 @@ it holds the bundles and their files, and categories by name, but not favorites.
 - **Several users** (`--multi-user`): there is one library, shared by everyone. Users do not have libraries of their
   own.
 - **Other computers** (`--listen`): Bundle Library has no login, like ComfyUI itself. Anyone who can reach the server
-  can read the library, and use its API (see [HTTP API](HTTP-API#basics)). Reach ComfyUI through a VPN, or put a
+  can read the library, and use its API (see [HTTP API](HTTP-API.md#basics)). Reach ComfyUI through a VPN, or put a
   proxy that asks for a login in front of it.
 - **One ComfyUI per library**: two ComfyUI processes should not use the same library folder.
 
@@ -52,7 +52,7 @@ it holds the bundles and their files, and categories by name, but not favorites.
 
 Bundle files are JSON and can be edited by hand; the library reads a changed file the next time its list is read.
 A file it cannot use is listed under **Needs attention** with the reason, and the others are not affected. Still,
-the [library window](The-library-window) and the [API](Automating-with-the-API) check every change and keep
+the [library window](The-library-window.md) and the [API](Automating-with-the-API.md) check every change and keep
 revisions; prefer them.
 
 ## Uninstalling

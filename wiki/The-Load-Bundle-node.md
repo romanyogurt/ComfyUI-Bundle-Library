@@ -13,7 +13,7 @@ and its outputs follow the bundle you choose. Add it from the node library, unde
 - **The list on the node.** Bundles are grouped as in the library: ★ Favorites, then the categories, then
   Uncategorized. A bundle without a field that one of the node's linked outputs needs is marked
   `⚠ no 'name'`.
-- **📚** opens the [library window](The-library-window) to pick from: select a bundle and click
+- **📚** opens the [library window](The-library-window.md) to pick from: select a bundle and click
   **Use this bundle**, or double-click it. The same ⚠ mark shows there. The node gets the bundle as it is saved: a
   change you have not saved yet is not handed over.
 
@@ -64,8 +64,8 @@ key; the next run uses the new content.
 ## Saving and sharing workflows
 
 The node saves the id of its bundle and the list of its outputs (`bundle_id` and `slot_spec`, see
-[File formats](File-formats#the-node-in-a-workflow)), not the bundle's content. To share a workflow, share its bundles
-too: [export them](Import-and-export) to a ZIP. Importing keeps their ids, so the workflow finds them in the other
+[File formats](File-formats.md#the-node-in-a-workflow)), not the bundle's content. To share a workflow, share its bundles
+too: [export them](Import-and-export.md) to a ZIP. Importing keeps their ids, so the workflow finds them in the other
 library.
 
 A node saved by a newer Bundle Library may record its outputs in a way this version cannot read. It then keeps its

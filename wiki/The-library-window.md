@@ -18,7 +18,7 @@ happened.
 - **Extensions → Open Bundle Library** in the menu, or the command `BundleLibrary.Open` (it has no shortcut; you
   can give it one in ComfyUI's keybinding settings).
 - The 📚 button of a Load Bundle node opens the window to pick a bundle for that node: **Use this bundle** (or a
-  double-click) hands it over. See [The Load Bundle node](The-Load-Bundle-node#choosing-a-bundle).
+  double-click) hands it over. See [The Load Bundle node](The-Load-Bundle-node.md#choosing-a-bundle).
 
 ## The list
 
@@ -33,13 +33,13 @@ happened.
   | Folder with + | Makes a new category |
   | Sort | Name A→Z or Z→A, newest or oldest first; the browser remembers it. Bundles are sorted within each group |
   | Filter | Filters by a tag. Each tag shows how many bundles have it; type to find one. A filter shows as a `Tag: …` chip above the list; × clears it. **Manage tags…** is at the bottom |
-  | Upload | Imports bundles from a ZIP; see [Import and export](Import-and-export) |
+  | Upload | Imports bundles from a ZIP; see [Import and export](Import-and-export.md) |
   | Trash | Opens the trash; the number is how many bundles are in it |
 
 - **+ New bundle** starts a new bundle in the editor.
 - Bundles with the same name are told apart by the start of their id.
 - An empty library offers **Import the examples**, the bundles of the pack's example workflow
-  (see [Getting started](Getting-started#try-the-example)).
+  (see [Getting started](Getting-started.md#try-the-example)).
 
 ## Categories and favorites
 
@@ -60,8 +60,8 @@ Selecting a bundle opens it in the editor: its name, category, ☆/★, tags, no
 (their names show on hover) are **Save** (Ctrl+S), **Revert**, **Duplicate**, **Export** (a ZIP of this bundle) and
 **Delete** (to the trash).
 
-- Fields are cards: see [Bundles and fields](Bundles-and-fields#editing-fields) for adding, moving, turning off and
-  removing them, and [Images, video and audio](Images-video-and-audio#adding-a-file) for files.
+- Fields are cards: see [Bundles and fields](Bundles-and-fields.md#editing-fields) for adding, moving, turning off and
+  removing them, and [Images, video and audio](Images-video-and-audio.md#adding-a-file) for files.
 - The header shows the state only when there is something to say: *● Unsaved changes*, *● New, not saved yet*,
   *Saving…*.
 - While the editor has unsaved changes, everything but editing waits: choosing another bundle, search, sort, the tag
@@ -105,7 +105,7 @@ Deleting a bundle moves it to the trash. While it is there, workflows that use i
 - **Delete forever** deletes one bundle; **Empty trash** deletes those you see. The files they used stay until you
   clean up.
 - **Clean up unused files…** lists the stored files that no bundle uses, not even one in the trash, and deletes them
-  once you confirm. See [Images, video and audio](Images-video-and-audio#cleaning-up-unused-files).
+  once you confirm. See [Images, video and audio](Images-video-and-audio.md#cleaning-up-unused-files).
 - A bundle saved by a newer version shows 🔒 and cannot be restored by this one. **Delete forever** says what you
   would lose and asks first; **Empty trash** leaves it.
 

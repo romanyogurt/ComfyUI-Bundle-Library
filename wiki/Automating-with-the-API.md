@@ -1,4 +1,4 @@
-Everything the library window does goes through the [HTTP API](HTTP-API), so a script or an agent can build and
+Everything the library window does goes through the [HTTP API](HTTP-API.md), so a script or an agent can build and
 use bundles too. This page walks through the common tasks with `curl` and Python. The answers shown are real ones,
 shortened.
 
@@ -50,7 +50,7 @@ curl -s -H "X-Bundle-Library: 1" -F kind=image -F file=@knight.png $BASE/assets
 ```
 
 Uploading the same file again answers 200 with the same `sha256` (a new file answers 201). Use `kind=video` or
-`kind=audio` for the other kinds; the limits are in [File formats](File-formats#names-and-limits).
+`kind=audio` for the other kinds; the limits are in [File formats](File-formats.md#names-and-limits).
 
 ## Create a bundle
 
@@ -67,7 +67,7 @@ curl -s -H "X-Bundle-Library: 1" -H "Content-Type: application/json" $BASE/bundl
 The answer (201) is the bundle as stored, with its `id` and `revision` 1. Use the full 64-character `sha256`; it is
 shortened here. Add `"category": "<category id>"` to put it in a category (`GET $BASE/categories` lists them). The
 field types are `text`, `image`, `video`, `audio`, `boolean`, `int` and `float`
-(see [File formats](File-formats#fields)).
+(see [File formats](File-formats.md#fields)).
 
 ## Find bundles
 
@@ -115,7 +115,7 @@ and send it again:
 ```
 
 To change many bundles at once (move them, star them, add or remove tags, trash them), use
-[`POST /bundles/batch`](HTTP-API#several-bundles-at-once).
+[`POST /bundles/batch`](HTTP-API.md#several-bundles-at-once).
 
 ## Run a workflow with a bundle
 
@@ -186,7 +186,7 @@ curl -s -H "X-Bundle-Library: 1" -H "Content-Type: application/json" $BASE/impor
 
 `conflict` decides what happens to bundles that are here already (`skip`, `overwrite` or `copy`), and `category`
 where the bundles go (`{"mode": "zip"}`, `{"mode": "one", "id": …}` or `{"mode": "none"}`). Details are in
-[HTTP API](HTTP-API#import).
+[HTTP API](HTTP-API.md#import).
 
 ## Tips
 
@@ -196,6 +196,6 @@ where the bundles go (`{"mode": "zip"}`, `{"mode": "one", "id": …}` or `{"mode
   `revision_conflict`), so two writers do not overwrite each other silently there. Other writes act on the bundle as
   it is: moving it to a category, starring it, tag actions, and an import that overwrites it.
 - Prefer the API to editing the library's files: it checks every change, keeps revisions, and writes each file
-  safely. The files themselves are described in [File formats](File-formats).
+  safely. The files themselves are described in [File formats](File-formats.md).
 - Deleting a bundle moves it to the trash (`DELETE /bundles/<id>?expected_revision=N`); `POST /bundles/<id>/restore`
   brings it back.

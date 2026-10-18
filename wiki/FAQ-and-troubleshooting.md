@@ -1,5 +1,5 @@
 Common questions first, then what to do when something goes wrong. If your problem is not here, see
-[Reporting problems](Reporting-problems).
+[Reporting problems](Reporting-problems.md).
 
 ## Questions
 
@@ -11,12 +11,12 @@ their id.
 ### How do I share bundles, or a workflow that uses them?
 
 Export the bundles to a ZIP and import it on the other side; the bundles keep their ids, so a workflow that uses them
-finds them. See [Import and export](Import-and-export#sharing-a-workflow-with-its-bundles).
+finds them. See [Import and export](Import-and-export.md#sharing-a-workflow-with-its-bundles).
 
 ### Where are my files? Can other workflows use them?
 
 They are in the library folder on the ComfyUI server, under `assets/`, named by their content (see
-[Data and backups](Data-and-backups)). Use them in a workflow through a Load Bundle node.
+[Data and backups](Data-and-backups.md)). Use them in a workflow through a Load Bundle node.
 
 ### Does it work with Nodes 2.0?
 
@@ -25,11 +25,11 @@ Yes. Load Bundle works with the classic node look and with Nodes 2.0.
 ### Why is the node marked BETA?
 
 The first public releases are marked BETA while they meet many more setups. Your bundles are safe across updates:
-see [Compatibility and versions](Compatibility-and-versions#promises).
+see [Compatibility and versions](Compatibility-and-versions.md#promises).
 
 ### Can a script or an AI agent use the library?
 
-Yes, through the HTTP API. See [Automating with the API](Automating-with-the-API).
+Yes, through the HTTP API. See [Automating with the API](Automating-with-the-API.md).
 
 ## Troubleshooting
 
@@ -57,7 +57,7 @@ The message says which output the bundle cannot fill, and why:
 | has no image (video, audio) | The media field is empty. Add a file |
 | has an image (video, audio) file that is missing from the library | The file was deleted, or the library was copied without `assets/`. Choose the file again, or restore it from a backup |
 
-See [The Load Bundle node](The-Load-Bundle-node#when-a-bundle-cannot-fill-an-output). A node after Load Bundle that
+See [The Load Bundle node](The-Load-Bundle-node.md#when-a-bundle-cannot-fill-an-output). A node after Load Bundle that
 stops with *Execution Blocked* and the same reason was linked to an output that cannot be filled, after a run that
 did not need it.
 
@@ -65,17 +65,17 @@ did not need it.
 
 The node does not rebuild its outputs by itself. Its panel says *Bundle fields changed*: click **Update outputs**.
 Linked outputs are never removed or retyped; see
-[The Load Bundle node](The-Load-Bundle-node#how-the-outputs-follow-the-bundle).
+[The Load Bundle node](The-Load-Bundle-node.md#how-the-outputs-follow-the-bundle).
 
 ### The node says *Bundle not found or in the trash*
 
-Restore the bundle from the [trash](The-library-window#the-trash), or import it again (it keeps its id). If it was
+Restore the bundle from the [trash](The-library-window.md#the-trash), or import it again (it keeps its id). If it was
 deleted for good and you have no copy, choose another bundle.
 
 ### The workflow did not run again after I changed a bundle
 
 Only what the node's outputs carry makes it run again: values, files, and which fields the outputs stand for. A new
-name, note, tags, category or star does not. See [The Load Bundle node](The-Load-Bundle-node#when-it-runs-again).
+name, note, tags, category or star does not. See [The Load Bundle node](The-Load-Bundle-node.md#when-it-runs-again).
 
 ### Something is listed under Needs attention
 
@@ -95,7 +95,7 @@ message names the files; deal with them as above, then clean up again.
 ### An import is refused, or leaves bundles out
 
 A file that is not an export of Bundle Library, or that a newer version made, is refused: update the node pack for the
-second. Bundles left out show their reason in the preview; see [Import and export](Import-and-export#import).
+second. Bundles left out show their reason in the preview; see [Import and export](Import-and-export.md#import).
 
 ### The example workflow cannot find its models
 

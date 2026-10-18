@@ -6,7 +6,7 @@ came before the first public release; they are in this repository's history and 
 ## [Unreleased]
 
 The first public release, to be 0.1.0. Bundle Library as the [README](README.md) and the
-[wiki](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki) describe it:
+[wiki](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Home.md) describe it:
 
 - **Load Bundle**, a node whose outputs follow the chosen bundle: one output per field, links kept across bundles
   with the same fields, and runs that stop with a clear reason when a bundle cannot fill a linked output.

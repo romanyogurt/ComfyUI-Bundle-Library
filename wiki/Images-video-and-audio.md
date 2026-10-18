@@ -18,11 +18,11 @@ bundles point at them.
 A file is checked when it is uploaded, by its content rather than its name: an image is decoded to the end, a video's
 first frame is decoded, and an audio file is decoded whole (it is loaded whole when it runs). A file that is damaged,
 of another format, of the wrong kind for the field (a video in an audio field), or over a limit is refused with the
-reason. More details are in [File formats](File-formats#stored-files).
+reason. More details are in [File formats](File-formats.md#stored-files).
 
 ## Adding a file
 
-On a media field's card in the [editor](The-library-window#the-editor):
+On a media field's card in the [editor](The-library-window.md#the-editor):
 
 - **Choose an image…** (or a video, or an audio file) picks a file from your computer.
 - Drop a file on the card, or paste an image into it.
@@ -42,7 +42,7 @@ until you save the bundle.
 | Audio | AUDIO, decoded whole: `{"waveform", "sample_rate"}` | Load Audio |
 
 In the editor, a picture enlarges on a click, and videos and audio play with their own controls. In the
-[Load Bundle node](The-Load-Bundle-node#the-preview)'s preview, pictures enlarge and videos play on a click, and audio
+[Load Bundle node](The-Load-Bundle-node.md#the-preview)'s preview, pictures enlarge and videos play on a click, and audio
 plays with **Play**.
 
 ## Files are stored once
@@ -52,9 +52,9 @@ bundle, stores nothing new. Deleting a bundle (even for good) leaves its files; 
 
 ## Cleaning up unused files
 
-**Clean up unused files…** in the [trash](The-library-window#the-trash) lists the files that no bundle uses, not even
+**Clean up unused files…** in the [trash](The-library-window.md#the-trash) lists the files that no bundle uses, not even
 a bundle in the trash, with their sizes, and deletes them once you confirm. Deleted files cannot be brought back, so
-back up first if you may want them ([Data and backups](Data-and-backups)).
+back up first if you may want them ([Data and backups](Data-and-backups.md)).
 
 - Files stored in the last 24 hours are kept: the editor uploads a file before its bundle is saved, so a file of a
   draft not saved yet looks unused. Choosing a stored file for a field starts its 24 hours again.

@@ -4,7 +4,7 @@ Found a bug, or something that could work better? Open an issue at
 ## Before you report
 
 - Update to the latest release, restart ComfyUI and reload the page; the problem may be fixed already.
-- Look through [FAQ and troubleshooting](FAQ-and-troubleshooting).
+- Look through [FAQ and troubleshooting](FAQ-and-troubleshooting.md).
 - If a bundle or file misbehaves, open the library window: files this version cannot use are listed under
   **Needs attention**, each with its reason.
 
@@ -23,7 +23,7 @@ Found a bug, or something that could work better? Open an issue at
 
 Your bundles hold your prompts, images and notes. Do not attach your library folder to a public issue. If one
 bundle shows the problem, try to make a small bundle that does the same and export only that one
-(see [Import and export](Import-and-export)), or describe its fields (names and types).
+(see [Import and export](Import-and-export.md)), or describe its fields (names and types).
 
 ## Security problems
 

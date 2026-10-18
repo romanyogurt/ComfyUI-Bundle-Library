@@ -1,24 +1,24 @@
-**[Home](Home)**
+**[Home](Home.md)**
 
 **Using**
 
-- [Getting started](Getting-started)
-- [Bundles and fields](Bundles-and-fields)
-- [The Load Bundle node](The-Load-Bundle-node)
-- [The library window](The-library-window)
-- [Import and export](Import-and-export)
-- [Images, video and audio](Images-video-and-audio)
-- [Data and backups](Data-and-backups)
-- [FAQ and troubleshooting](FAQ-and-troubleshooting)
+- [Getting started](Getting-started.md)
+- [Bundles and fields](Bundles-and-fields.md)
+- [The Load Bundle node](The-Load-Bundle-node.md)
+- [The library window](The-library-window.md)
+- [Import and export](Import-and-export.md)
+- [Images, video and audio](Images-video-and-audio.md)
+- [Data and backups](Data-and-backups.md)
+- [FAQ and troubleshooting](FAQ-and-troubleshooting.md)
 
 **Reference**
 
-- [HTTP API](HTTP-API)
-- [File formats](File-formats)
-- [Compatibility and versions](Compatibility-and-versions)
-- [Automating with the API](Automating-with-the-API)
+- [HTTP API](HTTP-API.md)
+- [File formats](File-formats.md)
+- [Compatibility and versions](Compatibility-and-versions.md)
+- [Automating with the API](Automating-with-the-API.md)
 
 **Contributing**
 
-- [Translations](Translations)
-- [Reporting problems](Reporting-problems)
+- [Translations](Translations.md)
+- [Reporting problems](Reporting-problems.md)

@@ -1,5 +1,5 @@
 A bundle is a named set of values that belong together: a prompt, a few reference pictures, a seed, a switch. Each
-value is a *field*, and each field becomes an output of the [Load Bundle node](The-Load-Bundle-node).
+value is a *field*, and each field becomes an output of the [Load Bundle node](The-Load-Bundle-node.md).
 
 - [What a bundle holds](#what-a-bundle-holds)
 - [Field types](#field-types)
@@ -15,12 +15,12 @@ value is a *field*, and each field becomes an output of the [Load Bundle node](T
 | --- | --- |
 | Name | For you to read. Bundles may share a name; the library tells them apart by the start of their id |
 | Id | Given when the bundle is made, and never changed. Workflows point at bundles by id, so renaming a bundle or moving it to another category keeps every workflow working |
-| Category | One at most; see [The library window](The-library-window#categories-and-favorites). It is not part of the bundle: changing it does not change the bundle |
+| Category | One at most; see [The library window](The-library-window.md#categories-and-favorites). It is not part of the bundle: changing it does not change the bundle |
 | Tags | Up to 20 words to find bundles by. `Portrait` and `portrait` are the same tag |
 | Note | Free text, for you |
 | Fields | The values, in order: up to 32 |
 
-The limits on names and sizes are in [File formats](File-formats#names-and-limits).
+The limits on names and sizes are in [File formats](File-formats.md#names-and-limits).
 
 ## Field types
 
@@ -35,8 +35,8 @@ The limits on names and sizes are in [File formats](File-formats#names-and-limit
 | Audio | A WAV, FLAC, MP3, OGG or M4A file | AUDIO | Decoded as core *Load Audio* does |
 
 An image, video or audio field may be empty, but a workflow that uses it then stops with a reason; see
-[The Load Bundle node](The-Load-Bundle-node#when-a-bundle-cannot-fill-an-output). Files are covered in
-[Images, video and audio](Images-video-and-audio).
+[The Load Bundle node](The-Load-Bundle-node.md#when-a-bundle-cannot-fill-an-output). Files are covered in
+[Images, video and audio](Images-video-and-audio.md).
 
 ## Field names
 
@@ -63,7 +63,7 @@ outputs it; its card is dimmed and marked off. Use it to try another set of outp
 
 ## Editing fields
 
-In the editor of the [library window](The-library-window#the-editor):
+In the editor of the [library window](The-library-window.md#the-editor):
 
 - **+ Add field ▾** adds a field of the type you choose.
 - Drag a card by the handle on the left of its header to move it, or use ▲▼. The order is the order of the node's
@@ -91,4 +91,4 @@ Two states mark a bundle in the list and in the editor:
   works in workflows, but this version does not change it. Update the node pack to edit it.
 
 Files this version cannot read at all are listed under **Needs attention**; see
-[FAQ and troubleshooting](FAQ-and-troubleshooting#something-is-listed-under-needs-attention).
+[FAQ and troubleshooting](FAQ-and-troubleshooting.md#something-is-listed-under-needs-attention).
