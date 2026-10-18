@@ -15,6 +15,7 @@ Documentation = "https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main
 "Bug Tracker" = "https://github.com/romanyogurt/ComfyUI-Bundle-Library/issues"
 
 [tool.comfy]
+PublisherId = "romanyogurt"
 DisplayName = "Bundle Library"
 Icon = "https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/icon.png"
 Banner = "https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/banner.jpg"
