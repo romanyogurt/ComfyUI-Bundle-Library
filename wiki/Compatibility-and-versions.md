@@ -15,9 +15,9 @@ version never damages what a newer one wrote.
 
 | | Minimum | Tested with |
 | --- | --- | --- |
-| ComfyUI | 0.38.0 | 0.38.0 |
-| ComfyUI frontend | 1.53.10 | 1.53.10 |
-| Python | 3.10 | 3.13 |
+| ComfyUI | 0.38.0 | 0.38.0, 0.41.3 |
+| ComfyUI frontend | 1.53.6, the one ComfyUI 0.38.0 installs | 1.53.6, 1.53.10, 1.55.17 |
+| Python | 3.10 | 3.13; the unit tests also on 3.10 and 3.14, and on Windows and macOS |
 
 - Older versions may work, but are not tested. The node is marked BETA in ComfyUI.
 - Bundle Library uses ComfyUI's node API (`comfy_api.latest`) and parts of the frontend (DOM widgets, rebuilding a

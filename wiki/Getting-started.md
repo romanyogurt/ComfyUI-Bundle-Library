@@ -8,9 +8,8 @@ From installing Bundle Library to running the example workflow and making a bund
 
 ## Install
 
-You need ComfyUI 0.38.0 or later, with its frontend 1.53.10 or later
-(see [Compatibility and versions](Compatibility-and-versions.md#supported-versions)). Bundle Library needs nothing
-beyond what ComfyUI installs. Use any one of these:
+You need ComfyUI 0.38.0 or later (see [Compatibility and versions](Compatibility-and-versions.md#supported-versions)).
+Bundle Library needs nothing beyond what ComfyUI installs. Use any one of these:
 
 - **ComfyUI-Manager**: search for **Bundle Library**, install it, and restart ComfyUI.
 - **comfy-cli**: `comfy node install bundle-library`, then restart ComfyUI.
