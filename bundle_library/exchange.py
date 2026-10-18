@@ -36,7 +36,7 @@ from pathlib import Path
 from . import schema
 from .assets import replace
 from .constants import VERSION
-from .model import LibraryError, check_bundle_id, invalid, load_json
+from .model import LibraryError, check_bundle_id, invalid, load_json, lone_surrogates
 from .store import UNSYNCED, kind_problem
 from .text import Text, said
 
@@ -264,6 +264,8 @@ class ExportFile:
             data = load_json(self.read("manifest.json", MAX_MANIFEST))
         except (ValueError, RecursionError):
             raise _bad(Text("exchange.manifest_not_json")) from None
+        if lone_surrogates(data):  # a name or category of it could not be written (R010-02)
+            raise _bad(Text("exchange.manifest_unicode"))
         if not isinstance(data, dict) or data.get("format") != FORMAT:
             raise _bad(Text("exchange.manifest_not_format"))
         version = data.get("version")
@@ -297,6 +299,8 @@ class ExportFile:
                 raise _bad(Text("exchange.manifest_bad_file"))
             if entry["file"] not in self.entries:
                 raise _bad(Text("exchange.missing_in_zip", file=entry['file']))
+            if type(entry.get("bytes")) is not int or entry["bytes"] < 0:  # a size (R010-06)
+                raise _bad(Text("exchange.manifest_bad_file"))
             shas.add(entry["sha256"])
         declared = sum(self.entries[e["file"]].file_size for e in [*bundles, *assets])
         if declared > MAX_UNPACKED:
@@ -388,7 +392,8 @@ class Imports:
                          "tags": p["loaded"].bundle["tags"] if p["loaded"].readable else [],
                          "fields": len(p["loaded"].bundle["fields"]) if p["loaded"].readable else 0} for p in plan],
             "assets": {"new": len(new), "present": len(present), "missing": len(needed - present - new),
-                       "bytes": sum(listed[s]["bytes"] for s in new)},
+                       # As the ZIP holds them: a file not as the manifest says stays out when applied
+                       "bytes": sum(export.entries[listed[s]["file"]].file_size for s in new)},
         }
 
     def apply(self, store, token, conflict, category):

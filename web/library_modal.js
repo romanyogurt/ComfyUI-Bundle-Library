@@ -524,17 +524,11 @@ class LibraryModal {
 
     /** The example bundles of the pack, through the import preview: nothing changes until Import. */
     async importExamples() {
-        if (!this.allowed()) return;
-        let file;
-        try {
+        await this.showImport(async () => {
             const response = await fetch(EXAMPLES);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            file = new File([await response.blob()], "example-bundles.zip", { type: "application/zip" });
-        } catch (error) {
-            this.status(t("library.examples_failed", { reason: error.message }), "error");
-            return;
-        }
-        await this.showImport(file);
+            return new File([await response.blob()], "example-bundles.zip", { type: "application/zip" });
+        });
     }
 
     /** A group: its heading (collapse, count, the menu of a category) and its rows. */
@@ -1043,13 +1037,28 @@ class LibraryModal {
      * library changes until Import. The upload holds the window (its pane has
      * Cancel); a preview whose pane is gone meanwhile is dropped on the server.
      */
+    /**
+     * Upload `file` to import and show its preview. `file` may be a function that
+     * fetches it (the examples): the window waits from the start, so a second click
+     * or another view cannot be taken over by its late answer (R010-03).
+     */
     async showImport(file) {
         if (!this.allowed()) return;
         this.selection = new Set();
         this.status(""); // what the status line said was about something else
-        const panel = new ImportPanel(this, file);
-        await this.commands.hold({ kind: "upload", wait: t("library.wait_upload") },
+        const fetched = typeof file === "function";
+        await this.commands.hold({ kind: "upload", wait: fetched ? t("library.wait_examples") : t("library.wait_upload") },
             async (ticket) => {
+                if (fetched) {
+                    try {
+                        file = await file();
+                    } catch (error) {
+                        if (!this.closed) this.status(t("library.examples_failed", { reason: error.message }), "error");
+                        return;
+                    }
+                    if (this.closed) return;
+                }
+                const panel = new ImportPanel(this, file);
                 ticket.view = this.showPane(panel.root, { imports: panel });
                 this.renderList();
                 let preview;

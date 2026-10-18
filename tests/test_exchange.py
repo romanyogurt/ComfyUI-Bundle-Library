@@ -266,6 +266,93 @@ class ImportTest(unittest.TestCase):
             Imports(self.target.tmp_dir).apply(self.target, token, "skip", {"mode": "one", "id": str(uuid.uuid4())})
         self.assertEqual(ctx.exception.code, "not_found")
 
+    def test_a_new_bundle_read_back_badly_after_its_write_is_imported_all_the_same(self):
+        # R010-01: reading the file back after it was put in place failed. The bundle is there: it was imported and
+        # placed, and the answer kept says so. A write that fails before the file is in place still fails.
+        shelf = self.source.create_category("Shelf")["id"]
+        a, b = self.make(self.source, "A", category=shelf), self.make(self.source, "B")
+        zip_a, zip_b = self.export(self.source, [a]), self.export(self.source, [b])
+        written = self.bundle_file(self.target, a)
+        real_write, real_stat, armed = store_module._write_file, Path.stat, {"on": False}
+
+        def write(path, raw, tmp_dir):
+            synced = real_write(path, raw, tmp_dir)
+            armed["on"] = Path(path) == written
+            return synced
+
+        def stat(path, *args, **kwargs):
+            if armed["on"] and path == written:
+                armed["on"] = False
+                raise OSError(5, "Input/output error")
+            return real_stat(path, *args, **kwargs)
+        imports = Imports(self.target.tmp_dir)
+        token = self.receive(self.target, zip_a)
+        imports.inspect(self.target, token)
+        with mock.patch.object(store_module, "_write_file", write), mock.patch.object(Path, "stat", stat):
+            answer = imports.apply(self.target, token, "skip", {"mode": "zip"})
+        self.assertEqual((answer["imported"], [r["ok"] for r in answer["results"]]), (1, [True]))
+        listing = self.target.list()
+        self.assertEqual([b["category"] for b in listing["bundles"]], [listing["categories"][0]["id"]])
+        again = imports.apply(self.target, token, "skip", {"mode": "zip"})
+        self.assertEqual((again["replayed"], again["imported"], len(self.target.list()["bundles"])), (True, 1, 1))
+
+        def fails(path, raw, tmp_dir):
+            raise OSError(28, "No space left on device")
+        with mock.patch.object(store_module, "_write_file", fails):
+            _, answer = self.run_import(self.target, zip_b)
+        self.assertEqual((answer["imported"], answer["results"][0]["code"]), (0, "io_error"))
+        self.assertFalse(self.bundle_file(self.target, b).exists())
+
+    def test_a_manifest_with_text_that_is_not_unicode_is_refused_before_anything_is_written(self):
+        # R010-02: a category name with a lone surrogate could not be written into organization.json, after the
+        # bundle had been written, and the import was left half done. Korean and characters past the BMP are text.
+        shelf = self.source.create_category("선반 📦")["id"]
+        a = self.make(self.source, "A", category=shelf)
+        path = self.export(self.source, [a])
+
+        def bend(name, data):
+            if name != "manifest.json":
+                return data
+            manifest = json.loads(data)
+            manifest["bundles"][0]["category"] = "bad\ud800category"
+            return json.dumps(manifest).encode()
+        token = self.receive(self.target, self.rewrite_zip(path, bend))
+        with self.assertRaises(LibraryError) as ctx:
+            Imports(self.target.tmp_dir).inspect(self.target, token)
+        self.assertEqual((ctx.exception.status, ctx.exception.code), (400, "invalid_export"))
+        self.assertEqual((self.target.list()["bundles"], self.target.list()["categories"]), ([], []))
+        _, answer = self.run_import(self.target, path, category={"mode": "zip"})
+        self.assertEqual((answer["imported"], self.target.list()["categories"][0]["name"]), (1, "선반 📦"))
+
+    def test_files_listed_without_a_size_are_refused_and_the_preview_adds_up_what_the_zip_holds(self):
+        # R010-06: a file's "bytes" missing, text, negative or true broke the preview or bent its total
+        a = self.make(self.source, "A", self.red)
+        path = self.export(self.source, [a])
+
+        def preview(zip_path):
+            try:
+                return Imports(self.target.tmp_dir).inspect(self.target, self.receive(self.target, zip_path))
+            except LibraryError as e:
+                return e.code
+
+        def sized(value):
+            def bend(name, data):
+                if name != "manifest.json":
+                    return data
+                manifest = json.loads(data)
+                if value is None:
+                    del manifest["assets"][0]["bytes"]
+                else:
+                    manifest["assets"][0]["bytes"] = value
+                return json.dumps(manifest).encode()
+            return self.rewrite_zip(path, bend)
+        for label, value in {"missing": None, "text": "12", "negative": -1, "true": True, "a fraction": 1.5}.items():
+            with self.subTest(label):
+                self.assertEqual(preview(sized(value)), "invalid_export")
+        real = preview(path)["assets"]["bytes"]
+        self.assertEqual(real, len(helpers.png("red")))
+        self.assertEqual(preview(sized(1))["assets"]["bytes"], real, "a size that is a number but not the file's")
+
     def test_what_this_version_cannot_write_is_left_out_with_the_reason(self):
         a, locked = self.make(self.source, "A"), self.make(self.source, "Locked")
         data = json.loads(self.bundle_file(self.source, locked).read_text(encoding="utf-8"))

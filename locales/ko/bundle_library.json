@@ -1042,6 +1042,10 @@
     "en": "manifest.json is not valid JSON",
     "text": "manifest.json이 올바른 JSON이 아님"
   },
+  "exchange.manifest_unicode": {
+    "en": "manifest.json has text that is not valid Unicode",
+    "text": "manifest.json에 올바른 유니코드가 아닌 글자가 있음"
+  },
   "exchange.missing_in_zip": {
     "en": "{file} is not in the ZIP",
     "text": "ZIP에 {file}이(가) 없음"
@@ -1849,6 +1853,10 @@
   "library.wait_batch": {
     "en": "Wait until the change to the selected bundles is done.",
     "text": "고른 번들의 변경이 끝날 때까지 기다리세요."
+  },
+  "library.wait_examples": {
+    "en": "Wait until the example bundles are downloaded.",
+    "text": "예제 번들을 다 받을 때까지 기다리세요."
   },
   "library.wait_export": {
     "en": "Wait until the export is made.",

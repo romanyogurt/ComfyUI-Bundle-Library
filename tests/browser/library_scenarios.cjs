@@ -903,6 +903,43 @@ const LIB_HELPERS = () => {
         told.text === UNSYNCED && told.error, told);
     await page.keyboard.press("Escape");
     await closed();
+    // R010-04: Close → Save closes only when nothing about the save needs reading
+    const reopen = async () => {
+        await ev(async ([module, id]) => (await import(`${module}/library_modal.js`)).openLibrary({ selected: id }),
+            ["/extensions/ComfyUI-Bundle-Library", pickId]);
+        await opened();
+        await until(() => document.querySelector(".bl-overlay .bl-note-input"));
+    };
+    const closeAndSave = async (note) => {
+        await page.locator(".bl-overlay .bl-note-input").fill(note);
+        await page.keyboard.press("Escape");
+        await button("Save", layerBox).click();
+    };
+    const after = async () => ({ open: await lib(() => window.__lib.open()), status: await lib(() => window.__lib.status()),
+        note: (await api("GET", `/bundles/${pickId}`)).note });
+    await reopen();
+    await closeAndSave("closed after its save");
+    check("Close → Save closes when the save says nothing more", await closed()
+        && (await api("GET", `/bundles/${pickId}`)).note === "closed after its save");
+    await reopen();
+    await page.route(`**/api/bundle-library/v1/bundles/${pickId}`, unsynced);
+    await closeAndSave("saved, not synced");
+    await savedState();
+    let stayed = await after();
+    check("Close → Save over a save the disk could not keep: the window stays, the warning on it (R010-04)",
+        stayed.open && stayed.status.text === UNSYNCED && stayed.status.error && stayed.note === "saved, not synced", stayed);
+    const elsewhere = await api("GET", `/bundles/${pickId}`);
+    await api("PUT", `/bundles/${pickId}`, { ...elsewhere, note: "saved elsewhere", expected_revision: elsewhere.revision });
+    await closeAndSave("over the other");
+    await until(() => window.__lib.layer()?.title === "This bundle was changed elsewhere");
+    await button("Overwrite", layerBox).click();
+    await savedState();
+    stayed = await after();
+    check("the same after Overwrite of a change made elsewhere (R010-04)",
+        stayed.open && stayed.status.text === UNSYNCED && stayed.status.error && stayed.note === "over the other", stayed);
+    await page.unroute(`**/api/bundle-library/v1/bundles/${pickId}`, unsynced);
+    await page.keyboard.press("Escape");
+    check("saved, it then closes without asking", await closed());
 
     // ---- turning a field off and on (0.0.30) -----------------------------------------------------
     const switchId = (await api("POST", "/bundles", { name: "[test] Switch", tags: ["test"], fields: [

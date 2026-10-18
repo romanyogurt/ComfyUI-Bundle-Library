@@ -7,7 +7,6 @@ runtime, a fresh one in the tests. Nothing here imports ComfyUI.
 import asyncio
 import functools
 import hashlib
-import json
 import logging
 from urllib.parse import quote, urlsplit
 
@@ -106,7 +105,7 @@ async def _read_json(request):
         chunks.append(chunk)
     try:
         data = load_json(b"".join(chunks))
-    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+    except (ValueError, RecursionError):  # not JSON, not UTF-8, an integer longer than Python reads (R010-07)
         raise LibraryError(400, "invalid_json", Text("request.json_invalid")) from None
     if not isinstance(data, dict):
         raise LibraryError(400, "invalid", Text("request.json_object"))

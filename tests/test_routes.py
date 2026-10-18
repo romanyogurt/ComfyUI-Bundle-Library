@@ -449,7 +449,8 @@ class RoutesTest(AioHTTPTestCase):
         self.assertEqual((copy["name"], copy["fields"][0]["value"]), ("Red Dress Girl copy", data["fields"][0]["value"]))
         for label, body in {"a lone surrogate": b'{"name": "\\ud800", "fields": []}'.replace(b"\\\\", b"\\"),
                             "deep nesting": b'{"a": ' + b"[" * 100000 + b"]" * 100000 + b"}",
-                            "one level too deep": b'{"a": ' + b"[" * MAX_JSON_DEPTH + b"]" * MAX_JSON_DEPTH + b"}"}.items():
+                            "one level too deep": b'{"a": ' + b"[" * MAX_JSON_DEPTH + b"]" * MAX_JSON_DEPTH + b"}",
+                            "an integer longer than Python reads (R010-07)": b'{"a": ' + b"1" * 4400 + b"}"}.items():
             with self.subTest(label):
                 await self.error(await self.client.post(P + "/bundles", data=body, headers={
                     **WRITE, "Content-Type": "application/json"}), 400, "invalid_json")

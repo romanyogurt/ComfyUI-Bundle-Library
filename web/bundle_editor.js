@@ -852,7 +852,8 @@ export class BundleEditor {
 
     /**
      * Save the draft. Whether it was saved as it is and nothing about it needs
-     * the user's attention (Close → Save closes only then).
+     * the user's attention (Close → Save closes only then): a warning of the
+     * answer, such as a folder not synced, does (R010-04).
      */
     async save() {
         if (this.busy || !this.changed) return false; // a second Ctrl+S would conflict with the first
@@ -878,7 +879,7 @@ export class BundleEditor {
                     this.modal.done(t("editor.saved_not_categorized", { reason: said(saved, "placement_error") }), saved, "error");
                     return false;
                 }
-                return true;
+                return !saved.warning;
             } catch (error) {
                 if (error.code === "revision_conflict") return this.resolveConflict(data, error.details.current_revision);
                 this.modal.status(error.message, "error");
@@ -904,8 +905,9 @@ export class BundleEditor {
             [[t("editor.overwrite"), "overwrite", "danger"], [t("editor.reload"), "reload"], [t("common.cancel"), null]]);
         try {
             if (choice === "overwrite") {
-                await this.adopt(await updateBundle(this.saved.id, data, currentRevision), t("editor.saved_over"));
-                return true;
+                const saved = await updateBundle(this.saved.id, data, currentRevision);
+                await this.adopt(saved, saved.warning ? "" : t("editor.saved_over"));
+                return !saved.warning;
             }
             if (choice === "reload") {
                 this.model.load(await getBundle(this.saved.id));

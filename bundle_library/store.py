@@ -290,15 +290,20 @@ class BundleStore:
         bundle = {**bundle, "schema_version": schema.version_for(bundle)}  # the lowest version that holds it
         path = self._path(bundle["id"])
         self._synced = _write_json(path, bundle, self.tmp_dir)
+        self._remember_written(path, bundle["id"])
+        return bundle
+
+    def _remember_written(self, path, bundle_id):
+        """Note a bundle file just put in place. If reading it back fails, the file is
+        written all the same: that is no failure of the write (0.0.34: an error here once
+        made a client create the bundle twice; R010-01: an import counted it failed). The
+        next scan reads it."""
         try:
             stat = path.stat()
         except OSError:
-            # The file is written; only noting how it reads failed, which is no failure of the save
-            # (0.0.34: an error here once made a client create the bundle twice). The next scan reads it.
             self._cache.pop(path.name, None)
         else:
-            self._remember(path.name, stat, schema.read_file(path, bundle["id"]))
-        return bundle
+            self._remember(path.name, stat, schema.read_file(path, bundle_id))
 
     def create(self, data, category=None):
         """A new bundle. With `category`, it is also put in that category; that is
@@ -553,13 +558,14 @@ class BundleStore:
         """Drop the places and stars of bundles deleted for good. Entries that stay
         (an organization this version cannot write, or a write that failed) do no
         harm: they are ignored when read and dropped by the next write. So this
-        never fails the delete itself."""
-        org = self._organization()
-        if org.writable and any(b in org.placement or b in org.favorites for b in bundle_ids):
-            try:
+        never fails the delete itself, not even when organization.json cannot be
+        read (R010-05)."""
+        try:
+            org = self._organization()
+            if org.writable and any(b in org.placement or b in org.favorites for b in bundle_ids):
                 self._change_organization(lambda org: None)  # dropping what is gone is part of every save
-            except OSError as e:
-                logging.warning("[Bundle Library] organization.json not updated after a delete: %s", _reason(e))
+        except OSError as e:
+            logging.warning("[Bundle Library] organization.json not updated after a delete: %s", _reason(e))
 
     def categories(self):
         with self._lock:
@@ -836,7 +842,7 @@ class BundleStore:
             if loaded.bundle["deleted_at"] is None:  # as exported: the file goes as it is
                 path = self._path(source)
                 self._synced = _write_file(path, data, self.tmp_dir)
-                self._remember(path.name, path.stat(), schema.read_file(path, source))
+                self._remember_written(path, source)
             else:
                 self._save({**loaded.bundle, "deleted_at": None})
             return self._written({"id": source, "source": source, "ok": True, "changed": True, "as": "new"})

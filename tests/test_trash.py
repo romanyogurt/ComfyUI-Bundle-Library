@@ -6,6 +6,7 @@ import time
 import unittest
 import uuid
 from pathlib import Path
+from unittest import mock
 
 from bundle_library.constants import ASSET_GRACE_SECONDS
 from bundle_library.model import LibraryError
@@ -288,6 +289,34 @@ class TrashTest(unittest.TestCase):
         self.assertEqual(self.store.unused_assets()["assets"], [])
         self.refused(lambda: self.store.delete_unused_assets("abc"), 400, "invalid")
         self.refused(lambda: self.store.delete_unused_assets(["../x"]), 400, "invalid_id")
+
+    def test_a_failure_after_a_delete_for_good_does_not_undo_it(self):
+        # R010-05: organization.json could not be read once the file was gone; the delete was done all the same
+        ids = [self.store.create({"name": name, "fields": []})["id"] for name in ("A", "B", "C")]
+        for bundle_id in ids:
+            self.store.delete(bundle_id, 1)
+        files = [self.store.bundle_dir / f"{bundle_id}.json" for bundle_id in ids]
+        real_unlink, real_stat, gone = Path.unlink, Path.stat, set()
+
+        def unlink(path, *args, **kwargs):
+            real_unlink(path, *args, **kwargs)
+            gone.add(path)
+
+        def stat(path, *args, **kwargs):
+            if gone and path == self.store.organization_path:
+                raise OSError(5, "Input/output error")
+            return real_stat(path, *args, **kwargs)
+        with mock.patch.object(Path, "unlink", unlink), mock.patch.object(Path, "stat", stat), \
+                self.assertLogs(level="WARNING"):
+            self.store.purge(ids[0], expected_revision=2)
+            self.assertEqual(self.store.empty_trash({ids[1]: 2})["deleted"], 1)
+        self.assertEqual([f.exists() for f in files], [False, False, True])
+        # A file that cannot be deleted is still no deleted bundle
+        with mock.patch.object(Path, "unlink", side_effect=OSError(13, "Permission denied")):
+            with self.assertRaises(OSError):
+                self.store.purge(ids[2], expected_revision=2)
+            self.assertEqual(self.store.empty_trash({ids[2]: 2})["deleted"], 0)
+        self.assertTrue(files[2].exists())
 
 
 if __name__ == "__main__":

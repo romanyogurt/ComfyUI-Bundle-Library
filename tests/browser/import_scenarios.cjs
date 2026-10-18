@@ -365,13 +365,43 @@ function held(token) {
     check("an empty library offers the example bundles", offered
         && empty === "No bundles yet. Create one with + New bundle.Import the examplesExample bundles to try, some made "
             + "for the z-image-turbo workflow among ComfyUI's templates.", empty);
+    // R010-03: their download is part of the import, so the window waits for it: a second click or another view
+    // cannot be overtaken by its late answer. Held here until both were tried.
+    let letExamplesGo;
+    const examplesHeld = new Promise((resolve) => { letExamplesGo = resolve; });
+    let downloads = 0;
+    const holdExamples = async (route) => {
+        downloads += 1;
+        await examplesHeld;
+        return route.fallback();
+    };
+    const uploads = [];
+    const countUploads = (request) => {
+        if (request.method() === "POST" && new URL(request.url()).pathname === "/api/bundle-library/v1/import") uploads.push(request);
+    };
+    await page.route("**/examples/example-bundles.zip", holdExamples);
+    page.on("request", countUploads);
     const sent = page.waitForResponse((r) => r.request().method() === "POST"
         && new URL(r.url()).pathname === "/api/bundle-library/v1/import", { timeout: 30000 });
     await button("Import the examples").click();
+    for (let i = 0; i < 50 && downloads === 0; i++) await page.waitForTimeout(100);
+    await button("Import the examples").click();
+    const whileDownloading = { downloads, secondClick: await status(), trash: await ev(() => {
+        const trash = document.querySelector(".bl-overlay .bl-trash-button");
+        return { disabled: trash.disabled, title: trash.title, shown: !!document.querySelector(".bl-overlay .bl-trash") };
+    }) };
+    letExamplesGo();
     const answer = await sent;
+    await page.unroute("**/examples/example-bundles.zip", holdExamples);
+    const WAIT = "Wait until the example bundles are downloaded.";
+    check("while the examples download, the window waits: a second click is refused, the trash too (R010-03)",
+        whileDownloading.downloads === 1 && whileDownloading.secondClick === WAIT && whileDownloading.trash.disabled
+        && whileDownloading.trash.title === WAIT && !whileDownloading.trash.shown, whileDownloading);
     await until(() => document.querySelector(".bl-overlay .bl-import .bl-import-go"));
     shown = await pane();
     await page.unroute("**/api/bundle-library/v1/bundles");
+    page.off("request", countUploads);
+    check("then the preview shows, of one upload (R010-03)", uploads.length === 1, uploads.length);
     check("it shows the import preview of the pack's ZIP; nothing changes before Import",
         answer.ok() && (await answer.json()).file_name === "example-bundles.zip" && Object.keys(shown?.rows ?? {}).length === 7
         && shown.rows[EXAMPLE] && shown.go?.text === "Import 7 bundles", shown && { rows: Object.keys(shown.rows), go: shown.go });
