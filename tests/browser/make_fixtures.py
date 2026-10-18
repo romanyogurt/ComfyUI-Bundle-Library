@@ -1,7 +1,7 @@
 """Writes the small video and audio files the browser scenarios upload.
-Run inside the container (it needs PyAV); the files are kept in the repository:
-    docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library comfyui \\
-        python tests/browser/make_fixtures.py
+Run it with a Python that has the unit tests' packages (CONTRIBUTING.md), from
+the repository's folder; the files are kept in the repository:
+    python tests/browser/make_fixtures.py
 """
 
 import sys

@@ -210,6 +210,7 @@ class ContractsTest(unittest.TestCase):
                 self.assertEqual([b["id"] for b in listing["bundles"]], [red["id"]])
                 self.refused(lambda: self.store.set_favorite(red["id"], True), 409, "organization_unwritable")
 
+    @unittest.skipIf(os.name == "nt", "Windows reads a file whatever its mode")
     @unittest.skipIf(hasattr(os, "geteuid") and os.geteuid() == 0, "root reads any file")
     def test_a_file_that_cannot_be_read_is_not_taken_for_damaged_nor_remembered(self):
         red = self.make("Red")

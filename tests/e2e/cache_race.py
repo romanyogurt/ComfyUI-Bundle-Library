@@ -10,7 +10,7 @@
 
 Runs ComfyUI's PromptExecutor in-process, in CPU mode, on a temporary library,
 so it can run beside the server:
-    docker exec -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library <container> python tests/e2e/cache_race.py
+    docker exec -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library bundle-library-test python tests/e2e/cache_race.py
 """
 
 import copy

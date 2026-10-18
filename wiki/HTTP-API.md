@@ -285,8 +285,9 @@ The checks (400 `invalid_export` when the ZIP or its manifest is wrong, 400 `new
 
 ## Tags
 
-A tag is part of a bundle. Two tags are the same when Python's `casefold()` makes them equal: `Portrait` and
-`portrait`, `Straße` and `STRASSE`. A bundle keeps one of each when saved. The pages compare tags the same way.
+A tag is part of a bundle. Two tags are the same when they fold to the same text, by Python's `casefold()` as
+Unicode 15.1 has it, whatever the server's Python: `Portrait` and `portrait`, `Straße` and `STRASSE`. A bundle keeps
+one of each when saved. The pages compare tags the same way.
 
 The tag actions (batch `add_tags` and `remove_tags`, `/tags/rename`, `/tags/delete`) change only the tags of a
 bundle and leave its other values as stored, even values that a newer rule would refuse. New tags follow the

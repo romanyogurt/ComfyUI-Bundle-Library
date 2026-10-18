@@ -8,6 +8,7 @@ import uuid
 from pathlib import Path
 from unittest import mock
 
+from bundle_library import casefold
 from bundle_library import tags as tag_rules
 from bundle_library.constants import MAX_TAGS
 from bundle_library.model import LibraryError
@@ -18,8 +19,7 @@ from tests import make_casefold
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "tag_keys.json"
 CASEFOLD = Path(__file__).resolve().parent / "fixtures" / "casefold.json"
 TAGS_JS = Path(__file__).resolve().parents[1] / "web" / "tags.js"
-REGENERATE = ("The page's fold table follows the server's Python; when Python's Unicode changes, regenerate "
-              "it and tests/fixtures/casefold.json with that Python: python -m tests.make_casefold")
+REGENERATE = "The fold tables and tests/fixtures/casefold.json are written together: python -m tests.make_casefold"
 
 
 def _chars():
@@ -33,14 +33,26 @@ class TagRulesTest(unittest.TestCase):
             with self.subTest(f"{a} / {b}"):
                 self.assertEqual(tag_rules.key(a) == tag_rules.key(b), same)
 
-    def test_the_page_folds_as_this_python_folds(self):
-        # R19-04, R22-07: the page cannot call casefold(), nor trust the browser's toLowerCase(), whose Unicode
-        # may be newer. Its table holds every character casefold() changes; every other one folds to itself.
+    def test_the_page_and_the_server_fold_with_one_table(self):
+        # R19-04, R22-07: the page cannot call casefold(), nor trust the browser's toLowerCase(), and the server
+        # does not trust its own Python's: any of them may know another Unicode. Both fold with one table.
         text = TAGS_JS.read_text(encoding="utf-8")
         ranges = [[int(a, 16), int(b, 16), int(s), int(o)] for a, b, s, o in re.findall(
             r"\[0x([0-9a-f]+), 0x([0-9a-f]+), (\d), (-?\d+)\]", re.search(r"const RANGES = \[(.*?)\];", text, re.S).group(1))]
         more = json.loads(re.search(r"const FOLD_MORE = (\{.*?\});", text, re.S).group(1))
-        self.assertEqual(make_casefold.expand(ranges, more), make_casefold.folds(), REGENERATE)
+        self.assertEqual(make_casefold.expand(ranges, more), make_casefold.expand(casefold.RANGES, casefold.FOLD_MORE),
+                         REGENERATE)
+        # As tests/js/tags.test.mjs holds tagKey() to it: every character the fold changes, after NFC.
+        fixture = json.loads(CASEFOLD.read_text(encoding="utf-8"))
+        self.assertEqual(fixture["unicode"], casefold.UNICODE, REGENERATE)
+        keys = {c: tag_rules.key(c) for c in _chars()}
+        self.assertEqual({c: k for c, k in keys.items() if k != c}, fixture["chars"])
+
+    def test_the_table_is_casefold_of_its_unicode(self):
+        if unicodedata.unidata_version != casefold.UNICODE:
+            self.skipTest(f"the fold table is of Unicode {casefold.UNICODE}, this Python's {unicodedata.unidata_version}")
+        # Every character casefold() changes is in the table; every other one folds to itself.
+        self.assertEqual(make_casefold.expand(casefold.RANGES, casefold.FOLD_MORE), make_casefold.folds(), REGENERATE)
         expected = {c: unicodedata.normalize("NFC", c).casefold() for c in _chars()
                     if unicodedata.normalize("NFC", c).casefold() != c}
         self.assertEqual(json.loads(CASEFOLD.read_text(encoding="utf-8"))["chars"], expected, REGENERATE)

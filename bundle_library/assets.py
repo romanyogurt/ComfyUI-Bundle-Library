@@ -7,6 +7,7 @@ LoadVideo and LoadAudio use). A file's kind follows from its stored extension.
 import logging
 import os
 import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -92,7 +93,7 @@ class AssetStore:
                 os.chmod(temp, 0o644)
                 with open(temp, "r+b") as f:  # writable: Windows syncs only a file open for writing
                     os.fsync(f.fileno())
-                os.replace(temp, target)
+                replace(temp, target)
                 synced = sync_folder(target)
             else:
                 _touch(target)  # uploaded again: a cleanup waits the grace time anew
@@ -270,13 +271,26 @@ class AssetStore:
             preview.thumbnail((size, size))
             preview.save(temp, "WEBP", quality=80)
             os.chmod(temp, 0o644)
-            os.replace(temp, target)
+            replace(temp, target)
         finally:
             temp.unlink(missing_ok=True)
         return target
 
 
 SYNC_FOLDERS = os.name != "nt"  # Windows cannot open a folder to sync it
+# Windows refuses to replace a file while another program has it open (an antivirus reading a file just
+# written, the search indexer, a backup): there a replace is tried again after each of these waits (seconds).
+REPLACE_WAITS = (0.01, 0.03, 0.1, 0.3, 0.5, 1.0) if os.name == "nt" else ()
+
+
+def replace(source, target):
+    """os.replace(source, target), tried again while it is refused (REPLACE_WAITS); the last refusal raises."""
+    for wait in REPLACE_WAITS:
+        try:
+            return os.replace(source, target)
+        except PermissionError:
+            time.sleep(wait)
+    return os.replace(source, target)
 
 
 def sync_folder(path):

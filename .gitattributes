@@ -1,0 +1,13 @@
+# Text files keep LF line ends in every checkout, Windows too, so that every
+# platform tests the same bytes: the compatibility fixtures are the files as
+# released versions wrote them.
+* text=auto eol=lf
+*.gif binary
+*.jpg binary
+*.mp3 binary
+*.mp4 binary
+*.png binary
+*.wav binary
+*.webm binary
+*.webp binary
+*.zip binary

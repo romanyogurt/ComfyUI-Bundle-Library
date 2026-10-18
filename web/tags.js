@@ -1,17 +1,18 @@
 // Tags and names as the library compares them. Two tags are the same tag when
-// they fold to the same text, exactly as the server folds them (str.casefold in
+// they fold to the same text, exactly as the server folds them (key() in
 // bundle_library/tags.py): "Straße" and "STRASSE" are one tag, "kırmızı" and
 // "kirmizi" two. Names, tags and
 // categories shown in lists are ordered by compareText(). Pure functions: no
 // DOM, so they run under `node --test` as well as in the browser.
 
-// Python's str.casefold() (bundle_library/tags.py) for every character it
-// changes, as the server's Python has it; a character not here folds to itself.
-// The browser's toLowerCase() is never asked: a browser of a newer Unicode
-// lower-cases characters the server leaves as they are (R22-07). Most fold by a
-// fixed offset in a run of every first or second code point (RANGES: [first,
-// last, step, offset]); FOLD_MORE holds the rest. tests/make_casefold.py writes
-// this table; tests/test_tags.py checks it against the server's Python, and
+// Python's str.casefold(), as the Unicode named below has it, for every
+// character it changes; a character not here folds to itself. The server folds
+// with the same table (bundle_library/casefold.py), not with its own Python's
+// casefold(), and the browser's toLowerCase() is never asked: either may know a
+// newer Unicode and fold characters the other leaves as they are (R22-07). Most
+// fold by a fixed offset in a run of every first or second code point (RANGES:
+// [first, last, step, offset]); FOLD_MORE holds the rest. tests/make_casefold.py
+// writes both tables; tests/test_tags.py checks that they are the same, and
 // tests/js/tags.test.mjs checks tagKey() for every character
 // (tests/fixtures/casefold.json).
 // BEGIN casefold table (tests/make_casefold.py)

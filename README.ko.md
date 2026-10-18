@@ -93,7 +93,8 @@ Load Bundle 노드에서 골라 보면 출력이 번들에 맞춰 바뀌는 모�
   [Compatibility and versions](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Compatibility-and-versions.md),
   [Automating with the API](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Automating-with-the-API.md)
 - **기여**: [Translations](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Translations.md),
-  [Reporting problems](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Reporting-problems.md)
+  [Reporting problems](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Reporting-problems.md),
+  [코드 기여 안내](CONTRIBUTING.md)
 
 AI 에이전트를 위해서는 [`llms.txt`](llms.txt)가 이 문서들의 텍스트 버전을 안내합니다.
 

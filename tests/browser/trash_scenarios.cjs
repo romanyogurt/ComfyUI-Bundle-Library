@@ -3,8 +3,8 @@
 // good must be its own: it empties the trash only when every entry is a
 // bundle it made, and deletes unused files only when the list holds just the
 // file it made. Deleting a file needs one older than the grace time: with
-// BL_TEST_CONTAINER and BL_TEST_LIBRARY set (scripts/bundle-library-test-server.sh
-// run sets them), the scenario back-dates its own file inside the test
+// BL_TEST_CONTAINER and BL_TEST_LIBRARY set (tests/test-server.sh run sets
+// them), the scenario back-dates its own file inside the test
 // server's container; without them that step is skipped.
 const { execFileSync } = require("child_process");
 const { startSession } = require("./harness.cjs");

@@ -28,7 +28,7 @@ from collections import Counter
 
 from . import organization, schema
 from . import tags as tag_rules
-from .assets import KINDS, AssetStore, sync_folder
+from .assets import KINDS, AssetStore, replace, sync_folder
 from .constants import (
     ASSET_GRACE_SECONDS, MAX_BUNDLE_NAME, MAX_IMAGE_BYTES, MAX_IMAGE_PIXELS, MAX_TAGS, MEDIA_TYPES,
 )
@@ -67,7 +67,7 @@ def _write_file(path, raw, tmp_dir):
             f.flush()
             os.fsync(f.fileno())
         os.chmod(temp, 0o644)
-        os.replace(temp, path)
+        replace(temp, path)
     except BaseException:
         try:
             temp.unlink(missing_ok=True)
@@ -226,12 +226,12 @@ class BundleStore:
             errors = self._errors()
             org = self._organization()
         names = {c["id"]: c["name"] for c in self._categories_of(org)}
-        query, tag = query.strip().casefold(), tag.strip().casefold()
+        query, tag = query.strip().casefold(), tag.strip()
         if query:
             loaded = [entry for entry in loaded
                       if query in _search_text(entry.bundle, names.get(self._category_of(org, entry.bundle["id"])))]
         if tag:
-            loaded = [entry for entry in loaded if tag in (t.casefold() for t in entry.bundle["tags"])]
+            loaded = [entry for entry in loaded if tag_rules.has(entry.bundle["tags"], tag)]
         loaded.sort(key=lambda entry: (name_key(entry.bundle["name"]), entry.bundle["id"]))
         if sort == "updated":
             loaded.sort(key=lambda entry: entry.bundle["updated_at"], reverse=True)  # stable: ties stay by name

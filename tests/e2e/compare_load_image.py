@@ -1,9 +1,9 @@
 """Checks that Load Bundle decodes images exactly like core LoadImage.
 
-Imports ComfyUI in CPU mode, so it can run beside the server without touching
-the GPU:
-    docker compose exec -T -e CUDA_VISIBLE_DEVICES= \\
-        -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library comfyui python tests/e2e/compare_load_image.py
+Imports ComfyUI in CPU mode, so it can run beside the server, in the test
+server's container (tests/test-server.sh start):
+    docker exec -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library bundle-library-test \\
+        python tests/e2e/compare_load_image.py
 """
 
 import os

@@ -1,0 +1,8 @@
+{
+  "name": "bundle-library-tests",
+  "private": true,
+  "description": "What the browser scenarios need (tests/browser): npm ci --prefix tests",
+  "devDependencies": {
+    "playwright-core": "1.60.0"
+  }
+}

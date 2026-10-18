@@ -4,7 +4,7 @@
 // a page and server of different versions.
 // Set-up and safety notes are in harness.cjs. The hand-made bundle files are
 // placed in the test server's library through its container (BL_TEST_CONTAINER
-// and BL_TEST_LIBRARY, which scripts/bundle-library-test-server.sh run sets)
+// and BL_TEST_LIBRARY, which tests/test-server.sh run sets)
 // and removed at the end; without them those checks are skipped.
 const { execFileSync } = require("child_process");
 const fs = require("fs");

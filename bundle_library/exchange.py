@@ -34,6 +34,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import schema
+from .assets import replace
 from .constants import VERSION
 from .model import LibraryError, check_bundle_id, invalid
 from .store import UNSYNCED, kind_problem
@@ -143,7 +144,7 @@ class Exports:
                 for path in assets.values():
                     zf.write(path, f"assets/{path.name}", compress_type=zipfile.ZIP_STORED)  # compressed already
             path = self.folder / f"{token}.zip"
-            os.replace(part, path)
+            replace(part, path)
         except BaseException:
             part.unlink(missing_ok=True)
             raise
@@ -194,7 +195,7 @@ def _keep(path, answer):
     with the ids of its messages, so that the page says it in its language again (R31-06)."""
     part = path.with_name(path.name + ".part")
     part.write_text(json.dumps(said(answer)), encoding="utf-8")
-    os.replace(part, path)
+    replace(part, path)
 
 
 def _bad(message):

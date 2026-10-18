@@ -1,6 +1,6 @@
 // Shared set-up for the browser scenarios: headless Chromium against a running
-// ComfyUI, by default the test server of comfy-docker's
-// scripts/bundle-library-test-server.sh (COMFY_URL, default http://127.0.0.1:8189).
+// ComfyUI, by default the test server of tests/test-server.sh (COMFY_URL,
+// default http://127.0.0.1:8189).
 // Safety:
 // - every non-GET request except /api/prompt and the bundle-library API is
 //   answered locally (never reaches the server), so settings and workflows on

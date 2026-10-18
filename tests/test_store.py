@@ -204,7 +204,10 @@ class StoreTest(unittest.TestCase):
         (self.root / "bundles" / f"{mismatched_id}.json").write_text(json.dumps(mismatched), encoding="utf-8")
         (self.root / "bundles" / "notes.txt").write_text("ignored", encoding="utf-8")
         link_id = str(uuid.uuid4())
-        os.symlink(self.root / "bundles" / f"{good['id']}.json", self.root / "bundles" / f"{link_id}.json")
+        try:
+            os.symlink(self.root / "bundles" / f"{good['id']}.json", self.root / "bundles" / f"{link_id}.json")
+        except OSError:
+            pass  # Windows makes links only in Developer Mode or for an administrator; the rest is checked all the same
         listing = self.store.list()
         self.assertEqual([b["id"] for b in listing["bundles"]], [good["id"]])
         self.assertEqual(sorted((e["file"], e["id"], e["code"]) for e in listing["errors"]),
@@ -262,6 +265,46 @@ class StoreTest(unittest.TestCase):
         self.assertEqual(self.store.get(bundle["id"])["note"], "saved")
         self.assertNotIn("warning", updated)
         self.assertIsNotNone(self.store.assets.path(sha))
+
+    def test_a_refused_replace_is_tried_again(self):
+        # Windows refuses to replace a file another program has open (assets.REPLACE_WAITS).
+        bundle = self.store.create(self.data())
+        real, tries = os.replace, []
+
+        def refused_twice(source, target):
+            tries.append(target)
+            if len(tries) <= 2:
+                raise PermissionError(13, "Permission denied")
+            real(source, target)
+
+        data = self.data(note="saved")
+        with mock.patch("bundle_library.assets.REPLACE_WAITS", (0, 0, 0)), \
+                mock.patch("bundle_library.assets.os.replace", refused_twice):
+            self.store.update(bundle["id"], data, 1)
+        self.assertEqual(len(tries), 3)
+        self.assertEqual(self.store.get(bundle["id"])["note"], "saved")
+        data = self.data(note="lost")
+        with mock.patch("bundle_library.assets.REPLACE_WAITS", (0, 0)), \
+                mock.patch("bundle_library.assets.os.replace", side_effect=PermissionError(13, "Permission denied")) as refusing:
+            with self.assertRaises(PermissionError):
+                self.store.update(bundle["id"], data, 2)
+        self.assertEqual(refusing.call_count, 3)  # then it gives up: the old file is in place, no part left
+        self.assertEqual(self.store.get(bundle["id"])["note"], "saved")
+        self.assertEqual(list((self.root / "tmp").iterdir()), [])
+
+    def test_a_save_waits_while_another_program_has_the_file_open(self):
+        # On Windows the first tries are refused until the file is closed; elsewhere an open file is no hindrance.
+        bundle = self.store.create(self.data())
+        data = self.data(note="saved")
+        reader = open(self.root / "bundles" / f"{bundle['id']}.json", "rb")
+        closing = threading.Timer(0.2, reader.close)
+        closing.start()
+        try:
+            self.store.update(bundle["id"], data, 1)
+        finally:
+            closing.join()
+            reader.close()
+        self.assertEqual(self.store.get(bundle["id"])["note"], "saved")
 
     def test_invalid_ids(self):
         for call in (lambda: self.store.get("../../etc/passwd"), lambda: self.store.delete("x", 1)):

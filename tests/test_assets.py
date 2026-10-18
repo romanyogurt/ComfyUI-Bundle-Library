@@ -119,7 +119,10 @@ class AssetStoreTest(unittest.TestCase):
         sha = "b" * 64
         folder = self.root / "assets" / "sha256" / sha[:2]
         folder.mkdir(parents=True)
-        os.symlink(secret, folder / f"{sha}.png")
+        try:
+            os.symlink(secret, folder / f"{sha}.png")
+        except OSError:
+            self.skipTest("cannot make a link here (Windows makes them only in Developer Mode or for an administrator)")
         self.assertIsNone(self.assets.path(sha))
         self.assertIsNone(self.assets.thumbnail(sha, 256))
 

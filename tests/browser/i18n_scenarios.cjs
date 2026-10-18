@@ -255,6 +255,7 @@ const BUSY = { text: /^Failed to load resource: the server responded with a stat
     check("meanwhile the ids show; asked again later, the catalogs are drawn without a reload",
         meanwhile.join() === "library.open,node.preview_hide" && came, { meanwhile, turnedAway });
     await korean("the node's panel when the catalogs came", "node", ["미리 보기 숨기기", "Bundle Library 열기"]);
+    await until(() => document.querySelector(".bl-sidebar-group")); // the tab is drawn again: its list comes after its button
     await korean("the sidebar when the catalogs came", ".bl-sidebar", ["★ 즐겨찾기", "라이브러리 열기"]);
     await command("Workspace.ToggleSidebarTab.bundle-library");
     await ev(() => window.__bl.app.graph.clear());

@@ -42,3 +42,4 @@ Key facts for using it from code:
 - [Changelog](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/CHANGELOG.md)
 - [Translations](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Translations.md)
 - [Reporting problems](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Reporting-problems.md)
+- [Contributing](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/CONTRIBUTING.md)

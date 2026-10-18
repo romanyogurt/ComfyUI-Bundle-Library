@@ -5,6 +5,7 @@ import math
 import re
 import unicodedata
 
+from .tags import key as tag_key
 from .text import Text
 from .constants import (
     AUDIO_EXTENSIONS, FIELD_TYPES, IMAGE_FORMATS, MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_NOTE,
@@ -131,8 +132,8 @@ def _tags(value, rules):
     tags, seen = [], set()
     for item in value:
         tag = _name(item, Text("check.tag_label"), MAX_TAG_LENGTH, rules)
-        if tag.casefold() not in seen:
-            seen.add(tag.casefold())
+        if tag_key(tag) not in seen:
+            seen.add(tag_key(tag))
             tags.append(tag)
     rules.limit(len(tags) <= MAX_TAGS, Text("check.tags_max", MAX_TAGS=MAX_TAGS))
     return tags

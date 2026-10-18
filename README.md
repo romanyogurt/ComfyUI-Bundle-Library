@@ -92,7 +92,8 @@ Everything else is in the [wiki](https://github.com/romanyogurt/ComfyUI-Bundle-L
   [Compatibility and versions](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Compatibility-and-versions.md),
   [Automating with the API](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Automating-with-the-API.md).
 - **Contributing**: [Translations](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Translations.md),
-  [Reporting problems](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Reporting-problems.md).
+  [Reporting problems](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Reporting-problems.md),
+  [Working on the code](CONTRIBUTING.md).
 
 For AI agents, [`llms.txt`](llms.txt) points to the plain-text versions of these pages.
 

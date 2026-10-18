@@ -1,7 +1,7 @@
 """Times the bundle store with many bundles. Works in a temporary folder, so the
-real library is not touched. Run inside the container (it needs Pillow):
-    docker compose exec -T -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library \\
-        comfyui python tests/e2e/bench_store.py --count 100 --count 1000
+real library is not touched. Run it with a Python that has the unit tests'
+packages (CONTRIBUTING.md), from the repository's folder:
+    python tests/e2e/bench_store.py --count 100 --count 1000
 """
 
 import argparse

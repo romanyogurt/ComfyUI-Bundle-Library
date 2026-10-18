@@ -1,5 +1,5 @@
 {
- "about": "Pairs of tags and whether they are the same tag: str.casefold on the server, tagKey() in web/tags.js.",
+ "about": "Pairs of tags and whether they are the same tag: key() in bundle_library/tags.py, tagKey() in web/tags.js.",
  "pairs": [
   [
    "Portrait",

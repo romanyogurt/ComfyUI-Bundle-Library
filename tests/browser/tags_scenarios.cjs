@@ -236,10 +236,12 @@ const TAG_HELPERS = () => {
 
     // ---- tags that only look alike are two tags (R19-04) -------------------------------------------
     const tr = await make(`${PREFIX} red tr`, ["kırmızı"]);
-    await make(`${PREFIX} red ascii`, ["kirmizi"]);
+    const ascii = await make(`${PREFIX} red ascii`, ["kirmizi"]);
     await ev(() => document.dispatchEvent(new Event("visibilitychange"))); // made behind the window's back
     await page.locator(".bl-overlay .bl-search").fill(`${PREFIX} red`);
-    await until(() => document.querySelectorAll(".bl-overlay .bl-list-item").length >= 2);
+    // The rows of this search's answer: those of the last search are two as well.
+    await until((want) => [...new Set([...document.querySelectorAll(".bl-overlay .bl-list-item")].map((r) => r.dataset.id))]
+        .sort().join() === want, [tr, ascii].sort().join());
     await page.locator(".bl-overlay .bl-tag-button").click();
     const reds = (await t(() => window.__tags.menu())).filter((i) => i.role === "menuitemradio")
         .map((i) => i.text).filter((x) => /^k[ıi]rm[ıi]z[ıi]$/.test(x));

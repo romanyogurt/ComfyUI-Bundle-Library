@@ -6,8 +6,8 @@
 // the trash this version cannot change, and a node's sound when its preview
 // goes. Set-up and safety notes are in harness.cjs. The bundle in the trash is
 // written into the test server's library through its container
-// (BL_TEST_CONTAINER and BL_TEST_LIBRARY, which scripts/bundle-library-test-server.sh
-// run sets) and removed at the end; without them that part is skipped.
+// (BL_TEST_CONTAINER and BL_TEST_LIBRARY, which tests/test-server.sh run
+// sets) and removed at the end; without them that part is skipped.
 const { execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");

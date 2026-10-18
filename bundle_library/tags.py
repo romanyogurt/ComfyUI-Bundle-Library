@@ -1,12 +1,22 @@
 """A bundle's tags, changed in place. Two tags are the same tag when they fold
-to the same text (str.casefold), whatever their case: "Straße" and "STRASSE"
-are one tag. The batch tag actions and the library-wide rename and delete
-change only the tags, so a bundle keeps every other value as it was stored,
-also one outside rules tightened since (web/tags.js folds tags the same way)."""
+to the same text (key), whatever their case: "Straße" and "STRASSE" are one
+tag. The fold is the table of casefold.py, str.casefold() as one Unicode
+version has it, and web/tags.js folds with the same table: the page and every
+server take the same tags for the same, whatever the Unicode of the browser or
+of the server's Python. The batch tag actions and the library-wide rename and
+delete change only the tags, so a bundle keeps every other value as it was
+stored, also one outside rules tightened since."""
+import unicodedata
+
+from .casefold import FOLD_MORE, RANGES
+
+_FOLD = {cp: chr(cp + offset) for first, last, step, offset in RANGES for cp in range(first, last + 1, step)}
+_FOLD.update((ord(c), folded) for c, folded in FOLD_MORE.items())
 
 
 def key(tag):
-    return tag.casefold()
+    """The text two tags share when they are the same tag: its NFC form, folded (as tagKey() in web/tags.js)."""
+    return unicodedata.normalize("NFC", tag).translate(_FOLD)
 
 
 def added(tags, new):

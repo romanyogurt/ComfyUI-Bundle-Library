@@ -1,9 +1,8 @@
 """Smoke test against a running ComfyUI: creates two test bundles, reads them
 back through the API and removes them again.
 
-Meant for the test server (comfy-docker's scripts/bundle-library-test-server.sh,
-127.0.0.1:8189), which is the default --base; run it inside that container,
-for it needs Pillow. Only the bundles this run created are removed, by id, so
+Meant for the test server (tests/test-server.sh, 127.0.0.1:8189), which is the
+default --base; run it inside that container, for it needs Pillow. Only the bundles this run created are removed, by id, so
 it never touches anything else in a library.
 """
 
