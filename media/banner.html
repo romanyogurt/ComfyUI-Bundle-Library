@@ -1,0 +1,69 @@
+<!doctype html>
+<!-- The Registry's banner (21:9). banner.jpg is this page rendered by headless Chromium: viewport 1260×540,
+     device scale 4/3 (1680×720), JPEG quality 92. -->
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=block" rel="stylesheet">
+<style>
+  html, body { margin: 0; }
+  body { width: 1260px; height: 540px; overflow: hidden; font-family: Inter, "Ubuntu Sans", sans-serif; }
+  .banner {
+    position: relative; width: 1260px; height: 540px; overflow: hidden;
+    background:
+      radial-gradient(circle at 78% 40%, rgba(124, 58, 237, 0.45), transparent 55%),
+      radial-gradient(circle at 10% 90%, rgba(99, 102, 241, 0.35), transparent 50%),
+      linear-gradient(135deg, #17153a 0%, #221c55 55%, #2e1660 100%);
+  }
+  .left { position: absolute; left: 88px; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; }
+  .left img { width: 112px; height: 112px; margin-bottom: 28px; }
+  h1 { margin: 0; color: #fff; font-size: 74px; font-weight: 700; letter-spacing: -1.5px; line-height: 1; }
+  p { margin: 22px 0 0; color: #c7d2fe; font-size: 27px; font-weight: 400; line-height: 1.45; }
+  .node {
+    position: absolute; left: 808px; top: 118px; width: 300px;
+    background: #2b2b33; border-radius: 12px; box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+    color: #e5e7eb; font-size: 17px;
+  }
+  .head { padding: 13px 18px; background: #1f1f26; border-radius: 12px 12px 0 0; font-weight: 600; color: #f3f4f6;
+          display: flex; align-items: center; gap: 10px; }
+  .head i { width: 10px; height: 10px; border-radius: 50%; background: #a78bfa; display: inline-block; }
+  .widget { margin: 14px 16px 6px; padding: 9px 14px; background: #1c1c22; border-radius: 8px; display: flex;
+            justify-content: space-between; color: #9ca3af; font-size: 15px; }
+  .widget b { color: #e5e7eb; font-weight: 500; }
+  .outs { padding: 8px 0 16px; }
+  .out { position: relative; height: 38px; display: flex; align-items: center; justify-content: flex-end;
+         padding-right: 24px; }
+  .out span { color: #d1d5db; }
+  .out i { position: absolute; right: -8px; width: 16px; height: 16px; border-radius: 50%; }
+  svg.wires { position: absolute; left: 0; top: 0; }
+</style>
+</head>
+<body>
+<div class="banner">
+  <svg class="wires" width="1260" height="540" viewBox="0 0 1260 540" fill="none" stroke-width="5" stroke-linecap="round">
+    <path d="M1116 248 C 1176 248, 1186 196, 1262 196" stroke="#fbbf24" opacity="0.85"/>
+    <path d="M1116 286 C 1176 286, 1196 270, 1262 270" stroke="#38bdf8" opacity="0.85"/>
+    <path d="M1116 324 C 1186 324, 1196 344, 1262 344" stroke="#34d399" opacity="0.85"/>
+    <path d="M1116 362 C 1176 362, 1186 410, 1262 410" stroke="#f472b6" opacity="0.85"/>
+    <path d="M1116 400 C 1166 400, 1176 470, 1262 470" stroke="#a78bfa" opacity="0.85"/>
+  </svg>
+  <div class="left">
+    <img src="icon.svg" alt="">
+    <h1>Bundle Library</h1>
+    <p>Keep inputs that belong together as named bundles,<br>and load any of them with one node.</p>
+  </div>
+  <div class="node">
+    <div class="head"><i></i>Load Bundle</div>
+    <div class="widget"><span>bundle</span><b>Santorini</b></div>
+    <div class="outs">
+      <div class="out"><span>image</span><i style="background:#fbbf24"></i></div>
+      <div class="out"><span>text</span><i style="background:#38bdf8"></i></div>
+      <div class="out"><span>steps</span><i style="background:#34d399"></i></div>
+      <div class="out"><span>denoise</span><i style="background:#f472b6"></i></div>
+      <div class="out"><span>i2i</span><i style="background:#a78bfa"></i></div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

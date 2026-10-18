@@ -21,6 +21,9 @@ Thank you for helping. Reports, translations and pull requests are all welcome.
 To work on it, clone the repository into `ComfyUI/custom_nodes/`, as the README's installation does by hand. A change
 in `web/` needs only a reload of the page; a change in the Python code needs a restart of ComfyUI.
 
+The Registry package leaves out what only the repository needs, as `.comfyignore` lists: the tests, the wiki's source,
+the README's pictures. A new folder of that kind goes there too.
+
 ## Rules
 
 - **English in the code.** Every string in the code is English: text on the page, errors, log messages, the names

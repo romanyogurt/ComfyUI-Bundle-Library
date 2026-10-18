@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400">
+  <!-- The pack's icon: a bundle (a box) whose contents leave it as typed outputs. icon.png is this,
+       rendered at 400×400 (the Registry's largest icon). -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366f1"/>
+      <stop offset="1" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="400" rx="88" fill="url(#bg)"/>
+  <g transform="translate(-14 -8)">
+    <polygon points="170,92 274,144 170,196 66,144" fill="#ffffff"/>
+    <polygon points="66,144 170,196 170,316 66,264" fill="#e0e7ff"/>
+    <polygon points="170,196 274,144 274,264 170,316" fill="#c7d2fe"/>
+    <line x1="118" y1="118" x2="222" y2="170" stroke="#c7d2fe" stroke-width="10" stroke-linecap="round"/>
+    <g stroke-width="12" stroke-linecap="round">
+      <line x1="274" y1="176" x2="318" y2="176" stroke="#fbbf24"/>
+      <line x1="274" y1="214" x2="318" y2="214" stroke="#38bdf8"/>
+      <line x1="274" y1="252" x2="318" y2="252" stroke="#34d399"/>
+    </g>
+    <circle cx="334" cy="176" r="18" fill="#fbbf24"/>
+    <circle cx="334" cy="214" r="18" fill="#38bdf8"/>
+    <circle cx="334" cy="252" r="18" fill="#34d399"/>
+  </g>
+</svg>

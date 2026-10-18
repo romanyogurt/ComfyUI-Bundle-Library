@@ -30,7 +30,8 @@ def write_guard_error(request):
     The custom header forces a CORS preflight for any other origin, which
     ComfyUI does not answer with allow headers. Core's own Host/Origin check
     only runs for loopback hosts, so the Origin comparison is repeated here
-    for access through the Tailscale domain.
+    for access through another host name (a LAN address, a VPN, a reverse
+    proxy).
     """
     if request.headers.get("X-Bundle-Library") != "1":
         return "missing_header"

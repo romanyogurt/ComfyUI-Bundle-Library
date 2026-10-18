@@ -1,0 +1,8 @@
+# Kept in the repository but left out of the Registry package (gitignore syntax): the tests, the wiki's source, the
+# README's pictures, and what only the repository needs.
+tests/
+wiki/
+media/
+.github/
+.gitattributes
+CONTRIBUTING.md

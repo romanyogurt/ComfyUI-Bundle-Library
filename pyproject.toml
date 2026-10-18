@@ -1,9 +1,21 @@
 [project]
-name = "comfyui-bundle-library"
-description = "Named bundles of text, images and values, loaded by a node whose outputs follow the selected bundle."
-version = "0.0.36"
+name = "bundle-library"
+description = "Keep inputs that belong together (prompts, images, video, audio and settings) as named bundles, and load any of them with one node."
+version = "0.1.0"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = []
+classifiers = [
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Repository = "https://github.com/romanyogurt/ComfyUI-Bundle-Library"
+Documentation = "https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Home.md"
+"Bug Tracker" = "https://github.com/romanyogurt/ComfyUI-Bundle-Library/issues"
 
 [tool.comfy]
 DisplayName = "Bundle Library"
+Icon = "https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/icon.png"
+Banner = "https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/banner.jpg"
+requires-comfyui = ">=0.38.0"

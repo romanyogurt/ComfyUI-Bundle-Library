@@ -1,6 +1,6 @@
 """Values shared by the node, the routes and (mirrored in web/reconcile.js) the browser."""
 
-VERSION = "0.0.36"
+VERSION = "0.1.0"
 
 API_PREFIX = "/bundle-library/v1"
 

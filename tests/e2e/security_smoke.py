@@ -5,8 +5,9 @@ the standard library is used, so it also runs on the host. The default --base
 is the test server (see api_smoke.py).
 
 On a loopback host ComfyUI's own Origin check answers a foreign Origin before
-this API sees it. --host sends another Host header, as a request through the
-Tailscale domain would; then this API's own Origin check must answer:
+this API sees it. --host sends another Host header, as a request through
+another host name would (a LAN address, a VPN, a reverse proxy); then this
+API's own Origin check must answer:
     python3 tests/e2e/security_smoke.py --host 192.0.2.1:8189
 """
 
