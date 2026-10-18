@@ -20,6 +20,8 @@ Bundles live in their own library where your ComfyUI is running, so every workfl
 - **One node, any inputs.** The output slots of the Load Bundle node follow the chosen bundle, one for each of its
   inputs.
 - **Mixed input types.** A bundle can hold text, numbers, switches, images, video and audio together.
+- **Choices for dropdowns.** A bundle can also hold what another node's dropdown takes, such as a LoRA, a model file
+  or a sampler, checked against that dropdown's options.
 - **A library window.** Create, edit, search and organize bundles.
 - **Files stored once.** A file used by several bundles is stored once, and stored files can be reused in new
   bundles.
@@ -55,8 +57,8 @@ The pack comes with an example workflow, four bundles made for it, and three mor
 
 ![The same workflow run with each example bundle: the image and the prompt that reach it change with the bundle](media/one-workflow-many-bundles.gif)
 
-The three bundles in **Field types** hold other kinds of inputs (a video and audio, numbers and a switch, two
-images). Choose one on a Load Bundle node to see its output slots change.
+The three bundles in **Field types** hold other kinds of inputs (a video and audio, numbers, choices and a switch,
+two images). Choose one on a Load Bundle node to see its output slots change.
 
 To make your own, select an example, **Duplicate → Duplicate with values**, change its prompt and image, and save.
 It works in the same workflow. See

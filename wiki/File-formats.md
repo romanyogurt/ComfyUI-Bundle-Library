@@ -43,7 +43,7 @@ bundle_library/
 ```json
 {
   "format": "comfyui-bundle-library/bundle",
-  "schema_version": 2,
+  "schema_version": 4,
   "id": "0b0fd10b-2e9d-43fa-898a-91f0cda76f5e",
   "revision": 1,
   "name": "Red knight",
@@ -55,7 +55,9 @@ bundle_library/
       "sha256": "4f71…6024", "ext": "png", "width": 512, "height": 768,
       "bytes": 6272, "original_name": "knight.png"}},
     {"name": "mask", "type": "image", "asset": null},
-    {"name": "steps", "type": "int", "value": 8}
+    {"name": "steps", "type": "int", "value": 8},
+    {"name": "lora", "type": "choice", "value": "armor/red.safetensors",
+     "source": {"node": "LoraLoader", "input": "lora_name"}}
   ],
   "created_at": "2026-10-14T01:32:24.101Z",
   "updated_at": "2026-10-14T01:32:24.101Z",
@@ -66,7 +68,7 @@ bundle_library/
 | Key | Meaning |
 | --- | --- |
 | `format` | Always `comfyui-bundle-library/bundle` |
-| `schema_version` | The lowest version that holds this bundle: 3 when a field is turned off, else 2 |
+| `schema_version` | The lowest version that holds this bundle: 4 when it has a choice field, else 3 when a field is turned off, else 2 |
 | `id` | A UUID, the same as the file name. Workflows point at bundles by this id |
 | `revision` | Starts at 1 and goes up by 1 with each save, trashing and restoring |
 | `name` | For display. Bundles may share a name, even in one category; the library tells them apart by the start of their id |
@@ -87,6 +89,7 @@ bundle_library/
 | `boolean` | `value`: `true` or `false` | BOOLEAN | 0 and 1 are not accepted |
 | `int` | `value`: an integer | INT | Within ±9,007,199,254,740,991 (±(2^53−1), JavaScript's safe integers): a browser reads JSON numbers as doubles, so larger values would change in the editor. `true` and `false` are not accepted |
 | `float` | `value`: a number | FLOAT | Finite values only |
+| `choice` | `value`: a string; `source`: an object, or none | COMBO | One option of another node's dropdown, kept exactly as it is (not trimmed or normalized). May be empty. Up to 4,096 bytes of UTF-8. Schema version 4 |
 
 - A media field's `asset` holds the file's `sha256`, an `original_name` for display, and what the server read from
   the file when the bundle was saved (what a client sends is not used):
@@ -98,6 +101,11 @@ bundle_library/
 - A file must be of the field's kind: an image in a `video` field is refused as `wrong_kind`.
 - Field names are unique within a bundle, and case matters, since a node matches outputs by exact name. Names
   starting with `@` are reserved for future virtual fields.
+- A choice's `source` names the dropdown input its options come from, as ComfyUI names them:
+  `{"node": "<the node's class name>", "input": "<the input's name>"}`, each 1 to 256 characters. It may name a node
+  this ComfyUI does not have; it is kept as it is. Without one (or with `null`), the value is typed freely. A request's
+  other keys in `source` are left out; a file with other keys there, a `source` on another type of field, or a choice
+  in a file of schema version 2 or 3 is read-only. The model files a choice names are not part of the library.
 - A field can be turned off: `"enabled": false` (schema version 3). It stays in the bundle with its value or file but
   is not an output of the node. A field that is on has no `enabled` key (`true` is dropped when saved); anything but
   `true` or `false` is refused. A field that is off still needs a unique name, counts toward the field limit and is
@@ -111,6 +119,7 @@ bundle_library/
 | Bundle name | Up to 120 characters. Other bundles may have the same name |
 | Category name | Up to 60 characters, unique ignoring case. Favorites, Uncategorized and Needs attention are taken (they name views of the list). Up to 200 categories |
 | Field name | Up to 64 characters |
+| Choice | Up to 4,096 bytes of UTF-8. A source's node and input names: up to 256 characters each |
 | Tags | Up to 20, of up to 40 characters each. Tags that differ only in case are one tag |
 | Note | Up to 10,000 characters |
 | Fields | Up to 32 per bundle (a node has 32 outputs) |

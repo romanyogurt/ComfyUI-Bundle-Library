@@ -52,7 +52,8 @@ links stay as they are whichever of them you choose. Black Rose, Hamster and San
 prompt; their picture shows a result. Example starts from ComfyUI's example picture.
 
 The three bundles in **Field types** have other fields: **Sunset loop** a video, an audio file and a text, **Sampler
-settings** numbers, a text and a switch, and **Two references** two pictures and a text. Choose them on a Load Bundle
+settings** numbers, two choices (a sampler and a scheduler), a text and a switch, and **Two references** two pictures
+and a text. Choose them on a Load Bundle
 node to see its outputs follow the bundle. On the example workflow, the outputs a bundle lacks are marked, and a run
 stops with the reason (see [The Load Bundle node](The-Load-Bundle-node.md#when-a-bundle-cannot-fill-an-output)).
 
@@ -72,7 +73,8 @@ becomes the name of the node's output, so fields named alike in different bundle
 
 ## Where next
 
-- [Bundles and fields](Bundles-and-fields.md): every field type, and turning a field off.
+- [Bundles and fields](Bundles-and-fields.md): every field type, choices for other nodes' dropdowns, and turning a
+  field off.
 - [The Load Bundle node](The-Load-Bundle-node.md): how outputs follow a bundle, and what happens when a field is missing.
 - [The library window](The-library-window.md): categories, favorites, tags, several bundles at once, and the trash.
 - [FAQ and troubleshooting](FAQ-and-troubleshooting.md), when something does not work as expected.

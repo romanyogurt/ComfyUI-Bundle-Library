@@ -484,9 +484,11 @@ export class BundleEditor {
             field.value = input.value;
             this.drawChoiceStatus(card);
             this.refreshState();
-            if (list.hidden) this.openOptions(card, { all: false }); // the options with what is typed
             card.choice.filtering = true; // what was typed narrows the list from now on
-            this.drawOptions(card);
+            // The options with what is typed, if there are any: a value typed freely is not covered up.
+            if (!this.offered(card).matching.length) this.closeOptions(card);
+            else if (list.hidden) this.openOptions(card);
+            else this.drawOptions(card);
         });
         input.addEventListener("keydown", (e) => this.choiceKey(card, e));
         box.addEventListener("keydown", (e) => {
@@ -529,12 +531,18 @@ export class BundleEditor {
         choice.input.removeAttribute("aria-activedescendant");
     }
 
-    drawOptions(card) {
+    /** The source's options, and those to offer: all of them, or those with what was typed. */
+    offered(card) {
         const { field, choice } = card;
         const { answer } = this.model.options(field);
         const options = answer?.state === "read" ? answer.options : [];
         const query = choice.filtering ? field.value.trim().toLowerCase() : "";
-        const matching = query ? options.filter((option) => option.toLowerCase().includes(query)) : options;
+        return { options, matching: query ? options.filter((option) => option.toLowerCase().includes(query)) : options };
+    }
+
+    drawOptions(card) {
+        const { field, choice } = card;
+        const { options, matching } = this.offered(card);
         choice.shown = matching.slice(0, SHOWN_OPTIONS);
         choice.active = Math.min(choice.active, choice.shown.length - 1);
         choice.list.replaceChildren(...choice.shown.map((option, i) => {

@@ -20,7 +20,8 @@ and its outputs follow the bundle you choose. Add it from the node library, unde
 ## How the outputs follow the bundle
 
 When you choose a bundle, the node shows an output for each of its fields that is on, in the bundle's order, named
-and typed after the field. When you choose another bundle:
+and typed after the field. A [choice](Bundles-and-fields.md#choices) is a COMBO output: it links to the dropdown inputs
+of other nodes, such as a LoRA name or a sampler. When you choose another bundle:
 
 - An output whose field is in the new bundle, with the same name and type, keeps its links.
 - Fields that are new get outputs at the end.
@@ -36,13 +37,25 @@ or retyped.
 ## The preview
 
 The node's panel shows what the bundle holds: its pictures (click one to enlarge it), its videos (click to play),
-its audio (**Play**), the start of each text, and the other values. The ▾ button hides or shows the preview; the
-node remembers it.
+its audio (**Play**), the start of each text, each choice with where its options come from, and the other values. The
+▾ button hides or shows the preview; the node remembers it.
+
+Under a choice, the panel says what does not fit:
+
+- **Not among the options of** its source, on this ComfyUI: linked, the run will stop (see below).
+- **Can't check**, and why: its source's node is not here, or cannot be read. It runs as it is.
+- **⚠ Not among the options of** a node it is linked to: the input the output reaches does not list the value (a LoRA
+  name linked to a checkpoint input, a model this computer does not have). The links are followed into subgraphs and
+  through Reroute nodes. This is a warning only: Load Bundle does not stop for it, but that node may.
+
+The panel looks again when the node's links change, and shortly after you click or press a key, so links changed
+inside a subgraph, or a dropdown's list read again, are seen too.
 
 ## When a bundle cannot fill an output
 
-An output cannot be filled when its field is missing from the bundle, is of another type, is turned off, or is a
-media field without a file (or whose file is missing from the library). The panel says which, and:
+An output cannot be filled when its field is missing from the bundle, is of another type, is turned off, is a
+media field without a file (or whose file is missing from the library), or is a choice that is not among its source's
+options on this ComfyUI. The panel says which, and:
 
 - **A linked output** is marked `⚠ …; running will fail`. Running the workflow stops at Load Bundle with that reason,
   instead of passing on something wrong.
@@ -56,10 +69,11 @@ Restore it from the trash, or import it again: an import keeps its id, so the no
 
 Load Bundle, and the nodes after it, run again only when what its outputs carry changes: a field's value or file, or
 the fields the outputs stand for. Renaming a bundle, or changing its note, tags, category or star, does not make
-them run again.
+them run again. For a choice, what counts is the value as its source's list spells it on this computer, and whether
+it is among the options: a model added to the folder that is not the one chosen changes nothing.
 
-If a bundle changes while a run is starting, Load Bundle fails rather than give the old content under the new
-key; the next run uses the new content.
+If a bundle, or the options a choice is checked against, changes while a run is starting, Load Bundle fails rather
+than give the old content under the new key; the next run uses the new content.
 
 ## Saving and sharing workflows
 

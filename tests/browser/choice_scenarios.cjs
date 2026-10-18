@@ -62,6 +62,7 @@ const CHOICE_HELPERS = () => {
         { name: "prompt", type: "text", value: "a cat" },
     ];
     const id = (await api("POST", "/bundles", { name: NAME, tags: ["test"], fields })).id;
+    await ev((bundle) => { window.__choiceBundle = bundle; }, id);
     await ev(async ([module, bundle]) => (await import(`${module}/library_modal.js`)).openLibrary({ selected: bundle }),
         [MODULE, id]);
     await until(() => window.__choice?.read("sampler")?.state === "ok"
@@ -116,6 +117,7 @@ const CHOICE_HELPERS = () => {
     sampler = await read("sampler");
     check("a value not among the options is kept, with ⚠", sampler.value === "dpmpp_2m_typo" && sampler.state === "mismatch"
         && sampler.status.startsWith("⚠ Not among the options of KSampler › sampler_name"), sampler);
+    check("…and no list covers it, nothing matching", !sampler.listOpen);
     check("a changed value is a change", (await ev(() => window.__choice.editorState())) === "● Unsaved changes");
 
     // ---- choosing a source keeps the value (CH07) ---------------------------------------------------
@@ -162,6 +164,35 @@ const CHOICE_HELPERS = () => {
     const copy = await api("POST", `/bundles/${id}/duplicate`, { mode: "structure" });
     check("duplicated without values, a choice keeps its source", copy.fields[0].value === ""
         && JSON.stringify(copy.fields[0].source) === JSON.stringify(fields[0].source), copy.fields[0]);
+
+    // ---- an answer that comes after another source was chosen is dropped (CH07) -----------------
+    const asked = [];
+    await page.route("**/api/bundle-library/v1/choices/options?*", async (route) => {
+        const url = new URL(route.request().url());
+        asked.push(url.searchParams.get("input"));
+        if (url.searchParams.get("input") === "scheduler") await new Promise((done) => setTimeout(done, 3000));
+        await route.continue();
+    });
+    const chooseSource = async (field, node, input) => {
+        await card(field).locator(".bl-choice-pick").last().click();
+        await until(() => (window.__choice.picker()?.nodes.length ?? 0) > 10);
+        await page.locator(".bl-source-picker .bl-picker-filter").fill(node);
+        await page.locator(`.bl-source-picker .bl-source-node[data-node="${node}"] .bl-source-input[data-input="${input}"]`).click();
+    };
+    await card("style").locator(".bl-choice-value").fill("simple"); // a scheduler, not a sampler
+    await chooseSource("style", "KSampler", "scheduler"); // its answer comes late
+    await chooseSource("style", "KSampler", "sampler_name");
+    await until(() => window.__choice.read("style")?.state === "mismatch");
+    await settle(3500); // the scheduler's answer has come by now
+    styled = await read("style");
+    check("the answer for a source given up comes late, and is dropped", styled.source === "KSampler › sampler_name"
+        && styled.state === "mismatch" && asked.includes("scheduler"), { styled, asked });
+    const before = asked.length;
+    await card("style").locator(".bl-choice-reload").click();
+    await until(() => window.__choice.read("style")?.state === "mismatch");
+    check("↻ reads the options again", asked.length === before + 1 && asked.at(-1) === "sampler_name", asked);
+    await page.unroute("**/api/bundle-library/v1/choices/options?*");
+    await page.locator(".bl-overlay .bl-revert").click();
     await page.keyboard.press("Escape");
     await settle();
 
@@ -218,6 +249,114 @@ const CHOICE_HELPERS = () => {
     const error = run.status === 200 ? (run.errors?.[0]?.exception_message ?? "") : JSON.stringify(run.body);
     check("…and it does, with the reason", error.includes("'lora' is 'missing.safetensors', not one of Load LoRA (Model and CLIP)'s lora_name here"),
         error.slice(0, 300));
+
+    // ---- a target's list read again: the warning follows after a click (CH07) ---------------------
+    const sampled = await ev(async () => {
+        const g = window.__bl.app.graph;
+        g.clear();
+        const load = window.__bl.add("BundleLibraryLoad", [100, 100]);
+        window.__node = load;
+        await window.__bl.pick(load, window.__choiceBundle);
+        const select = window.__bl.add("KSamplerSelect", [700, 100]);
+        window.__select = select;
+        load.connect(0, select, select.findInputSlot("sampler_name"));
+        await window.__bl.sleep(800);
+        return load.bundlePanel.rows.querySelector('.bl-choice-block[data-field="sampler"]').children.length;
+    }, null).catch(() => null);
+    check("(set-up) a choice linked to a dropdown that has it", sampled === 2, sampled);
+    await ev(() => {
+        const widget = window.__select.widgets.find((w) => w.name === "sampler_name");
+        widget.options.values = widget.options.values.filter((v) => v !== "euler"); // as if read again without it
+    });
+    await page.mouse.click(1500, 900); // on the canvas: anything the user does
+    await until(() => window.__node.bundlePanel.rows.querySelector('.bl-choice-block[data-field="sampler"]')?.children.length === 3);
+    shown = await blocks();
+    check("its list read again without the value: the warning comes after the next click",
+        shown.sampler?.[2] === "⚠ Not among the options of KSamplerSelect › sampler_name", shown.sampler);
+
+    // ---- into subgraphs and through a Reroute (CH08) ------------------------------------------------
+    const traced = await ev(async () => {
+        const app = window.__bl.app;
+        const g = app.graph;
+        const { choiceTargets } = await import("/extensions/ComfyUI-Bundle-Library/choices.js");
+        const names = (load) => choiceTargets(load.graph, load, 0).map((t) => (t.unknown ? "?" : `${t.node.type}.${t.input}`));
+        g.clear();
+        const load = window.__bl.add("BundleLibraryLoad", [100, 100]);
+        await window.__bl.pick(load, window.__choiceBundle);
+        const reroute = LiteGraph.createNode("Reroute");
+        reroute.pos = [400, 300];
+        g.add(reroute);
+        const scheduler = window.__bl.add("KSampler", [700, 300]);
+        load.connect(0, reroute, 0);
+        reroute.connect(0, scheduler, scheduler.findInputSlot("scheduler"));
+        const select = window.__bl.add("KSamplerSelect", [700, 100]);
+        load.connect(0, select, select.findInputSlot("sampler_name"));
+        const out = { reroute: names(load) };
+        g.convertToSubgraph(new Set([select]));
+        out.subgraph = names(load);
+        // a subgraph inside a subgraph, as a saved workflow holds it (converting a subgraph node again from code
+        // loses its links on this frontend: CH08)
+        const flat = structuredClone(g.serialize());
+        const inner = flat.definitions.subgraphs[0];
+        const instance = flat.nodes.find((n) => n.type === inner.id);
+        const outerId = crypto.randomUUID();
+        const outer = { ...structuredClone(inner), id: outerId, name: "Outer",
+            state: { lastGroupId: 0, lastNodeId: 1, lastLinkId: 1, lastRerouteId: 0 },
+            inputs: [{ ...structuredClone(inner.inputs[0]), id: crypto.randomUUID(), linkIds: [1] }],
+            links: [{ id: 1, origin_id: -10, origin_slot: 0, target_id: 1, target_slot: 0, type: "COMBO" }],
+            nodes: [{ ...structuredClone(instance), id: 1, pos: [0, 0], inputs: instance.inputs.map((i) => ({ ...i, link: 1 })) }] };
+        await app.loadGraphData({ ...flat, nodes: flat.nodes.map((n) => (n.id === instance.id ? { ...n, type: outerId } : n)),
+            definitions: { subgraphs: [inner, outer] } });
+        await window.__bl.sleep(1200);
+        const nested = app.graph.nodes.find((n) => n.type === "BundleLibraryLoad");
+        out.nested = names(nested);
+        out.nestedWarning = nested.bundlePanel.rows.querySelector('.bl-choice-block[data-field="sampler"]')?.innerText ?? null;
+        const prompt = (await app.graphToPrompt()).output;
+        out.prompt = Object.entries(prompt).filter(([, n]) => n.class_type === "KSamplerSelect")
+            .map(([key, n]) => [key.split(":").length, n.inputs.sampler_name]);
+        return out;
+    });
+    check("a choice's targets through the old Reroute node", JSON.stringify(traced.reroute)
+        === JSON.stringify(["KSampler.scheduler", "KSamplerSelect.sampler_name"]), traced.reroute);
+    check("…into a subgraph", traced.subgraph.includes("KSamplerSelect.sampler_name"), traced.subgraph);
+    check("…into a subgraph inside a subgraph", JSON.stringify(traced.nested) === JSON.stringify(["KSampler.scheduler",
+        "KSamplerSelect.sampler_name"]), traced.nested);
+    check("…and the warning says so there too (euler, read again by KSamplerSelect: it has it)",
+        traced.nestedWarning === "sampler\neuler\nKSampler › sampler_name\n⚠ Not among the options of KSampler › scheduler",
+        traced.nestedWarning);
+    check("the server is sent the inner dropdown linked to Load Bundle", traced.prompt.length === 1 && traced.prompt[0][0] === 3,
+        traced.prompt);
+
+    // ---- a workflow saved and opened again, in both ways of drawing nodes (CH08) -----------------
+    const reopened = async (vue) => ev(async ([useVue]) => {
+        const app = window.__bl.app;
+        await app.extensionManager.setting.set("Comfy.VueNodes.Enabled", useVue);
+        const g = app.graph;
+        g.clear();
+        const load = window.__bl.add("BundleLibraryLoad", [100, 100]);
+        await window.__bl.pick(load, window.__choiceBundle);
+        const select = window.__bl.add("KSamplerSelect", [700, 100]);
+        load.connect(0, select, select.findInputSlot("sampler_name"));
+        const saved = structuredClone(g.serialize());
+        await app.loadGraphData(saved);
+        await window.__bl.sleep(1500);
+        const again = app.graph.nodes.find((n) => n.type === "BundleLibraryLoad");
+        const target = app.graph.nodes.find((n) => n.type === "KSamplerSelect");
+        const link = again.outputs[0].links?.[0];
+        const text = useVue ? document.querySelector(`[data-node-id="${again.id}"]`)?.innerText ?? ""
+            : again.bundlePanel.rows.innerText;
+        const out = { outputs: window.__bl.outs(again), linked: !!link && target.inputs[target.findInputSlot("sampler_name")].link === link,
+            spec: window.__bl.spec(again) === window.__bl.spec(load), text };
+        await app.extensionManager.setting.set("Comfy.VueNodes.Enabled", false);
+        return out;
+    }, [vue]);
+    for (const vue of [false, true]) {
+        const mode = vue ? "Nodes 2.0" : "classic";
+        const state = await reopened(vue);
+        check(`${mode}: saved and opened again, the choice outputs are COMBO and keep their links`,
+            state.outputs.slice(0, 4).every((o) => o.type === "COMBO") && state.linked && state.spec, state.outputs);
+        check(`${mode}: …and the preview shows the choices`, state.text.includes("KSampler › sampler_name"), state.text.slice(0, 200));
+    }
     await ev(() => window.__bl.app.graph.clear());
 
     await session.finish();

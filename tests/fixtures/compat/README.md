@@ -67,6 +67,12 @@ Added on 2026-10-19, with version 4 (choice fields, 0.2.0):
   (`v4-unknown-source-key`), a source on a text field (`v4-source-on-text`)
 - Damaged: a source that is a string, not an object (`v4-bad-source`)
 
+Checked on 2026-10-19 with the code of `v0.1.1` (its worktree mounted read-only in a container of Python 3.13), as
+0.1.x users will meet these files: every version 4 file is listed as from a newer version (`newer_version`) and
+`v3-choice` as unsupported; reading, saving, duplicating, deleting and exporting one is refused (409), and so is a
+cleanup (`unreadable_bundles`); the files stay byte for byte. Of the examples of 0.2.0, it imports six and refuses
+"Sampler settings", which has choices, as saved by a newer Bundle Library.
+
 ## The old trash, moved (`legacy-trash/`)
 
 `bundles/` and `trash/` shaped as in 0.0.10. The expected result is in `legacy-trash/expected.json`.

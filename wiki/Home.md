@@ -11,7 +11,7 @@ These pages cover everything the pack does. To get going quickly, start with [Ge
 | Page | What it covers |
 | --- | --- |
 | [Getting started](Getting-started.md) | Install, try the example workflow, make your first bundle |
-| [Bundles and fields](Bundles-and-fields.md) | What a bundle holds: the field types, names, tags, notes, turning a field off |
+| [Bundles and fields](Bundles-and-fields.md) | What a bundle holds: the field types, choices for other nodes' dropdowns, names, tags, notes, turning a field off |
 | [The Load Bundle node](The-Load-Bundle-node.md) | Choosing a bundle, how outputs follow it, links, caching, what happens when a field is missing |
 | [The library window](The-library-window.md) | The list, search and sorting, categories and favorites, the editor, several bundles at once, tags, the trash |
 | [Import and export](Import-and-export.md) | Moving bundles between libraries as ZIP files |

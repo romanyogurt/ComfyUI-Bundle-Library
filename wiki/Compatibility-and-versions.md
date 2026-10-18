@@ -39,7 +39,7 @@ version never damages what a newer one wrote.
 
 | Marker | What it versions | Raised when |
 | --- | --- | --- |
-| A bundle file's `schema_version` (now 3) | The bundle file format | A change an older version could not fully understand: new keys, field types, file kinds, or a new way of pointing at files. Each bundle is written in the lowest version that holds it: 3 only when a field is turned off |
+| A bundle file's `schema_version` (now 4) | The bundle file format | A change an older version could not fully understand: new keys, field types, file kinds, or a new way of pointing at files. Each bundle is written in the lowest version that holds it: 4 only when it has a choice field (0.2.0), 3 when a field is turned off (0.0.30), else 2 |
 | `organization.json`'s `schema_version` (now 1) | The categories and favorites file | Nested categories, or new keys |
 | `slot_spec`'s `v` (now 1) | What a node records about its outputs | A new shape of that record |
 | The API prefix `/v1` | The [HTTP API](HTTP-API.md) | An incompatible change of the API |
@@ -63,6 +63,8 @@ These hold for the public releases, from 0.1.0 on. Development versions before i
   damaged file unless the rest of it is understood (its files are then kept).
 - **Going back.** An older release reports a bundle of a newer schema as newer and leaves it alone, and does not
   clean up unused files while it is there. To go back completely, restore the backup you made before the update.
+  For example, 0.1.x lists a bundle with a choice field under **Needs attention** and cannot open, change, export
+  or import it, but keeps its file byte for byte: update to use it.
 
 ## File states
 
@@ -70,7 +72,7 @@ These hold for the public releases, from 0.1.0 on. Development versions before i
 | --- | --- | --- | --- |
 | OK | A supported format that passes every check | As usual | Runs if in use |
 | Warning | Keeps the rules of the format, but breaks a writing rule (likely one tightened after it was saved) | `warnings`. The editor shows them at once and does not save until they are fixed | Runs if in use |
-| Read-only (`read_only`) | A supported schema, but with keys this version does not know | `read_only`. Every change is refused | Runs if in use |
+| Read-only (`read_only`) | A supported schema, but with keys this version does not know, or a field type of a later schema than the file says (a choice in a version 3 file) | `read_only`. Every change is refused | Runs if in use |
 | Newer (`newer_version`) | A supported format whose `schema_version` is above this version's | Needs attention (`errors`) | Error |
 | Unsupported (`unsupported`) | An unknown `format`, or an unknown field type | Needs attention | Error |
 | Damaged (`corrupt`) | Not JSON, breaks the rules of the format, or has a malformed marker (`true`, `1.0`) | Needs attention | Error |
@@ -97,15 +99,16 @@ file.
 | Kind | What | When reading | When saving |
 | --- | --- | --- | --- |
 | Rules of the format | Id format and file name, revision, `deleted_at`, field names present and unique, the `@` prefix, characters not allowed in names, field types, value types, finite numbers, SHA-256 format | Damaged if broken | Refused |
-| Writing rules | Lengths of names, tags and notes, number of tags, number of fields, text size, integer range | A warning (the rule may be newer than the file) | Refused |
+| Writing rules | Lengths of names, tags and notes, number of tags, number of fields, text and choice sizes, the length of a choice's source names, integer range | A warning (the rule may be newer than the file) | Refused |
 | Limits when running | Audio decoding limits, 32 outputs | — | A precise error when the workflow runs |
 
 ## Workflows and the node
 
 - New inputs of the node are only ever added at the end: ComfyUI saves widget values by position.
 - A node's cache key holds only what its outputs carry: each slot's name and type, and the field's value or file
-  SHA-256. Changing a bundle's name, note, tags, category or star (or its revision alone) does not make Load Bundle
-  and the nodes after it run again.
+  SHA-256; for a choice, its value as its source's list spells it on this computer, and whether it is among the
+  options. Changing a bundle's name, note, tags, category or star (or its revision alone) does not make Load Bundle
+  and the nodes after it run again, nor do options added to a choice's source that it is not.
 - A slot the bundle cannot fill (an empty media field, a missing or turned-off field) enters the key with its
   reason, so such a bundle is cached like any other. If that output is linked, Load Bundle fails with the reason. If
   it is not linked, its output carries the reason, and a node linked to it later stops with that reason.
@@ -115,4 +118,5 @@ file.
   turned-off fields go away when the outputs are updated, and come back at the end when the field is turned on.
 - Names of removed field types or keys are never reused with another meaning.
 - A node whose `slot_spec` this version cannot read (from a newer version) keeps its outputs, links and
-  `slot_spec` as they are, says so, and does not choose another bundle.
+  `slot_spec` as they are, says so, and does not choose another bundle. 0.2.0 added the type `choice` to
+  `slot_spec` v1: 0.1.x keeps such a node this way.

@@ -1,8 +1,8 @@
 # Bundle Library for ComfyUI
 
-> A ComfyUI node pack that keeps named bundles of prompts, numbers, switches, images, videos and audio in a library on
-> the ComfyUI server, and loads one into a workflow with a single Load Bundle node whose outputs follow the chosen
-> bundle. Everything it does goes through an HTTP API that scripts and AI agents can use.
+> A ComfyUI node pack that keeps named bundles of prompts, numbers, switches, choices, images, videos and audio in a
+> library on the ComfyUI server, and loads one into a workflow with a single Load Bundle node whose outputs follow the
+> chosen bundle. Everything it does goes through an HTTP API that scripts and AI agents can use.
 
 Key facts for using it from code:
 
@@ -11,6 +11,8 @@ Key facts for using it from code:
   `Content-Type: application/json`.
 - Upload a file first (`POST /assets`, multipart, the `kind` field before the `file` field), then put its `sha256` in
   an image, video or audio field.
+- A `choice` field holds one option of another node's dropdown (a LoRA, a model file, a sampler) as text, with an
+  optional `source` `{"node", "input"}`; `GET /choices/options?node=&input=` lists the options this ComfyUI has.
 - `PUT /bundles/{id}` replaces the whole bundle: read it (`GET /bundles/{id}`), change it, and send it back with
   `expected_revision` set to the revision you read. A stale revision gets 409 `revision_conflict`.
 - Errors are `{"error": {"code", "message"}}`; act on `code`.

@@ -66,13 +66,15 @@ curl -s -H "X-Bundle-Library: 1" -H "Content-Type: application/json" $BASE/bundl
 
 The answer (201) is the bundle as stored, with its `id` and `revision` 1. Use the full 64-character `sha256`; it is
 shortened here. Add `"category": "<category id>"` to put it in a category (`GET $BASE/categories` lists them). The
-field types are `text`, `image`, `video`, `audio`, `boolean`, `int` and `float`
-(see [File formats](File-formats.md#fields)).
+field types are `text`, `image`, `video`, `audio`, `boolean`, `int`, `float` and `choice`
+(see [File formats](File-formats.md#fields)). A choice may say where its options come from:
+`{"name": "lora", "type": "choice", "value": "armor/red.safetensors", "source": {"node": "LoraLoader", "input": "lora_name"}}`;
+`GET $BASE/choices/options?node=LoraLoader&input=lora_name` lists the options this ComfyUI has.
 
 ## Find bundles
 
 ```bash
-curl -s "$BASE/bundles?q=knight"            # name, tags, category names, field names, text
+curl -s "$BASE/bundles?q=knight"            # name, tags, category names, field names, text, choices
 curl -s "$BASE/bundles?tag=character&sort=updated"
 curl -s $BASE/bundles/<id>                  # one bundle, in full
 ```

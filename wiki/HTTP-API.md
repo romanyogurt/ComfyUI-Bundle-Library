@@ -73,7 +73,7 @@ Paths are relative to `/api/bundle-library/v1`. `{id}` is a bundle id (a UUID) u
 
 | Method | Path | Request | Answer |
 | --- | --- | --- | --- |
-| GET | `/bundles` | Query: `q` (searches names, tags, category names, field names and text values), `tag`, `sort` (`name`, the default, or `updated`) | `{"bundles": [summary], "errors": [{"file", "id", "code", "error"}], "categories": [{"id", "name", "parent", "count"}], "organization": {"revision", "state"}}`. Bundles in the trash are left out. `errors` lists the files this version cannot use. `categories` are sorted by name, and `count` counts the filtered list |
+| GET | `/bundles` | Query: `q` (searches names, tags, category names, field names, and text and choice values), `tag`, `sort` (`name`, the default, or `updated`) | `{"bundles": [summary], "errors": [{"file", "id", "code", "error"}], "categories": [{"id", "name", "parent", "count"}], "organization": {"revision", "state"}}`. Bundles in the trash are left out. `errors` lists the files this version cannot use. `categories` are sorted by name, and `count` counts the filtered list |
 | POST | `/bundles` | `{"name", "tags"?, "note"?, "fields"?, "category"?}` | 201 and the bundle. `category` is a category id |
 | GET | `/bundles/{id}` | — | The bundle, with `warnings` and `read_only` when they apply (see [Bundle summaries](#bundle-summaries)). 404 `in_trash` when it is in the trash |
 | PUT | `/bundles/{id}` | `{"expected_revision", "name", "tags", "note", "fields"}`, all required: the whole bundle is replaced | The bundle, its `revision` one higher. 409 `revision_conflict` (with `current_revision`) when the bundle changed since you read it |
@@ -114,6 +114,16 @@ a file first, then put its `sha256` in a field.
 | GET | `/assets/{sha256}` | — | The file as stored. Range requests work, so browsers can stream and seek. Sent with `Cache-Control: immutable` |
 | GET | `/assets/{sha256}/thumb?size=` | `size` is 128, 256 or 512 | A WebP thumbnail of an image, or a frame of a video. Audio has none (404) |
 
+### Choices
+
+The options of other nodes' dropdowns, for [choice fields](Bundles-and-fields.md#choices) (0.2.0). They are read
+from the node definitions of this ComfyUI each time you ask: model lists change when files are added.
+
+| Method | Path | Request | Answer |
+| --- | --- | --- | --- |
+| GET | `/choices` | — | `{"nodes": [{"node", "label", "category", "inputs"}]}`: the nodes with a dropdown input, by class name. `label` is the node's display name. Each input is `{"input", "supported": true, "count"}`, or `{"input", "supported": false, "reason"}` for one a choice cannot take its options from: `multiselect` (several options at once), `not_text` (options that are not text, such as numbers), `remote` (options the page fetches), `dynamic` (a choice that changes the node's other inputs). A node whose inputs cannot be read is left out (and logged) |
+| GET | `/choices/options?node=&input=` | Both are required: a node's class name and an input's name | `{"state", "label", "options"?, "paths"?, "reason"?}`. `state` is `read` (with `options`, and `paths` true when the list holds the files of one of ComfyUI's model folders, so `/` and `\` may stand for each other), `not_found` (`reason` `no_node` or `no_input`), `unsupported` (`reason` as above, or `not_combo` for an input that is not a dropdown) or `error` (`reason` `failed`: the node's definition could not be read). 400 `invalid` without `node` or `input` |
+
 ### Trash and cleanup
 
 | Method | Path | Request | Answer |
@@ -153,6 +163,7 @@ bundle's other keys are left out. Each field is `{"name", "type", "preview"}`, t
 | `video` | `{"sha256", "width", "height", "duration"}`, or `null` |
 | `audio` | `{"sha256", "duration"}`, or `null` |
 | `boolean`, `int`, `float` | The value |
+| `choice` | The whole value (at most 4,096 bytes), so a page can check it. The field also has `source` when it has one |
 
 - `category` is a category id or `null`. When `organization.json` cannot be read, `category` is `null` and
   `favorite` is `false`.

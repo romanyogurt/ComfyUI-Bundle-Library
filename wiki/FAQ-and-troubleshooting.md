@@ -56,10 +56,18 @@ The message says which output the bundle cannot fill, and why:
 | is *a type*, not *another type* | The field has the name but another type. Fix the field, or relink |
 | has no image (video, audio) | The media field is empty. Add a file |
 | has an image (video, audio) file that is missing from the library | The file was deleted, or the library was copied without `assets/`. Choose the file again, or restore it from a backup |
+| is '*value*', not one of *a node*'s *input* here | A choice that is not among its source's options on this ComfyUI: a model not on this computer, renamed or moved. Add the file, or pick another value; see [Choices](Bundles-and-fields.md#choices) |
 
 See [The Load Bundle node](The-Load-Bundle-node.md#when-a-bundle-cannot-fill-an-output). A node after Load Bundle that
 stops with *Execution Blocked* and the same reason was linked to an output that cannot be filled, after a run that
 did not need it.
+
+### A choice says it is not among a node's options
+
+Under a choice, the node's panel warns when the value is not in the list of a dropdown it is linked to, such as a
+LoRA name linked to a checkpoint input, or a model this computer does not have. Load Bundle does not stop for that,
+but the node it is linked to may. Link the output to the right input, or pick a value that input lists. A warning
+about the choice's own source is about the options it was made for; see [Choices](Bundles-and-fields.md#choices).
 
 ### The node's outputs did not change after I edited the bundle
 
