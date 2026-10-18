@@ -3,6 +3,17 @@
 Notable changes to Bundle Library. Versions follow [Semantic Versioning](https://semver.org/). The 0.0.x versions
 came before the first public release; they are in this repository's history and tags.
 
+## [0.2.1] - 2026-10-19
+
+Fixes from an independent review of 0.2.0:
+
+- After ComfyUI reads its node definitions again (**Refresh Node Definitions**, R), the Load Bundle node reads its
+  choices' sources again too, so its warnings follow the new lists. Before, they kept the old lists until the browser
+  tab was shown again or the library changed.
+- A node pack's dropdown that this version cannot read no longer stops **Options from…** for every node, or a run
+  with a choice from it: only that input is left out.
+- The checks of choice runs no longer depend on how finely the file system records folder times.
+
 ## [0.2.0] - 2026-10-19
 
 Choice fields: values for other nodes' dropdowns.
