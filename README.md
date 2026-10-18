@@ -6,7 +6,7 @@ settings.
 
 English | [한국어](README.ko.md)
 
-<!-- A short GIF goes here: choosing bundles on Load Bundle, each run with its own prompt and picture. -->
+![Choosing another bundle on Load Bundle and running: the picture and the prompt that reach the workflow follow the bundle](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/load-bundle.gif)
 
 ## Overview
 
@@ -67,7 +67,7 @@ To make your own, select an example, **Duplicate → Duplicate with values**, ch
 Your bundle fits the same workflow, since it has the same fields. See
 [Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Getting-started) for more.
 
-<!-- A screenshot of the library window goes here. -->
+![The library window: the example bundles in their groups, and Example open in the editor with its five fields](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/library-window.png)
 
 ## Documentation
 

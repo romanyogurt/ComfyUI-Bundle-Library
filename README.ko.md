@@ -5,7 +5,7 @@
 
 [English](README.md) | 한국어
 
-<!-- 짧은 GIF 자리: Load Bundle에서 번들을 바꿔 가며 실행하면 번들마다 제 프롬프트와 그림으로 실행된다. -->
+![Load Bundle에서 번들을 바꿔 실행하면 워크플로로 가는 그림과 프롬프트가 번들을 따른다](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/load-bundle.gif)
 
 ## 개요
 
@@ -63,7 +63,7 @@ BETA 표시가 붙는다.
 된다. 필드가 같으므로 같은 워크플로에 맞는다. 자세한 것은
 [Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Getting-started)(영어)에 있다.
 
-<!-- 라이브러리 창 스크린샷 자리 -->
+![라이브러리 창: 묶음별 예제 번들과, 다섯 필드를 가진 Example을 연 편집기](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/library-window.png)
 
 ## 문서
 
