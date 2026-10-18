@@ -59,6 +59,14 @@ Made on 2026-10-16. The expected state of each, and its error code in the list, 
 - Read-only: unknown keys at the top, in a field and in a file's details
 - Good: an active and a deleted bundle of version 2, two bundles of one name
 
+Added on 2026-10-19, with version 4 (choice fields, 0.2.0):
+
+- Good: `v4-choice`, choices with and without a source, one whose source this ComfyUI does not have (a node pack's
+  name with spaces and parentheses), one turned off, and a value with spaces at both ends (kept as it is)
+- Read-only: a choice field in a version 3 file (`v3-choice`), a source with a key version 4 does not define
+  (`v4-unknown-source-key`), a source on a text field (`v4-source-on-text`)
+- Damaged: a source that is a string, not an object (`v4-bad-source`)
+
 ## The old trash, moved (`legacy-trash/`)
 
 `bundles/` and `trash/` shaped as in 0.0.10. The expected result is in `legacy-trash/expected.json`.

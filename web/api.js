@@ -283,6 +283,13 @@ export const listStoredAssets = (kind) => request(`/assets?kind=${encodeURICompo
 /** A draft takes a stored file: the server keeps it through a cleanup's grace time again. Resolves to {asset}. */
 export const takeStoredAsset = (sha256) => request(`/assets/${sha256}/use`, { method: "POST" }, { changes: false });
 
+/** The nodes with a dropdown a choice field can take its options from (0.2.0): {nodes: [{node, label, category, inputs}]}. */
+export const listChoiceSources = () => request("/choices");
+
+/** What this ComfyUI has now of a source's options: {state, label, options, paths, reason} (bundle_library/choices.py). */
+export const getChoiceOptions = (source) =>
+    request(`/choices/options?node=${encodeURIComponent(source.node)}&input=${encodeURIComponent(source.input)}`);
+
 export function assetURL(sha256) {
     return api.apiURL(`${PREFIX}/assets/${sha256}`);
 }

@@ -1,0 +1,22 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 4,
+  "id": "bf4c7e96-8a5b-4dac-9e6f-7a8b9c0d1e2f",
+  "revision": 1,
+  "name": "Source not an object",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "sampler",
+      "type": "choice",
+      "value": "euler",
+      "source": "KSamplerSelect.sampler_name"
+    }
+  ],
+  "created_at": "2026-10-19T00:00:00.000Z",
+  "updated_at": "2026-10-19T00:00:00.000Z",
+  "deleted_at": null
+}

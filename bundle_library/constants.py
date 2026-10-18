@@ -18,6 +18,8 @@ COMFY_TYPES = {
     "boolean": "BOOLEAN",
     "int": "INT",
     "float": "FLOAT",
+    # One of a dropdown's options (0.2.0): the page links COMBO outputs to dropdown inputs.
+    "choice": "COMBO",
 }
 FIELD_TYPES = tuple(COMFY_TYPES)
 # Field types whose value is an uploaded file (an asset) rather than a JSON value.
@@ -32,6 +34,8 @@ MAX_TAG_LENGTH = 40
 MAX_NOTE = 10_000
 MAX_ORIGINAL_NAME = 255
 MAX_TEXT_BYTES = 1024 * 1024
+MAX_CHOICE_BYTES = 4096
+MAX_SOURCE_NAME = 256  # a choice's source: a node's class name, an input's name
 MAX_JSON_BODY = 4 * 1024 * 1024
 MAX_JSON_DEPTH = 64  # arrays and objects in a request or a file: far more than the formats need
 MAX_IMAGE_BYTES = 50 * 1024 * 1024

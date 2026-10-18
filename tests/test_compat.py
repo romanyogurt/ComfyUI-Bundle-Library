@@ -249,6 +249,26 @@ class CompatTest(unittest.TestCase):
         self.assertEqual(schema.version_for(v3.bundle), 3)
         self.assertEqual(schema.version_for({**v3.bundle, "fields": [{"name": "a", "type": "text", "value": ""}]}), 2)
 
+    def test_version_4_holds_choices_and_earlier_versions_do_not(self):
+        bundle_id = "1c7d4e8f-3a2b-4c5d-8e9f-0a1b2c3d4e5f"
+        choice = {"name": "sampler", "type": "choice", "value": "euler",
+                  "source": {"node": "KSamplerSelect", "input": "sampler_name"}}
+        base = {"format": schema.FORMAT, "id": bundle_id, "revision": 1, "name": "Choice", "tags": [], "note": "",
+                "fields": [choice], "created_at": "2026-10-19T00:00:00.000Z",
+                "updated_at": "2026-10-19T00:00:00.000Z", "deleted_at": None}
+        v4 = schema.read(json.dumps({**base, "schema_version": 4}), bundle_id)
+        self.assertEqual((v4.state, v4.bundle["fields"], v4.bundle["schema_version"]), (schema.OK, [choice], 4))
+        for version in (2, 3):
+            with self.subTest(version):
+                older = schema.read(json.dumps({**base, "schema_version": version}), bundle_id)
+                self.assertEqual(older.state, schema.READ_ONLY)  # a type that version does not define
+                self.assertIn("type 'choice'", older.problem)
+        self.assertEqual(schema.version_for({"fields": [{**choice, "enabled": False}]}), 4)
+        plain = schema.read(json.dumps({**base, "schema_version": 4, "fields": [
+            {"name": "a", "type": "text", "value": "", "enabled": False}]}), bundle_id)
+        self.assertEqual((plain.state, plain.bundle["schema_version"]), (schema.OK, 3))  # the lowest that holds it
+        self.assertEqual(schema.read(json.dumps({**base, "schema_version": 5}), bundle_id).state, schema.NEWER)
+
     def test_writes_use_the_lowest_version_that_holds_the_bundle(self):
         root = self.library("0.0.2-phase1")
         store = BundleStore(root)

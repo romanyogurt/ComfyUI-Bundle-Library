@@ -9,8 +9,9 @@ import unicodedata
 from .tags import key as tag_key
 from .text import Text
 from .constants import (
-    AUDIO_EXTENSIONS, FIELD_TYPES, IMAGE_FORMATS, MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_JSON_DEPTH,
-    MAX_NOTE, MAX_ORIGINAL_NAME, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES, MEDIA_TYPES, VIDEO_EXTENSIONS,
+    AUDIO_EXTENSIONS, FIELD_TYPES, IMAGE_FORMATS, MAX_BUNDLE_NAME, MAX_CHOICE_BYTES, MAX_FIELD_NAME, MAX_FIELDS,
+    MAX_JSON_DEPTH, MAX_NOTE, MAX_ORIGINAL_NAME, MAX_SOURCE_NAME, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES,
+    MEDIA_TYPES, VIDEO_EXTENSIONS,
 )
 
 ASSET_EXTENSIONS = {e for e, _ in IMAGE_FORMATS.values()} | set(VIDEO_EXTENSIONS) | set(AUDIO_EXTENSIONS)
@@ -175,6 +176,13 @@ def _value(field_type, value, label, rules):
         rules.limit(len(value.encode("utf-8")) <= MAX_TEXT_BYTES,
                     Text("check.text_max_mb", label=label, n=MAX_TEXT_BYTES // (1024 * 1024)))
         return value
+    if field_type == "choice":
+        # Kept as it is, not trimmed or normalized: it is to be one of a dropdown's options.
+        if not isinstance(value, str):
+            raise invalid(Text("check.choice_string", label=label))
+        rules.limit(len(value.encode("utf-8")) <= MAX_CHOICE_BYTES,
+                    Text("check.choice_max_bytes", label=label, n=format(MAX_CHOICE_BYTES, ',')))
+        return value
     if field_type == "boolean":
         if not isinstance(value, bool):
             raise invalid(Text("check.boolean", label=label))
@@ -231,6 +239,26 @@ def _asset(value, label):
     return asset
 
 
+def _source(value, label, rules):
+    """A choice field's source, the dropdown input its value is checked against:
+    None, or {"node": <class name>, "input": <input name>}, the names as ComfyUI
+    has them (not trimmed or normalized). It may name a node this ComfyUI does
+    not have. Other keys of a request are left out; a stored file with others
+    is read-only (schema.py)."""
+    if value is None:
+        return None
+    if not isinstance(value, dict):
+        raise invalid(Text("check.source_object", label=label))
+    source = {}
+    for key in ("node", "input"):
+        name = value.get(key)
+        if not isinstance(name, str) or not name:
+            raise invalid(Text("check.source_name", label=label, key=key))
+        rules.limit(len(name) <= MAX_SOURCE_NAME, Text("check.source_max", label=label, key=key, limit=MAX_SOURCE_NAME))
+        source[key] = name
+    return source
+
+
 def _field(value, index, rules):
     if not isinstance(value, dict):
         raise invalid(Text("check.field_object", n=index + 1))
@@ -248,6 +276,8 @@ def _field(value, index, rules):
         raise invalid(Text("check.value_missing", label=label))
     else:
         field = {"name": name, "type": field_type, "value": _value(field_type, value["value"], label, rules)}
+        if field_type == "choice" and (source := _source(value.get("source"), label, rules)) is not None:
+            field["source"] = source
     # Turned off (0.0.30): kept with its value, but no output of a node. Only "off" is stored.
     if "enabled" in value:
         if type(value["enabled"]) is not bool:
@@ -305,9 +335,11 @@ def read_bundle_content(data):
 
 
 def empty_value(field):
-    """The field with its value cleared, for duplicating a bundle's structure; on or off as it was."""
+    """The field with its value cleared, for duplicating a bundle's structure; on
+    or off as it was. A choice keeps its source (the user's decision, 0.2.0)."""
     off = {"enabled": False} if field.get("enabled") is False else {}
     if field["type"] in MEDIA_TYPES:
         return {"name": field["name"], "type": field["type"], "asset": None, **off}
-    blank = {"text": "", "boolean": False, "int": 0, "float": 0.0}[field["type"]]
-    return {"name": field["name"], "type": field["type"], "value": blank, **off}
+    blank = {"text": "", "boolean": False, "int": 0, "float": 0.0, "choice": ""}[field["type"]]
+    source = {"source": dict(field["source"])} if field.get("source") is not None else {}
+    return {"name": field["name"], "type": field["type"], "value": blank, **source, **off}

@@ -11,6 +11,7 @@ export const COMFY_TYPES = {
     boolean: "BOOLEAN",
     int: "INT",
     float: "FLOAT",
+    choice: "COMBO",
 };
 
 /**

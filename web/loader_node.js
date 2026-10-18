@@ -1,5 +1,6 @@
 import { app } from "../../scripts/app.js";
-import { CHANGED_EVENT, assetURL, forgetBundles, listBundles, listLibrary, thumbnailURL } from "./api.js";
+import { CHANGED_EVENT, assetURL, forgetBundles, getChoiceOptions, listBundles, listLibrary, thumbnailURL } from "./api.js";
+import { choiceTargets, resolveChoice, sourceKey, sourceLabel, targetVerdicts, uncheckedText } from "./choices.js";
 import { code, el, formatDuration, kindName } from "./dom.js";
 import { compactGroups, groupLabel } from "./groups.js";
 import { msg, onCatalogs, t } from "./i18n.js";
@@ -21,12 +22,63 @@ const PROBLEMS = { missing: msg("node.not_in_bundle"), off: msg("node.off_in_bun
 // Nodes showing a panel, for the refreshes that concern them all.
 const panels = new Set();
 
+// What this ComfyUI has of each choice's source (0.2.0), by sourceKey(): {done,
+// answer, failure}. Read once for all nodes, and again after a refresh of all
+// panels (the lists may have changed: a model added, ComfyUI's refresh); until
+// the new answer comes, the old one is shown.
+const sourceOptions = new Map();
+
 function refreshAllPanels() {
     forgetBundles();
+    for (const entry of sourceOptions.values()) entry.stale = true;
     for (const node of panels) {
         if (node.graph) void refreshPanel(node);
     }
 }
+
+/** What is known of `source`'s options: {done, answer, failure}. Not read yet (or stale), it is asked for; the panels showing choices are drawn again when it comes. */
+function optionsOf(source) {
+    const key = sourceKey(source);
+    let entry = sourceOptions.get(key);
+    if (!entry) {
+        entry = { done: false, answer: null, failure: null, stale: true, reading: false };
+        sourceOptions.set(key, entry);
+    }
+    if (entry.stale && !entry.reading) {
+        entry.reading = true;
+        entry.stale = false;
+        getChoiceOptions(source).then((answer) => ({ answer, failure: null }), (error) => ({ answer: null, failure: error.message }))
+            .then((result) => {
+                Object.assign(entry, result, { done: true, reading: false });
+                recheckChoices();
+            });
+    }
+    return entry;
+}
+
+/** Draw again the panels whose choices say something else now. Each compares what it shows (renderPreview). */
+function recheckChoices() {
+    for (const node of panels) {
+        if (node.graph && node.bundlePanel?.bundle && specOf(node).some((slot) => slot.type === "choice")) {
+            renderPreview(node, node.bundlePanel.bundle);
+        }
+    }
+}
+
+// A choice's warning follows the inputs its output reaches (0.2.0): links made
+// or removed inside a subgraph, or a target's options read again, do not tell
+// this node. So after the user does something (a click, a key) the panels with
+// choices look again; drawing happens only where something changed.
+let recheck = null;
+function scheduleRecheck() {
+    if (recheck !== null || !panels.size) return;
+    recheck = setTimeout(() => {
+        recheck = null;
+        recheckChoices();
+    }, 300);
+}
+document.addEventListener("pointerup", scheduleRecheck, true);
+document.addEventListener("keyup", scheduleRecheck, true);
 
 // The list may have changed in another tab or through the library modal.
 document.addEventListener("visibilitychange", () => {
@@ -313,6 +365,49 @@ function textBlock(slot, field) {
     return block;
 }
 
+/**
+ * What a choice output carries and where it goes (0.2.0): the value as its
+ * source's options spell it, each input it reaches, and whether that holds.
+ * Its `signature` changes with anything the preview shows of it.
+ */
+function choiceCheck(node, index, field) {
+    const entry = field.source ? optionsOf(field.source) : null;
+    const resolved = resolveChoice(field.preview, field.source ?? null, entry?.done ? entry.answer : null);
+    const targets = node.graph ? choiceTargets(node.graph, node, index) : [];
+    const verdicts = targetVerdicts(resolved.output, targets);
+    const signature = [resolved.output, resolved.state, entry?.failure ?? null,
+        targets.map((target, i) => [target.node?.id ?? null, target.input ?? null, verdicts[i]])];
+    return { entry, resolved, targets, verdicts, signature };
+}
+
+/** A choice in the preview: its value, its source, and what is wrong (not one of the source's options, or of a target's). */
+function choiceBlock(slot, field, linked, check) {
+    const block = item("div", "bl-choice-block", slot);
+    const head = el("div", "bl-choice-head");
+    const { output, state } = check.resolved;
+    head.append(el("span", "bl-value-name", slot.name), output
+        ? el("span", "bl-value", output) : el("span", "bl-value bl-dim", t("node.empty")));
+    head.title = output;
+    block.append(head);
+    const answer = check.entry?.answer ?? null;
+    if (field.source) block.append(el("div", "bl-choice-from", sourceLabel(field.source, answer)));
+    const note = (text, bad) => block.append(el("div", `bl-choice-note ${bad ? "bl-bad" : "bl-dim"}`, text));
+    if (state === "mismatch") {
+        const problem = t("node.choice_not_listed", { source: sourceLabel(field.source, answer) });
+        note(linked ? t("node.problem_fail", { problem }) : t("node.not_connected", { problem }), linked);
+    } else if (check.entry?.done) {
+        const unchecked = uncheckedText(field.source, answer, check.entry.failure);
+        if (unchecked) note(unchecked, false);
+    }
+    check.targets.forEach((target, i) => {
+        if (check.verdicts[i] !== "mismatch") return;
+        const title = target.node.getTitle?.() ?? target.node.title ?? target.node.type;
+        note(t("node.choice_target_mismatch", { target: t("choice.source", { node: title, input: target.input }) }), true);
+    });
+    if (check.verdicts.includes("unknown")) note(t("node.choice_target_unknown"), false);
+    return block;
+}
+
 function valueChip(slot, field) {
     const chip = item("div", "bl-value-chip", slot);
     const value = field.type === "boolean"
@@ -342,8 +437,17 @@ function renderPreview(node, bundle) {
     const { rows, notice } = panel;
     // Rebuilding reloads the images and resets the scroll position, so skip it
     // when nothing shown has changed (the list is read again on many occasions).
+    // A choice's check counts too: where its output goes and what holds there.
+    panel.bundle = bundle;
+    const slots = specOf(node);
+    const fields = new Map((bundle?.fields ?? []).map((f) => [f.name, f]));
+    const statuses = bundle ? slotStatuses(slots, bundle.fields) : [];
+    const checks = new Map();
+    slots.forEach((slot, i) => {
+        if (slot.type === "choice" && statuses[i] === "ok") checks.set(i, choiceCheck(node, i, fields.get(slot.name)));
+    });
     const signature = JSON.stringify([widget(node, "bundle_id")?.value, bundle?.revision ?? null,
-        specOf(node), node.outputs.map(isLinked)]);
+        slots, node.outputs.map(isLinked), [...checks].map(([i, check]) => [i, check.signature])]);
     if (panel.previewSignature === signature) return;
     panel.previewSignature = signature;
     stopSoundIn(rows);
@@ -362,17 +466,15 @@ function renderPreview(node, bundle) {
         rows.append(el("div", "bl-note bl-bad", t("node.bundle_missing", { name })));
         return;
     }
-    const slots = specOf(node);
-    const statuses = slotStatuses(slots, bundle.fields);
-    const fields = new Map(bundle.fields.map((f) => [f.name, f]));
     const parts = { problems: el("div", "bl-problems"), gallery: el("div", "bl-gallery"),
-        texts: el("div", "bl-texts"), values: el("div", "bl-values") };
+        texts: el("div", "bl-texts"), choices: el("div", "bl-choices"), values: el("div", "bl-values") };
     slots.forEach((slot, i) => {
         const linked = isLinked(node.outputs[i]);
         const field = fields.get(slot.name);
         if (statuses[i] !== "ok") parts.problems.append(problemLine(slot, statuses[i], linked));
         else if (slot.type === "image" || slot.type === "video") parts.gallery.append(mediaTile(slot, field, linked));
         else if (slot.type === "text") parts.texts.append(textBlock(slot, field));
+        else if (slot.type === "choice") parts.choices.append(choiceBlock(slot, field, linked, checks.get(i)));
         else if (slot.type === "audio") parts.values.append(audioChip(slot, field, linked));
         else parts.values.append(valueChip(slot, field));
     });

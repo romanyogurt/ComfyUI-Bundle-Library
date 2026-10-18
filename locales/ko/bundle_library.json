@@ -209,6 +209,14 @@
     "en": "A bundle must be a JSON object.",
     "text": "번들은 JSON 객체여야 합니다."
   },
+  "check.choice_max_bytes": {
+    "en": "{label}: a choice is limited to {n} bytes.",
+    "text": "{label}: 선택 값은 {n}바이트까지입니다."
+  },
+  "check.choice_string": {
+    "en": "{label}: a choice must be a string.",
+    "text": "{label}: 선택 값은 문자열이어야 합니다."
+  },
   "check.control_characters": {
     "en": "{label}: line breaks and control characters are not allowed.",
     "text": "{label}: 줄바꿈과 제어 문자는 쓸 수 없습니다."
@@ -289,6 +297,18 @@
     "en": "{label}: must be a number.",
     "text": "{label}: 숫자여야 합니다."
   },
+  "check.source_max": {
+    "en": "{label}: the source's {key} is limited to {limit} characters.",
+    "text": "{label}: 출처의 {key}는 {limit}자까지입니다."
+  },
+  "check.source_name": {
+    "en": "{label}: the source's {key} must be a string that is not empty.",
+    "text": "{label}: 출처의 {key}는 비어 있지 않은 문자열이어야 합니다."
+  },
+  "check.source_object": {
+    "en": "{label}: the source must be an object with a node and an input, or null.",
+    "text": "{label}: 출처는 node와 input이 있는 객체이거나 null이어야 합니다."
+  },
   "check.string": {
     "en": "{label}: must be a string.",
     "text": "{label}: 문자열이어야 합니다."
@@ -316,6 +336,50 @@
   "check.value_missing": {
     "en": "{label}: value is missing.",
     "text": "{label}: 값이 없습니다."
+  },
+  "choice.reason_dynamic": {
+    "en": "choosing in it changes the node's other inputs",
+    "text": "고르면 노드의 다른 입력이 바뀜"
+  },
+  "choice.reason_multiselect": {
+    "en": "several options are chosen at once",
+    "text": "여러 항목을 함께 고름"
+  },
+  "choice.reason_not_combo": {
+    "en": "not a dropdown",
+    "text": "드롭다운이 아님"
+  },
+  "choice.reason_not_text": {
+    "en": "its options are not text",
+    "text": "항목이 글자가 아님"
+  },
+  "choice.reason_remote": {
+    "en": "the page fetches its options",
+    "text": "페이지가 항목을 따로 받아 옴"
+  },
+  "choice.source": {
+    "en": "{node} › {input}",
+    "text": "{node} › {input}"
+  },
+  "choice.unchecked_error": {
+    "en": "Can't check: this ComfyUI could not read the inputs of {node}.",
+    "text": "확인할 수 없습니다: 이 ComfyUI에서 {node}의 입력을 읽지 못했습니다."
+  },
+  "choice.unchecked_failed": {
+    "en": "Can't check: {reason}",
+    "text": "확인할 수 없습니다: {reason}"
+  },
+  "choice.unchecked_no_input": {
+    "en": "Can't check: {node} has no input {input} on this ComfyUI.",
+    "text": "확인할 수 없습니다: 이 ComfyUI의 {node}에 {input} 입력이 없습니다."
+  },
+  "choice.unchecked_no_node": {
+    "en": "Can't check: this ComfyUI has no node {node}.",
+    "text": "확인할 수 없습니다: 이 ComfyUI에 {node} 노드가 없습니다."
+  },
+  "choice.unchecked_unsupported": {
+    "en": "Can't check ({source}: {reason}).",
+    "text": "확인할 수 없습니다({source}: {reason})."
   },
   "common.bundle_name": {
     "en": "Bundle name",
@@ -524,6 +588,10 @@
     "en": "boolean",
     "text": "불리언"
   },
+  "editor.badge_choice": {
+    "en": "choice",
+    "text": "선택"
+  },
   "editor.badge_float": {
     "en": "float",
     "text": "실수"
@@ -562,6 +630,88 @@
       "other": "{count} characters"
     },
     "text": "{count}자"
+  },
+  "editor.choice_free": {
+    "en": "Typed freely, so not checked. Choose where its options come from to pick from a list and check it.",
+    "text": "직접 입력한 값이라 확인하지 않습니다. 항목 출처를 고르면 목록에서 고르고 확인할 수 있습니다."
+  },
+  "editor.choice_from": {
+    "en": "Options from",
+    "text": "항목 출처"
+  },
+  "editor.choice_listed": {
+    "en": {
+      "one": "One of the options ({count} on this ComfyUI).",
+      "other": "One of the options ({count} on this ComfyUI)."
+    },
+    "text": "항목에 있습니다(이 ComfyUI에 {count}개)."
+  },
+  "editor.choice_more": {
+    "en": {
+      "one": "{count} more: type to narrow them.",
+      "other": "{count} more: type to narrow them."
+    },
+    "text": "{count}개 더 있습니다. 입력해서 좁혀 보세요."
+  },
+  "editor.choice_no_match": {
+    "en": "No option has what is typed.",
+    "text": "입력한 글자가 든 항목이 없습니다."
+  },
+  "editor.choice_no_options": {
+    "en": "There are no options here.",
+    "text": "여기에는 항목이 없습니다."
+  },
+  "editor.choice_none_here": {
+    "en": "{source} has no options on this ComfyUI. Runs that use this value stop.",
+    "text": "이 ComfyUI의 {source}에는 항목이 하나도 없습니다. 이 값을 쓰는 실행은 멈춥니다."
+  },
+  "editor.choice_not_listed": {
+    "en": "Not among the options of {source} on this ComfyUI. It is kept as it is, but runs that use it stop until it is.",
+    "text": "이 ComfyUI의 {source} 항목에 없습니다. 값은 그대로 두지만, 이 값을 쓰는 실행은 항목에 있을 때까지 멈춥니다."
+  },
+  "editor.choice_placeholder": {
+    "en": "Type a value or choose one",
+    "text": "값을 입력하거나 고르세요"
+  },
+  "editor.choice_reading": {
+    "en": "Reading the options…",
+    "text": "항목을 읽는 중…"
+  },
+  "editor.choice_reload": {
+    "en": "Read the options again",
+    "text": "항목 다시 읽기"
+  },
+  "editor.choice_show_options": {
+    "en": "Show the options",
+    "text": "항목 보기"
+  },
+  "editor.choice_source_change": {
+    "en": "Change…",
+    "text": "바꾸기…"
+  },
+  "editor.choice_source_clear": {
+    "en": "Stop checking against these options (the value stays)",
+    "text": "이 항목과 맞춰 보지 않기(값은 그대로)"
+  },
+  "editor.choice_source_pick": {
+    "en": "Options from…",
+    "text": "항목 출처 고르기…"
+  },
+  "editor.choice_source_pick_title": {
+    "en": "Choose a node's dropdown: its options are offered here, and the value is checked against them before a run",
+    "text": "노드의 드롭다운을 고르세요. 그 항목을 여기서 고를 수 있고, 실행 전에 값이 그 항목에 있는지 확인합니다"
+  },
+  "editor.choice_source_title": {
+    "en": "The options of {input} on the node {node}",
+    "text": "{node} 노드의 {input} 항목"
+  },
+  "editor.choice_spelled": {
+    "en": "One of the options. On this ComfyUI it goes out as '{output}'.",
+    "text": "항목에 있습니다. 이 ComfyUI에서는 '{output}' 표기로 나갑니다."
+  },
+  "editor.choice_value": {
+    "en": "Value of {name}",
+    "text": "{name}의 값"
   },
   "editor.choose_audio": {
     "en": "Choose an audio file…",
@@ -873,6 +1023,10 @@
   "editor.type_boolean": {
     "en": "Boolean",
     "text": "불리언 (참/거짓)"
+  },
+  "editor.type_choice": {
+    "en": "Choice (a dropdown's option)",
+    "text": "선택 (드롭다운 항목)"
   },
   "editor.type_float": {
     "en": "Float",
@@ -1890,6 +2044,18 @@
     "en": "{label}  ⚠ no {fields}",
     "text": "{label}  ⚠ {fields} 없음"
   },
+  "node.choice_not_listed": {
+    "en": "not among the options of {source} on this ComfyUI",
+    "text": "이 ComfyUI의 {source} 항목에 없음"
+  },
+  "node.choice_target_mismatch": {
+    "en": "⚠ Not among the options of {target}",
+    "text": "⚠ {target}의 항목에 없습니다"
+  },
+  "node.choice_target_unknown": {
+    "en": "Where it goes from here cannot be checked.",
+    "text": "이어진 곳은 여기서 확인할 수 없습니다."
+  },
   "node.choose_bundle": {
     "en": "Select a bundle…",
     "text": "번들 고르기…"
@@ -2091,6 +2257,10 @@
     },
     "text": "번들 {count}개에서 사용"
   },
+  "request.choice_source": {
+    "en": "Name the source with node and input.",
+    "text": "출처를 node와 input으로 알려 주세요."
+  },
   "request.file_empty": {
     "en": "The file is empty.",
     "text": "파일이 비어 있습니다."
@@ -2186,6 +2356,48 @@
   "schema.time_missing": {
     "en": "{key} is missing",
     "text": "{key}가 없음"
+  },
+  "source.empty": {
+    "en": "This ComfyUI has no node with a dropdown.",
+    "text": "이 ComfyUI에는 드롭다운이 있는 노드가 없습니다."
+  },
+  "source.failed": {
+    "en": "Could not list the nodes: {reason}",
+    "text": "노드 목록을 읽을 수 없습니다: {reason}"
+  },
+  "source.filter": {
+    "en": "Filter by node, category or input",
+    "text": "노드·분류·입력 이름으로 거르기"
+  },
+  "source.hint": {
+    "en": "Choose a dropdown input of a node. Its options can be picked for the value, which is checked against them before a run; the value itself stays as it is.",
+    "text": "노드의 드롭다운 입력을 고르세요. 그 항목을 값으로 고를 수 있고, 실행 전에 값이 그 항목에 있는지 확인합니다. 값은 그대로 둡니다."
+  },
+  "source.more": {
+    "en": {
+      "one": "{count} more node: filter to find it.",
+      "other": "{count} more nodes: filter to find them."
+    },
+    "text": "노드가 {count}개 더 있습니다. 걸러서 찾아 보세요."
+  },
+  "source.no_match": {
+    "en": "No node matches.",
+    "text": "맞는 노드가 없습니다."
+  },
+  "source.options": {
+    "en": {
+      "one": "{count} option",
+      "other": "{count} options"
+    },
+    "text": "항목 {count}개"
+  },
+  "source.title": {
+    "en": "Where the options come from",
+    "text": "항목 출처 고르기"
+  },
+  "source.unsupported": {
+    "en": "Can't be used: {reason}",
+    "text": "쓸 수 없습니다: {reason}"
   },
   "store.batch_max": {
     "en": "A batch takes {MAX_BATCH} bundles at most.",

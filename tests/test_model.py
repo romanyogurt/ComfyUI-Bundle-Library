@@ -2,9 +2,12 @@ import unicodedata
 import unittest
 
 from bundle_library.constants import (
-    MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_JSON_DEPTH, MAX_NOTE, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES,
+    MAX_BUNDLE_NAME, MAX_CHOICE_BYTES, MAX_FIELD_NAME, MAX_FIELDS, MAX_JSON_DEPTH, MAX_NOTE, MAX_SOURCE_NAME,
+    MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES,
 )
-from bundle_library.model import LibraryError, check_bundle_id, check_sha256, empty_value, load_json, normalize_bundle
+from bundle_library.model import (
+    LibraryError, check_bundle_id, check_sha256, empty_value, load_json, normalize_bundle, read_bundle_content,
+)
 
 SHA = "a" * 64
 
@@ -116,6 +119,41 @@ class NormalizeBundleTest(unittest.TestCase):
             self.assertEqual(normalize_bundle(with_field(type="int", value=edge))["fields"][0]["value"], edge)
         self.assertEqual(normalize_bundle(with_field(type="text", value=""))["fields"][0]["value"], "")
 
+    def test_a_choice_is_kept_as_it_is_with_its_source(self):
+        # 0.2.0: one of a dropdown's options, so not trimmed or composed; its source names what ComfyUI calls it
+        source = {"node": "Some Pack Loader (x)", "input": "model.name"}
+        out = normalize_bundle(with_field(type="choice", value=" Euler\u0301 ", source=source))["fields"][0]
+        self.assertEqual(out, {"name": "x", "type": "choice", "value": " Euler\u0301 ", "source": source})
+        for absent in ({}, {"source": None}):
+            with self.subTest(absent):
+                self.assertNotIn("source", normalize_bundle(with_field(type="choice", value="", **absent))["fields"][0])
+        more = normalize_bundle(with_field(type="choice", value="a", source={**source, "seen": ["a"]}))["fields"][0]
+        self.assertEqual(more["source"], source)  # a request's other keys are left out
+        # a source belongs to a choice: on another field it is not kept
+        self.assertNotIn("source", normalize_bundle(with_field(type="text", value="a", source=source))["fields"][0])
+        refused = [
+            dict(type="choice", value=1),
+            dict(type="choice", value=None),
+            dict(type="choice"),
+            dict(type="choice", value="a" * (MAX_CHOICE_BYTES + 1)),
+            dict(type="choice", value="가" * (MAX_CHOICE_BYTES // 3 + 1)),
+            dict(type="choice", value="a", source="KSampler.sampler_name"),
+            dict(type="choice", value="a", source=["KSampler", "sampler_name"]),
+            dict(type="choice", value="a", source={"node": "KSampler"}),
+            dict(type="choice", value="a", source={"node": "", "input": "x"}),
+            dict(type="choice", value="a", source={"node": "KSampler", "input": 3}),
+            dict(type="choice", value="a", source={"node": "n" * (MAX_SOURCE_NAME + 1), "input": "x"}),
+        ]
+        for field in refused:
+            with self.subTest(field=field):
+                self.assertRefused(with_field(**field))
+        edge = "a" * MAX_CHOICE_BYTES
+        self.assertEqual(normalize_bundle(with_field(type="choice", value=edge))["fields"][0]["value"], edge)
+        # past a limit, a stored one is read with a warning
+        content, warnings = read_bundle_content(with_field(type="choice", value=edge + "a",
+                                                           source={"node": "n" * (MAX_SOURCE_NAME + 1), "input": "x"}))
+        self.assertEqual((content["fields"][0]["value"], len(warnings)), (edge + "a", 2))
+
     def test_tags_are_deduplicated_and_limited(self):
         out = normalize_bundle(bundle(tags=["Character", " character ", "h3"]))
         self.assertEqual(out["tags"], ["Character", "h3"])
@@ -144,6 +182,14 @@ class NormalizeBundleTest(unittest.TestCase):
             {"name": "seed", "type": "int", "value": 0},
             {"name": "cfg", "type": "float", "value": 0.0},
         ])
+        # a choice keeps where its options come from (the user's decision, 0.2.0), and off stays off
+        source = {"node": "KSamplerSelect", "input": "sampler_name"}
+        choice = {"name": "sampler", "type": "choice", "value": "euler", "source": source, "enabled": False}
+        cleared = empty_value(choice)
+        self.assertEqual(cleared, {"name": "sampler", "type": "choice", "value": "", "source": source, "enabled": False})
+        self.assertIsNot(cleared["source"], source)
+        self.assertEqual(empty_value({"name": "style", "type": "choice", "value": "warm"}),
+                         {"name": "style", "type": "choice", "value": ""})
 
 
 class IdTest(unittest.TestCase):

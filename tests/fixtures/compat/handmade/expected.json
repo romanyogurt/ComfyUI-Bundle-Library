@@ -103,5 +103,30 @@
     "state": "ok",
     "error_code": null,
     "id": "d21cb51c-9654-4eb1-a712-af0458894959"
+  },
+  "v4-choice": {
+    "state": "ok",
+    "error_code": null,
+    "id": "7b0e3a52-4c1d-4f6e-9a2b-3c4d5e6f7a8b"
+  },
+  "v3-choice": {
+    "state": "read_only",
+    "error_code": null,
+    "id": "8c1f4b63-5d2e-4a7f-8b3c-4d5e6f7a8b9c"
+  },
+  "v4-unknown-source-key": {
+    "state": "read_only",
+    "error_code": null,
+    "id": "9d2a5c74-6e3f-4b8a-9c4d-5e6f7a8b9c0d"
+  },
+  "v4-source-on-text": {
+    "state": "read_only",
+    "error_code": null,
+    "id": "ae3b6d85-7f4a-4c9b-8d5e-6f7a8b9c0d1e"
+  },
+  "v4-bad-source": {
+    "state": "corrupt",
+    "error_code": "corrupt",
+    "id": "bf4c7e96-8a5b-4dac-9e6f-7a8b9c0d1e2f"
   }
 }

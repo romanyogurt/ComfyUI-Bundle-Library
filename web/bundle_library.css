@@ -1627,3 +1627,166 @@
     align-items: center;
     gap: 4px;
 }
+
+/* ---- choice fields (0.2.0) ---------------------------------------------- */
+
+/* In the node: a choice's value, the source it is checked against, and what is wrong with it. */
+.bl-choices {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.bl-choice-block {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    min-width: 0;
+}
+
+.bl-choice-head {
+    display: flex;
+    gap: 6px;
+    min-width: 0;
+}
+
+.bl-choice-head .bl-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bl-choice-from,
+.bl-choice-note {
+    font-size: 11px;
+    overflow-wrap: anywhere;
+}
+
+.bl-choice-from {
+    opacity: 0.6;
+}
+
+/* In the editor: a box to type in, with the source's options under it. */
+.bl-choice {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.bl-choice-combo {
+    position: relative;
+    display: flex;
+    gap: 4px;
+}
+
+.bl-choice-value {
+    flex: 1;
+    min-width: 0;
+}
+
+.bl-choice-list {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    max-height: 240px;
+    overflow-y: auto;
+    padding: 2px;
+    background: var(--comfy-menu-bg, #171718);
+    border: 1px solid var(--border-color, #4e4e4e);
+    border-radius: 6px;
+    box-shadow: var(--bar-shadow, 0 0 0.5rem rgb(0 0 0 / 0.5));
+}
+
+.bl-choice-option {
+    padding: 3px 8px;
+    border-radius: 4px;
+    cursor: pointer;
+    overflow-wrap: anywhere;
+}
+
+.bl-choice-option:hover,
+.bl-choice-option.active {
+    background: var(--comfy-menu-secondary-bg, #303030);
+}
+
+.bl-choice-option.current {
+    font-weight: 600;
+}
+
+.bl-choice-option.current::before {
+    content: "✓ ";
+}
+
+.bl-choice-list .bl-hint {
+    padding: 3px 8px;
+}
+
+.bl-choice-source {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+}
+
+.bl-choice-status {
+    font-size: 12px;
+    overflow-wrap: anywhere;
+}
+
+/* Choosing where a choice's options come from: the nodes with a dropdown, each with its inputs. */
+.bl-source-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 2px;
+}
+
+.bl-source-node {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 8px;
+    background: var(--comfy-input-bg, #222);
+    border: 1px solid var(--border-color, #4e4e4e);
+    border-radius: 6px;
+}
+
+.bl-source-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 8px;
+}
+
+.bl-source-label {
+    font-weight: 600;
+}
+
+.bl-source-id,
+.bl-source-category {
+    font-size: 11px;
+}
+
+.bl-source-inputs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.bl-source-input {
+    padding: 2px 8px;
+    font-size: 12px;
+}
+
+.bl-source-input.unsupported {
+    text-decoration: line-through;
+}
+
+.bl-source-input.current {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 1px #2563eb;
+}

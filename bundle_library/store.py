@@ -1213,7 +1213,7 @@ def _search_text(bundle, category_name=None):
     parts = [bundle["name"], *bundle["tags"], category_name or ""]
     for field in bundle["fields"]:
         parts.append(field["name"])
-        if field["type"] == "text":
+        if field["type"] in ("text", "choice"):
             parts.append(field["value"])
     return "\n".join(parts).casefold()
 
@@ -1263,6 +1263,8 @@ def _preview(field):
         return None if asset is None else {k: asset[k] for k in PREVIEW_KEYS[field["type"]] if k in asset}
     if field["type"] == "text":
         return field["value"][:TEXT_PREVIEW]
+    if field["type"] == "choice":  # whole (MAX_CHOICE_BYTES at most): the node checks it against the options
+        return field["value"]
     return exact_int(field["value"])
 
 
@@ -1275,6 +1277,7 @@ def _summary(loaded):
         "revision": bundle["revision"],
         "updated_at": bundle["updated_at"],
         "fields": [{"name": f["name"], "type": f["type"], "preview": _preview(f),
+                    **({"source": f["source"]} if f.get("source") is not None else {}),
                     **({"enabled": False} if f.get("enabled") is False else {})} for f in bundle["fields"]],
     }
     if loaded.warnings:

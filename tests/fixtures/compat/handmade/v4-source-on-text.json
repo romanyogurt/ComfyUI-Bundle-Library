@@ -1,0 +1,25 @@
+{
+  "format": "comfyui-bundle-library/bundle",
+  "schema_version": 4,
+  "id": "ae3b6d85-7f4a-4c9b-8d5e-6f7a8b9c0d1e",
+  "revision": 1,
+  "name": "Source on a text",
+  "tags": [
+    "compat"
+  ],
+  "note": "",
+  "fields": [
+    {
+      "name": "prompt",
+      "type": "text",
+      "value": "euler",
+      "source": {
+        "node": "KSamplerSelect",
+        "input": "sampler_name"
+      }
+    }
+  ],
+  "created_at": "2026-10-19T00:00:00.000Z",
+  "updated_at": "2026-10-19T00:00:00.000Z",
+  "deleted_at": null
+}

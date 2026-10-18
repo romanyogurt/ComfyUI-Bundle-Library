@@ -3,11 +3,12 @@
 // parse), the uploads, and one answer to whether leaving would lose something.
 // The editor draws from it; nothing here touches the DOM, so it runs under
 // `node --test` as well as in the browser.
+import { sourceKey } from "./choices.js";
 import { said, t } from "./i18n.js";
 import { sameTag } from "./tags.js";
 
 export const MEDIA_TYPES = new Set(["image", "video", "audio"]);
-const BLANK = { text: "", boolean: false, int: 0, float: 0 };
+const BLANK = { text: "", boolean: false, int: 0, float: 0, choice: "" };
 const TEXT_PREVIEW = 200; // characters of a text field in a list summary (bundle_library/store.py)
 const LARGEST = Number.MAX_SAFE_INTEGER.toLocaleString("en-US");
 
@@ -24,6 +25,10 @@ export function editable(bundle) {
         note: bundle.note ?? "",
         fields: bundle.fields.map((f) => {
             const off = f.enabled === false ? { enabled: false } : {}; // turned off (0.0.30); on is not written
+            if (f.type === "choice") { // with the dropdown its options come from (0.2.0): a change of its own
+                const source = f.source ? { source: { node: f.source.node, input: f.source.input } } : {};
+                return { name: f.name, type: f.type, value: f.value, ...source, ...off };
+            }
             if (!MEDIA_TYPES.has(f.type)) return { name: f.name, type: f.type, value: f.value, ...off };
             const asset = f.asset && { sha256: f.asset.sha256, ...(f.asset.original_name ? { original_name: f.asset.original_name } : {}) };
             return { name: f.name, type: f.type, asset: asset || null, ...off };
@@ -66,6 +71,7 @@ export function summaryOf(bundle) {
     const preview = (f) => {
         if (MEDIA_TYPES.has(f.type)) return f.asset ? { ...f.asset } : null;
         if (f.type === "text") return f.value.slice(0, TEXT_PREVIEW);
+        if (f.type === "choice") return f.value; // whole: the node checks it against the options
         return f.value_text ?? f.value;
     };
     return {
@@ -75,7 +81,7 @@ export function summaryOf(bundle) {
         revision: bundle.revision,
         updated_at: bundle.updated_at,
         fields: bundle.fields.map((f) => ({ name: f.name, type: f.type, preview: preview(f),
-            ...(f.enabled === false ? { enabled: false } : {}) })),
+            ...(f.source ? { source: { ...f.source } } : {}), ...(f.enabled === false ? { enabled: false } : {}) })),
         ...(bundle.warnings ? { warnings: bundle.warnings, warnings_i18n: bundle.warnings_i18n } : {}),
         ...(bundle.read_only ? { read_only: bundle.read_only, read_only_i18n: bundle.read_only_i18n } : {}),
     };
@@ -87,12 +93,16 @@ export class EditorModel {
         // Uploads running, by field key: {controller, name, sent}. Only the file
         // chosen last for a field counts; an earlier upload is stopped.
         this.uploads = new Map();
+        // What was asked of a choice's source, by field key: {ticket, answer, failure}.
+        // Not part of the draft: reading options changes nothing to save (CH07).
+        this.lookups = new Map();
         this.load(bundle, newName);
     }
 
     /** Edit `bundle` (as stored) from now on, or a new one: the draft starts over, and running uploads stop. */
     load(bundle, newName = t("common.new_bundle")) {
         this.stopUploads();
+        this.lookups.clear(); // answers still on their way are for the draft that went
         this.saved = bundle;
         this.pendingCategory = null; // where a new bundle goes when first saved (an id, or null)
         this.draft = bundle
@@ -196,6 +206,7 @@ export class EditorModel {
 
     removeField(field) {
         this.stopUpload(field);
+        this.lookups.delete(field.key);
         this.draft.fields = this.draft.fields.filter((f) => f !== field);
     }
 
@@ -244,6 +255,43 @@ export class EditorModel {
     clearAsset(field) {
         field.asset = null;
         field.fileError = null;
+    }
+
+    // -- a choice's source (0.2.0) -------------------------------------------
+
+    /** Check a choice against the options of `source` ({node, input}), or against none (null). Its value stays. */
+    setSource(field, source) {
+        if (source) field.source = { node: source.node, input: source.input };
+        else delete field.source;
+        this.lookups.delete(field.key);
+    }
+
+    /**
+     * Ask for the options of the field's source: a ticket for the answer.
+     * Only the field's latest ask counts (another source chosen, the field
+     * removed, another bundle opened: the answer is dropped).
+     */
+    askOptions(field) {
+        const ticket = { key: field.key, source: sourceKey(field.source) };
+        this.lookups.set(field.key, { ticket, answer: null, failure: null });
+        return ticket;
+    }
+
+    /** The answer to `ticket`: what was read (`answer`), or why nothing was (`failure`). Whether it was taken. */
+    answerOptions(ticket, { answer = null, failure = null }) {
+        const entry = this.lookups.get(ticket.key);
+        const field = this.field(ticket.key);
+        if (!entry || entry.ticket !== ticket || !field || sourceKey(field.source) !== ticket.source) return false;
+        entry.answer = answer;
+        entry.failure = failure;
+        return true;
+    }
+
+    /** What is known of the field's source now: {answer, failure, asked}; asked is false until it is asked for. */
+    options(field) {
+        const entry = this.lookups.get(field.key);
+        if (!entry || entry.ticket.source !== sourceKey(field.source)) return { answer: null, failure: null, asked: false };
+        return { answer: entry.answer, failure: entry.failure, asked: true };
     }
 
     // -- uploads ---------------------------------------------------------------

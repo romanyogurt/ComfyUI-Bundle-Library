@@ -7,23 +7,28 @@
 // taken from the library. Its category and star are not part of the draft:
 // the modal saves them at once.
 import {
-    MEDIA, assetURL, createBundle, deleteBundle, duplicateBundle, fileProblem, getBundle,
+    MEDIA, assetURL, createBundle, deleteBundle, duplicateBundle, fileProblem, getBundle, getChoiceOptions,
     thumbnailURL, updateBundle, uploadAsset,
 } from "./api.js";
 import { pickStoredAsset } from "./asset_picker.js";
+import { resolveChoice, sourceLabel, uncheckedText } from "./choices.js";
 import { button, el, formatBytes, formatDuration, icon, iconButton, menu } from "./dom.js";
 import { EditorModel, MEDIA_TYPES, editable } from "./editor_model.js";
 import { msg, said, t } from "./i18n.js";
 import { POOL_SIZE } from "./reconcile.js";
+import { pickSource } from "./source_picker.js";
 
 const TYPES = [["text", msg("editor.type_text")], ["image", msg("editor.type_image")], ["video", msg("editor.type_video")],
     ["audio", msg("editor.type_audio")], ["boolean", msg("editor.type_boolean")], ["int", msg("editor.type_integer")],
-    ["float", msg("editor.type_float")]];
+    ["float", msg("editor.type_float")], ["choice", msg("editor.type_choice")]];
+const SHOWN_OPTIONS = 200; // a choice's options drawn at once; typing narrows them
+let comboCount = 0; // ids for the options lists, which their boxes point at
 // What a field card dragged by its grip carries (0.0.28): its key in the draft.
 const FIELD_DRAG = "application/x-bundle-library-field";
 // A field's type on its badge: the type's own name in English.
 const BADGE = { text: msg("editor.badge_text"), image: msg("kind.image"), video: msg("kind.video"), audio: msg("kind.audio"),
-    boolean: msg("editor.badge_boolean"), int: msg("editor.badge_int"), float: msg("editor.badge_float") };
+    boolean: msg("editor.badge_boolean"), int: msg("editor.badge_int"), float: msg("editor.badge_float"),
+    choice: msg("editor.badge_choice") };
 // What a media field says, by its kind: whole sentences, so each language says them its own way.
 const MEDIA_TEXT = {
     image: { choose: msg("editor.choose_image"), drop: msg("editor.drop_image"),
@@ -430,6 +435,7 @@ export class BundleEditor {
             label.append(box, text);
             return label;
         }
+        if (field.type === "choice") return this.choiceEditor(card);
         if (field.type === "int" || field.type === "float") {
             const input = el("input", "bl-input bl-number");
             input.type = "number";
@@ -443,6 +449,235 @@ export class BundleEditor {
             return input;
         }
         return this.mediaEditor(card);
+    }
+
+    /**
+     * The card body of a choice (0.2.0): its value, typed or chosen from its
+     * source's options; the source; whether the value is one of the options.
+     * Nothing here changes the value but the user: choosing a source or
+     * reading its options again keeps it, also when it is not one of them.
+     */
+    choiceEditor(card) {
+        const { field } = card;
+        const box = el("div", "bl-choice");
+        const combo = el("div", "bl-choice-combo");
+        const input = el("input", "bl-input bl-choice-value");
+        input.value = field.value;
+        input.spellcheck = false;
+        input.placeholder = t("editor.choice_placeholder");
+        input.setAttribute("aria-label", t("editor.choice_value", { name: field.name }));
+        const list = el("div", "bl-choice-list");
+        list.id = `bl-choice-list-${++comboCount}`;
+        list.setAttribute("role", "listbox");
+        list.hidden = true;
+        input.setAttribute("role", "combobox");
+        input.setAttribute("aria-autocomplete", "list");
+        input.setAttribute("aria-controls", list.id);
+        input.setAttribute("aria-expanded", "false");
+        const open = button("▾", "bl-btn icon bl-choice-open", t("editor.choice_show_options"));
+        const source = el("div", "bl-choice-source");
+        const status = el("div", "bl-choice-status");
+        combo.append(input, open, list); // the list floats under the box: opening or closing it moves nothing
+        box.append(combo, source, status);
+        card.choice = { input, list, open, source, status, filtering: false, shown: [], active: -1 };
+        input.addEventListener("input", () => {
+            field.value = input.value;
+            this.drawChoiceStatus(card);
+            this.refreshState();
+            if (list.hidden) this.openOptions(card, { all: false }); // the options with what is typed
+            card.choice.filtering = true; // what was typed narrows the list from now on
+            this.drawOptions(card);
+        });
+        input.addEventListener("keydown", (e) => this.choiceKey(card, e));
+        box.addEventListener("keydown", (e) => {
+            if (e.key !== "Escape" || e.isComposing || list.hidden) return;
+            e.preventDefault();
+            e.stopPropagation(); // closes the list only, not the library
+            this.closeOptions(card);
+        });
+        open.addEventListener("click", () => {
+            if (list.hidden) this.openOptions(card, { all: true });
+            else this.closeOptions(card);
+            input.focus({ preventScroll: true }); // typing narrows the list
+        });
+        box.addEventListener("focusout", (e) => {
+            if (!box.contains(e.relatedTarget)) this.closeOptions(card);
+        });
+        this.drawSource(card);
+        this.drawChoiceStatus(card);
+        if (field.source && !this.model.options(field).asked) void this.readOptions(field);
+        return box;
+    }
+
+    /** Show the source's options under the box: all of them (from ▾), or those with what was typed. */
+    openOptions(card, { all = false } = {}) {
+        const { choice } = card;
+        if (choice.open.disabled) return;
+        if (all) choice.filtering = false;
+        choice.list.hidden = false;
+        choice.input.setAttribute("aria-expanded", "true");
+        this.drawOptions(card);
+        choice.list.querySelector(".current")?.scrollIntoView({ block: "nearest" });
+    }
+
+    closeOptions(card) {
+        const { choice } = card;
+        if (!choice || choice.list.hidden) return;
+        choice.list.hidden = true;
+        choice.active = -1;
+        choice.input.setAttribute("aria-expanded", "false");
+        choice.input.removeAttribute("aria-activedescendant");
+    }
+
+    drawOptions(card) {
+        const { field, choice } = card;
+        const { answer } = this.model.options(field);
+        const options = answer?.state === "read" ? answer.options : [];
+        const query = choice.filtering ? field.value.trim().toLowerCase() : "";
+        const matching = query ? options.filter((option) => option.toLowerCase().includes(query)) : options;
+        choice.shown = matching.slice(0, SHOWN_OPTIONS);
+        choice.active = Math.min(choice.active, choice.shown.length - 1);
+        choice.list.replaceChildren(...choice.shown.map((option, i) => {
+            const item = el("div", "bl-choice-option", option);
+            item.id = `${choice.list.id}-${i}`;
+            item.setAttribute("role", "option");
+            item.setAttribute("aria-selected", String(option === field.value));
+            item.classList.toggle("current", option === field.value);
+            item.classList.toggle("active", i === choice.active);
+            item.addEventListener("mousedown", (e) => e.preventDefault()); // the focus stays in the box
+            item.addEventListener("click", () => this.chooseOption(card, option));
+            return item;
+        }));
+        if (!matching.length) {
+            choice.list.append(el("div", "bl-hint", options.length ? t("editor.choice_no_match") : t("editor.choice_no_options")));
+        } else if (matching.length > choice.shown.length) {
+            choice.list.append(el("div", "bl-hint", t("editor.choice_more", { count: matching.length - choice.shown.length })));
+        }
+        if (choice.active >= 0) choice.input.setAttribute("aria-activedescendant", `${choice.list.id}-${choice.active}`);
+        else choice.input.removeAttribute("aria-activedescendant");
+    }
+
+    chooseOption(card, option) {
+        const { field, choice } = card;
+        field.value = option;
+        choice.input.value = option;
+        this.closeOptions(card);
+        this.drawChoiceStatus(card);
+        this.refreshState();
+        choice.input.focus({ preventScroll: true });
+    }
+
+    /** The keys of a choice's box: ↓↑ go through the options and Enter takes one (Escape: choiceEditor()). */
+    choiceKey(card, e) {
+        const { choice } = card;
+        if (e.isComposing) return;
+        const shown = choice.shown.length;
+        if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            if (choice.list.hidden) {
+                this.openOptions(card); // narrowed by what was typed, if anything was
+                return;
+            }
+            if (!shown) return;
+            choice.active = ((choice.active < 0 && e.key === "ArrowUp" ? shown : choice.active)
+                + (e.key === "ArrowDown" ? 1 : -1) + shown) % shown;
+            this.drawOptions(card);
+            choice.list.querySelector(".active")?.scrollIntoView({ block: "nearest" });
+        } else if (e.key === "Enter" && !choice.list.hidden && choice.active >= 0) {
+            e.preventDefault();
+            this.chooseOption(card, choice.shown[choice.active]);
+        }
+    }
+
+    /** Where a choice's options come from: the source, to change or clear, or a way to choose one. */
+    drawSource(card) {
+        const { field, choice } = card;
+        if (!field.source) {
+            const pick = button(t("editor.choice_source_pick"), "bl-btn bl-choice-pick");
+            pick.title = t("editor.choice_source_pick_title");
+            pick.addEventListener("click", () => void this.chooseSource(field));
+            choice.source.replaceChildren(pick);
+            return;
+        }
+        const { answer } = this.model.options(field);
+        const chip = el("span", "bl-chip bl-source-chip", sourceLabel(field.source, answer));
+        chip.title = t("editor.choice_source_title", { node: field.source.node, input: field.source.input });
+        const clear = button("×", "bl-chip-x", t("editor.choice_source_clear"));
+        clear.addEventListener("click", () => this.setSource(field, null));
+        chip.append(clear);
+        const change = button(t("editor.choice_source_change"), "bl-btn bl-choice-pick");
+        change.addEventListener("click", () => void this.chooseSource(field));
+        const reload = button("↻", "bl-btn icon bl-choice-reload", t("editor.choice_reload"));
+        reload.addEventListener("click", () => void this.readOptions(field));
+        choice.source.replaceChildren(el("span", "bl-dim", t("editor.choice_from")), chip, change, reload);
+    }
+
+    /** Whether the value is one of the source's options here, or why that cannot be told. Saving is never held back. */
+    drawChoiceStatus(card) {
+        const { field, choice } = card;
+        const { answer, failure, asked } = this.model.options(field);
+        const read = answer?.state === "read";
+        const resolved = resolveChoice(field.value, field.source, answer);
+        let text;
+        let bad = false;
+        if (!field.source) {
+            text = t("editor.choice_free");
+        } else if (failure || (answer && !read)) {
+            text = uncheckedText(field.source, answer, failure);
+        } else if (!asked || !answer) {
+            text = t("editor.choice_reading");
+        } else if (resolved.state === "mismatch") {
+            bad = true;
+            text = answer.options.length ? t("editor.choice_not_listed", { source: sourceLabel(field.source, answer) })
+                : t("editor.choice_none_here", { source: sourceLabel(field.source, answer) });
+        } else if (resolved.output !== field.value) {
+            text = t("editor.choice_spelled", { output: resolved.output });
+        } else {
+            text = t("editor.choice_listed", { count: answer.options.length });
+        }
+        choice.status.textContent = bad ? `⚠ ${text}` : text;
+        choice.status.classList.toggle("bl-bad", bad);
+        choice.status.classList.toggle("bl-hint", !bad);
+        choice.status.dataset.state = !field.source ? "no_source" : failure ? "failed" : !answer ? "pending" : resolved.state;
+        choice.open.disabled = !(read && answer.options.length);
+        if (choice.open.disabled) this.closeOptions(card);
+    }
+
+    /** Draw a choice's source and status again (its options were read, or its source changed). */
+    refreshChoice(field) {
+        const card = this.cards.get(field.key);
+        if (!card?.choice) return;
+        this.drawSource(card);
+        this.drawChoiceStatus(card);
+        if (!card.choice.list.hidden) this.drawOptions(card);
+    }
+
+    /** Read the options of the field's source as this ComfyUI has them now. An answer that comes after another ask is dropped. */
+    async readOptions(field) {
+        if (!field.source) return;
+        const ticket = this.model.askOptions(field);
+        this.refreshChoice(field);
+        let result;
+        try {
+            result = { answer: await getChoiceOptions(field.source) };
+        } catch (error) {
+            result = { failure: error.message };
+        }
+        if (this.model.answerOptions(ticket, result)) this.refreshChoice(field);
+    }
+
+    /** Check the choice against another source's options, or against none (null). */
+    setSource(field, source) {
+        this.model.setSource(field, source);
+        this.refreshChoice(field);
+        this.refreshState();
+        if (source) void this.readOptions(field);
+        this.cards.get(field.key)?.choice?.input.focus({ preventScroll: true });
+    }
+
+    async chooseSource(field) {
+        const source = await pickSource(this.modal, field.source ?? null);
+        if (source && this.model.field(field.key)) this.setSource(field, source);
     }
 
     /** The card body of an image, video or audio field: a preview of the file and ways to replace it. */

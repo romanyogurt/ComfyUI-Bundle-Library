@@ -17,6 +17,7 @@ from bundle_library.constants import MAX_JSON_BODY, MAX_JSON_DEPTH, VERSION
 from bundle_library.store import BundleStore
 
 from . import helpers
+from .test_choices import CLASSES, FOLDERS, fake_comfy
 
 P = "/bundle-library/v1"
 WRITE = {"X-Bundle-Library": "1"}
@@ -499,6 +500,58 @@ class RoutesTest(AioHTTPTestCase):
         report = await self.body(await self.client.get(P + "/health"), 200)
         self.assertEqual(report["corrupt"], [f"{broken}.json"])
         self.assertNotIn(str(self.root), str(report))
+
+
+class ChoiceRoutesTest(AioHTTPTestCase):
+    """The options of other nodes' dropdowns (0.2.0), from a stand-in of ComfyUI."""
+
+    async def get_application(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = BundleStore(Path(self.tmp.name))
+        nodes, folder_paths, self.calls = fake_comfy(CLASSES, {"LoraLoader": "Load LoRA"}, FOLDERS)
+        table = web.RouteTableDef()
+        routes.register(table, lambda: self.store, providers=lambda: routes.ComfyProvider(nodes, folder_paths))
+        app = web.Application()
+        app.add_routes(table)
+        return app
+
+    async def asyncTearDown(self):
+        await super().asyncTearDown()
+        self.tmp.cleanup()
+
+    async def options(self, **query):
+        response = await self.client.get(P + "/choices/options", params=query)
+        return response.status, await response.json()
+
+    async def test_the_nodes_a_choice_can_take_options_from(self):
+        with self.assertLogs(level="WARNING"):  # one node fails to say its inputs; the others are listed
+            response = await self.client.get(P + "/choices")
+        self.assertEqual(response.status, 200)
+        nodes = {entry["node"]: entry for entry in (await response.json())["nodes"]}
+        self.assertEqual(nodes["LoraLoader"]["label"], "Load LoRA")
+        self.assertEqual(nodes["LoraLoader"]["inputs"], [{"input": "lora_name", "supported": True, "count": 2}])
+        self.assertNotIn("Broken", nodes)
+
+    async def test_the_options_of_one_source_as_they_are_now(self):
+        self.assertEqual(await self.options(node="LoraLoader", input="lora_name"), (200, {
+            "state": "read", "label": "Load LoRA", "options": ["flux\\detail.safetensors", "style.safetensors"],
+            "paths": True}))
+        self.assertEqual(await self.options(node="LoraLoader", input="lora_name"), (200, {
+            "state": "read", "label": "Load LoRA", "options": ["flux\\detail.safetensors", "style.safetensors"],
+            "paths": True}))
+        self.assertEqual(self.calls["inputs"].count("LoraLoader"), 2)  # read again for each request
+        self.assertEqual(await self.options(node="Gone (pack)", input="x y"),
+                         (200, {"state": "not_found", "label": "Gone (pack)", "reason": "no_node"}))
+        self.assertEqual(await self.options(node="KSampler", input="seed"),
+                         (200, {"state": "unsupported", "label": "KSampler", "reason": "not_combo"}))
+        with self.assertLogs(level="WARNING"):
+            self.assertEqual(await self.options(node="Broken", input="x"),
+                             (200, {"state": "error", "label": "Broken", "reason": "failed"}))
+        for query in ({}, {"node": "LoraLoader"}, {"input": "lora_name"}, {"node": "", "input": "lora_name"}):
+            with self.subTest(query):
+                status, body = await self.options(**query)
+                self.assertEqual((status, body["error"]["code"]), (400, "invalid"))
+                self.assertEqual(body["error"]["message_i18n"]["id"], "request.choice_source")
 
 
 if __name__ == "__main__":

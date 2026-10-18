@@ -80,6 +80,30 @@ class StoreTest(unittest.TestCase):
                     {"name": "x", "type": "text", "value": "", "enabled": value}])), 400, "invalid")
                 self.assertEqual(error.message, "Field 'x': enabled must be true or false.")
 
+    def test_a_choice_keeps_its_source_and_is_written_as_version_4_only_while_there(self):
+        # 0.2.0: a choice field, with the dropdown its options come from (a node this ComfyUI may not have)
+        source = {"node": "LoraLoader", "input": "lora_name"}
+        data = self.data(fields=[{"name": "prompt", "type": "text", "value": "a"},
+                                 {"name": "lora", "type": "choice", "value": "flux\\detail.safetensors", "source": source},
+                                 {"name": "style", "type": "choice", "value": "warm"}])
+        bundle = self.store.create(data)
+        path = self.root / "bundles" / f"{bundle['id']}.json"
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(stored["schema_version"], 4)
+        self.assertEqual(stored["fields"][1:], data["fields"][1:])
+        self.assertEqual(self.store.get(bundle["id"])["fields"], data["fields"])
+        [summary] = self.store.list()["bundles"]
+        self.assertEqual(summary["fields"][1:], [
+            {"name": "lora", "type": "choice", "preview": "flux\\detail.safetensors", "source": source},
+            {"name": "style", "type": "choice", "preview": "warm"}])
+        self.assertEqual([b["id"] for b in self.store.list(query="DETAIL.safe")["bundles"]], [bundle["id"]])
+        self.assertEqual(self.store.duplicate(bundle["id"])["fields"], data["fields"])
+        structure = self.store.duplicate(bundle["id"], "structure")["fields"]
+        self.assertEqual(structure[1:], [{"name": "lora", "type": "choice", "value": "", "source": source},
+                                         {"name": "style", "type": "choice", "value": ""}])
+        self.store.update(bundle["id"], {**data, "fields": data["fields"][:1]}, 1)
+        self.assertEqual(json.loads(path.read_text(encoding="utf-8"))["schema_version"], 2)  # what 0.1.x reads
+
     def test_create_get_and_list(self):
         bundle = self.store.create(self.data())
         uuid.UUID(bundle["id"])

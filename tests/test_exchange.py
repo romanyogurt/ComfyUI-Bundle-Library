@@ -226,6 +226,20 @@ class ImportTest(unittest.TestCase):
         copy = self.target.get(copied["results"][0]["id"])
         self.assertEqual([f.get("enabled", True) for f in copy["fields"]], [True, False])
 
+    def test_a_choice_travels_with_its_source(self):
+        # 0.2.0: the value and where its options come from; no model file goes with it
+        fields = [{"name": "lora", "type": "choice", "value": "flux/detail.safetensors",
+                   "source": {"node": "Some Pack Loader (x)", "input": "lora"}},
+                  {"name": "style", "type": "choice", "value": "", "enabled": False}]
+        a = self.source.create({"name": "Choice", "tags": [], "fields": fields})["id"]
+        path = self.export(self.source, [a])
+        preview, result = self.run_import(self.target, path)
+        self.assertEqual([p["importable"] for p in preview["bundles"]], [True])
+        self.assertEqual(self.bundle_file(self.target, a).read_bytes(), self.bundle_file(self.source, a).read_bytes())
+        self.assertEqual(self.target.get(a)["fields"], fields)
+        _, copied = self.run_import(self.target, path, "copy")
+        self.assertEqual(self.target.get(copied["results"][0]["id"])["fields"], fields)
+
     def test_bundles_here_already_are_skipped_overwritten_or_copied(self):
         a, b = self.make(self.source, "A"), self.make(self.source, "B")
         path = self.export(self.source, [a, b])

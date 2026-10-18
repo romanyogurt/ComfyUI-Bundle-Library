@@ -13,6 +13,7 @@ from urllib.parse import quote, urlsplit
 from aiohttp import web
 
 from .assets import MIME_TYPES
+from .choices import ComfyProvider
 from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
 from .exchange import MAX_IMPORT_BYTES, Exports, Imports, file_name
 from .model import LibraryError, check_bundle_id, check_sha256, load_json, lone_surrogates
@@ -130,8 +131,10 @@ def _revision(query):
         raise LibraryError(400, "invalid", Text("common.revision_required")) from None
 
 
-def register(routes, get_store):
-    """Add the API to `routes`. `get_store` returns the BundleStore to serve."""
+def register(routes, get_store, providers=ComfyProvider):
+    """Add the API to `routes`. `get_store` returns the BundleStore to serve;
+    `providers` makes what reads the options of other nodes' dropdowns
+    (choices.ComfyProvider), one per answer."""
     prefix = API_PREFIX
 
     @routes.get(prefix + "/health")
@@ -446,6 +449,24 @@ def register(routes, get_store):
         finally:
             temp.unlink(missing_ok=True)
         return _json({"asset": info, **({} if synced else {"warning": UNSYNCED})}, status=201 if created else 200)
+
+    @routes.get(prefix + "/choices")
+    @_api
+    async def list_choice_sources(request):
+        """The nodes with a dropdown a choice field can take its options from (0.2.0), each with its
+        display name, category and dropdown inputs, supported or why not."""
+        return _json({"nodes": await asyncio.to_thread(lambda: providers().catalog())})
+
+    @routes.get(prefix + "/choices/options")
+    @_api
+    async def choice_options(request):
+        """What this ComfyUI has now of one source's options (?node=<class name>&input=<input name>): its
+        state, its display name, and the options when they were read. Read again for each request: lists
+        change (a model added, ComfyUI's refresh)."""
+        node, name = request.query.get("node", ""), request.query.get("input", "")
+        if not node or not name:
+            raise LibraryError(400, "invalid", Text("request.choice_source"))
+        return _json(await asyncio.to_thread(lambda: providers().lookup(node, name).answer()))
 
     @routes.get(prefix + "/assets")
     @_api

@@ -213,3 +213,76 @@ test("the summary handed to a node is the stored bundle's, shaped like the list'
     assert.equal(model.summary().fields[0].preview.length, 200, "the stored bundle, not the draft");
     assert.equal(new EditorModel(null).summary(), null);
 });
+
+// ---- choice fields (0.2.0, CH07) -----------------------------------------------
+
+const LORA = { node: "LoraLoader", input: "lora_name" };
+const choiceField = (extra = {}) => ({ name: "lora", type: "choice", value: "flux/detail.safetensors", source: { ...LORA }, ...extra });
+
+test("a choice is saved with its source; changing or clearing only the source is a change", () => {
+    const model = new EditorModel(stored([choiceField(), { name: "style", type: "choice", value: "warm" }]));
+    assert.equal(model.dirty, false);
+    assert.deepEqual(editable(model.draft).fields, [
+        { name: "lora", type: "choice", value: "flux/detail.safetensors", source: LORA },
+        { name: "style", type: "choice", value: "warm" }]);
+    const [lora, style] = model.draft.fields;
+    model.setSource(lora, { node: "LoraLoaderModelOnly", input: "lora_name" });
+    assert.equal(model.dirty, true, "another source, the same value");
+    assert.equal(lora.value, "flux/detail.safetensors", "choosing a source keeps the value");
+    model.setSource(lora, LORA);
+    assert.equal(model.dirty, false, "back to the source it was saved with");
+    model.setSource(lora, null);
+    assert.equal(model.dirty, true, "cleared");
+    assert.equal(lora.value, "flux/detail.safetensors");
+    assert.equal("source" in editable(model.draft).fields[0], false);
+    model.revert();
+    assert.deepEqual(model.draft.fields[0].source, LORA, "Revert brings the source back");
+    model.setSource(model.field(model.draft.fields[1].key), LORA);
+    assert.equal(model.dirty, true, "a source given to a choice typed freely");
+    assert.equal(style.value, "warm");
+});
+
+test("a choice's summary has its whole value and its source, as the server's list gives them", () => {
+    const long = "x".repeat(300);
+    const summary = summaryOf(stored([choiceField({ value: long }), { name: "style", type: "choice", value: "", enabled: false }]));
+    assert.deepEqual(summary.fields, [
+        { name: "lora", type: "choice", preview: long, source: LORA },
+        { name: "style", type: "choice", preview: "", enabled: false }]);
+});
+
+test("a new choice starts empty, with no source", () => {
+    const model = new EditorModel(null);
+    const field = model.addField("choice");
+    assert.deepEqual(editable(model.draft).fields, [{ name: "choice_1", type: "choice", value: "" }]);
+    assert.equal(field.source, undefined);
+});
+
+test("options read for a choice are no change, and only the latest ask's answer is taken", () => {
+    const model = new EditorModel(stored([choiceField(), { name: "other", type: "choice", value: "a", source: { ...LORA } }]));
+    const [lora, other] = model.draft.fields;
+    assert.deepEqual(model.options(lora), { answer: null, failure: null, asked: false });
+    const first = model.askOptions(lora);
+    assert.deepEqual(model.options(lora), { answer: null, failure: null, asked: true });
+    const answer = { state: "read", label: "Load LoRA", options: ["flux\\detail.safetensors"], paths: true };
+    // the source changed before the answer came: the answer was for the other one
+    model.setSource(lora, { node: "UNETLoader", input: "unet_name" });
+    assert.equal(model.answerOptions(first, { answer }), false);
+    assert.equal(model.options(lora).asked, false);
+    // asked twice: only the second answer counts, whichever comes first
+    const second = model.askOptions(lora);
+    const third = model.askOptions(lora);
+    assert.equal(model.answerOptions(third, { answer }), true);
+    assert.equal(model.answerOptions(second, { failure: "late" }), false);
+    assert.deepEqual(model.options(lora), { answer, failure: null, asked: true });
+    assert.equal(model.dirty, true, "the source was changed above");
+    model.setSource(lora, LORA);
+    assert.equal(model.dirty, false, "an answer read is not a change");
+    // the field removed, or another bundle opened, before its answer came
+    const gone = model.askOptions(other);
+    model.removeField(other);
+    assert.equal(model.answerOptions(gone, { answer }), false);
+    const before = model.askOptions(lora);
+    model.load(stored([choiceField()]));
+    assert.equal(model.answerOptions(before, { answer }), false);
+    assert.equal(model.options(model.draft.fields[0]).asked, false);
+});

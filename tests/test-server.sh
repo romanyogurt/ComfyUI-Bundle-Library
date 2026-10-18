@@ -119,6 +119,7 @@ run() {
     step "LoadImage equality" "${in_test[@]}" python tests/e2e/compare_load_image.py
     step "LoadVideo/LoadAudio equality" "${in_test[@]}" python tests/e2e/compare_media.py
     step "cache with the real executor" "${in_test[@]}" python tests/e2e/cache_race.py
+    step "choices with the real executor" "${in_test[@]}" python tests/e2e/choice_run.py
     for script in api_smoke node_smoke media_smoke security_smoke; do
         step "$script" "${in_test[@]}" python "tests/e2e/$script.py" --base "http://127.0.0.1:$PORT"
     done
@@ -128,7 +129,7 @@ run() {
         --base "http://127.0.0.1:$PORT" --host "192.0.2.1:$PORT"
     if (cd "$NODE/tests/browser" && node -e 'require.resolve("playwright-core")') 2>/dev/null; then
         # BL_TEST_*: the scenarios that place, read or back-date library files do it in the container.
-        for suite in loader library media race trash compat category list batch window tags export import i18n; do
+        for suite in loader library media race trash compat category list batch window tags export import i18n choice; do
             step "$suite browser scenarios" env COMFY_URL="$URL" BL_TEST_CONTAINER="$NAME" \
                 BL_TEST_LIBRARY="$DATA/user/bundle_library" node "$NODE/tests/browser/${suite}_scenarios.cjs"
         done
