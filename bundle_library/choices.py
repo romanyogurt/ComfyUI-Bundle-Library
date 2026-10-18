@@ -32,7 +32,7 @@ FAILED = "failed"
 class Lookup:
     state: str
     options: tuple = ()
-    paths: bool = False  # the options are a model folder's files: "/" and "\" may stand for each other
+    paths: bool = False  # the options hold a model folder's files: "/" and "\" may stand for each other
     reason: str = ""
     label: str = ""      # the node's display name
 
@@ -87,9 +87,9 @@ def same_path(a, b):
 
 def resolve(value, source, lookup):
     """What a choice field carries (a Resolved): its value as the source's options
-    spell it, and whether it is one of them. Only a model folder's list takes a
-    path written with the other slash, and only one matching that way (CH05).
-    The stored value is never changed."""
+    spell it, and whether it is one of them. Only a list that holds a model
+    folder's files takes a path written with the other slash, and only one
+    matching that way (CH05). The stored value is never changed."""
     if source is None:
         return Resolved(value, NO_SOURCE)
     if lookup.state != READ:
@@ -158,26 +158,30 @@ class ComfyProvider:
         state, options, reason = classify(spec)
         if state != READ:
             return Lookup(state, reason=reason, label=self.label(node))
-        return Lookup(READ, options, self._is_model_list(options), label=self.label(node))
+        return Lookup(READ, options, self._holds_model_folder(options), label=self.label(node))
 
-    def _is_model_list(self, options):
-        """Whether `options` is exactly the file list of one of ComfyUI's model
-        folders (folder_paths.get_filename_list(), cached by ComfyUI). A folder
-        whose kinds of files the options are not is not listed."""
+    def _holds_model_folder(self, options):
+        """Whether `options` holds every file of one of ComfyUI's model folders
+        (folder_paths.get_filename_list(), cached by ComfyUI), and maybe more:
+        Load VAE adds "pixel_space", many loaders "None". An empty folder holds
+        nothing to tell. A folder none of whose kinds of files the options
+        have is not listed."""
         if not options:
             return False
         _, folder_paths = self._modules()
         kinds = {os.path.splitext(option)[-1].lower() for option in options}
+        held = set(options)
         for folder, entry in list(getattr(folder_paths, "folder_names_and_paths", {}).items()):
             extensions = entry[1] if isinstance(entry, (list, tuple)) and len(entry) > 1 else ()
-            if folder in self.NOT_MODELS or (extensions and not kinds <= set(extensions)):
+            if folder in self.NOT_MODELS or (extensions and not kinds & set(extensions)):
                 continue
             if folder not in self._folder_lists:
                 try:
                     self._folder_lists[folder] = tuple(folder_paths.get_filename_list(folder))
                 except Exception:  # noqa: BLE001 — a folder that cannot be listed is no model list
-                    self._folder_lists[folder] = None
-            if self._folder_lists[folder] == options:
+                    self._folder_lists[folder] = ()
+            files = self._folder_lists[folder]
+            if files and held.issuperset(files):
                 return True
         return False
 

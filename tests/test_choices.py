@@ -127,12 +127,14 @@ CLASSES = {
                  "optional": {"extra": (["a", 1],)}},
     "VAELoader": {"required": {"vae_name": (["a.safetensors", "pixel_space"],)}},
     "OneLoraLoader": {"required": {"lora_name": (["style.safetensors"],)}},
+    "NoneOrLora": {"required": {"lora_name": (["None", *LORAS],)}},
+    "EmbeddingLoader": {"required": {"name": (["x.safetensors"],)}},
     "Broken": RuntimeError("cannot list its models"),
     "Odd": {"required": {"voices": ("COMBO", {"remote": {"route": "/voices"}}), "tags": (["a", "b"], {"multi_select": {}})}},
     "NoCombo": {"required": {"text": ("STRING", {})}},
 }
-FOLDERS = {"loras": (PT, LORAS), "vae": (PT, ["a.safetensors"]), "custom_nodes": (set(), ["x/__init__.py"]),
-           "configs": ({".yaml"}, ["v1.yaml"])}
+FOLDERS = {"loras": (PT, LORAS), "vae": (PT, ["a.safetensors"]), "embeddings": (PT, []),
+           "custom_nodes": (set(), ["x/__init__.py"]), "configs": ({".yaml"}, ["v1.yaml"])}
 
 
 class ComfyProviderTest(unittest.TestCase):
@@ -150,15 +152,17 @@ class ComfyProviderTest(unittest.TestCase):
         self.assertEqual(provider.lookup("KSampler", "extra").reason, choices.NOT_TEXT)  # optional inputs are read too
 
     def test_a_model_folders_list_is_a_list_of_paths(self):
-        # CH05: only a list that is exactly a model folder's files takes "/" for "\"
+        # CH05: only a list that holds a model folder's files takes "/" for "\" (2026-10-19, user's decision)
         provider = self.provider()
         self.assertEqual(provider.lookup("LoraLoader", "lora_name"), Lookup(choices.READ, tuple(LORAS), True, label="Load LoRA"))
-        self.assertFalse(provider.lookup("VAELoader", "vae_name").paths)  # more than the vae folder's files
+        self.assertTrue(provider.lookup("VAELoader", "vae_name").paths)  # the vae folder's files and "pixel_space"
+        self.assertTrue(provider.lookup("NoneOrLora", "lora_name").paths)  # "None" and the loras folder's files
         self.assertFalse(provider.lookup("OneLoraLoader", "lora_name").paths)  # some of the loras folder's files
+        self.assertFalse(provider.lookup("EmbeddingLoader", "name").paths)  # an empty folder holds nothing to tell
         self.assertFalse(provider.lookup("KSampler", "sampler_name").paths)
         self.assertNotIn("custom_nodes", self.calls["folders"])  # never listed: not models, and every file of every pack
         self.assertNotIn("configs", self.calls["folders"])  # .yaml files only: these options are none
-        self.assertEqual(sorted(self.calls["folders"]), ["loras", "vae"])  # each listed once by a provider
+        self.assertEqual(sorted(self.calls["folders"]), ["embeddings", "loras", "vae"])  # each listed once by a provider
 
     def test_what_cannot_be_read_says_why(self):
         provider = self.provider()
