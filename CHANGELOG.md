@@ -3,6 +3,24 @@
 Notable changes to Bundle Library. Versions follow [Semantic Versioning](https://semver.org/). The 0.0.x versions
 came before the first public release; they are in this repository's history and tags.
 
+## [0.2.0] - 2026-10-19
+
+Choice fields: values for other nodes' dropdowns.
+
+- A new field type, **choice**: one option of another node's dropdown, such as a LoRA, a model file or a sampler,
+  kept as text. Its output is a COMBO, so it links to dropdown inputs.
+- A choice can say where its options come from (**Options from…** in the editor). The editor then offers them and
+  says whether the value is one of them on this ComfyUI. The value is never changed for you, and saving is never held
+  back.
+- Runs check a choice against its source's options: a linked choice that is not among them stops at Load Bundle with
+  the reason. Model paths written with the other slash (Windows and elsewhere) go out as this computer lists them.
+- The node's panel shows each choice with its source, and warns when a dropdown it is linked to, also inside
+  subgraphs, does not list the value.
+- `GET /choices` and `GET /choices/options` list the dropdowns and their options.
+- Bundle files with a choice field are schema version 4; other files are written as before. 0.1.x does not open
+  bundles with a choice, and keeps their files as they are.
+- The example *Sampler settings* has two choices.
+
 ## [0.1.1] - 2026-10-19
 
 Fixes from an independent review of 0.1.0:
