@@ -42,7 +42,7 @@ SOFTWARE.
 
 ## The other example pictures
 
-The pictures of the Black Rose, Hamster and Santorini bundles, and the template's thumbnail made from the four
-example pictures, were made for this pack with Z-Image Turbo
-([Tongyi-MAI/Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo), Apache-2.0). They are under this
-pack's license.
+The pictures of the Black Rose, Hamster and Santorini bundles (Two references uses two of them) were made for
+this pack with Z-Image Turbo ([Tongyi-MAI/Z-Image-Turbo](https://huggingface.co/Tongyi-MAI/Z-Image-Turbo),
+Apache-2.0). So were, from them, the template's thumbnail and the video of Sunset loop (a slow zoom into the Santorini
+picture); the sound of Sunset loop was synthesized. They are under this pack's license.

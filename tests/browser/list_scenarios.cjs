@@ -102,7 +102,7 @@ const LIST_HELPERS = () => {
     check("an empty library shows Favorites, and below it how to start and the examples (0.0.33)",
         JSON.stringify(groups.map((g) => [g.key, g.empty])) === '[["favorites",null]]'
         && emptyState === "No bundles yet. Create one with + New bundle." + "Import the examples"
-            + "Bundles to try with the z-image-turbo workflow among ComfyUI's templates.", { groups, emptyState });
+            + "Example bundles to try, some made for the z-image-turbo workflow among ComfyUI's templates.", { groups, emptyState });
     await closeLibrary();
     await page.unroute("**/bundle-library/v1/bundles", emptyLibrary);
 

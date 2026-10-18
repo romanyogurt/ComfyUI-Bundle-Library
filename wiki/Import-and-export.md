@@ -57,7 +57,8 @@ The format of the ZIP is in [File formats](File-formats#export-zip).
 
 ## The examples
 
-The pack's folder holds `web/examples/example-bundles.zip`: the four bundles of the example workflow `z-image-turbo`.
+The pack's folder holds `web/examples/example-bundles.zip`: seven bundles, four for the example workflow
+`z-image-turbo` and three in **Field types** that show other kinds of fields.
 An empty library offers them with **Import the examples**, which opens the same preview as any other ZIP. A library
 with bundles already can import that file with the upload button. See [Getting started](Getting-started#try-the-example).
 

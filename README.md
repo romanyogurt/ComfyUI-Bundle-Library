@@ -6,7 +6,7 @@ settings.
 
 English | [한국어](README.ko.md)
 
-![Choosing another bundle on Load Bundle and running: the picture and the prompt that reach the workflow follow the bundle](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/load-bundle.gif)
+![One Load Bundle node, switching between example bundles: its outputs follow each bundle's fields, from a picture and settings to a video and audio, numbers and a switch, or two pictures](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/outputs-follow-the-bundle.gif)
 
 ## Overview
 
@@ -54,20 +54,26 @@ setups.
 
 ## Quick start
 
-The pack comes with an example workflow and four bundles made for it.
+The pack comes with an example workflow, four bundles made for it, and three more that show other kinds of
+fields.
 
 1. **Open the example.** In **Workflow → Browse Templates**, search for **z-image-turbo**. It makes a picture with
    Z-Image Turbo from a bundle's prompt, or from the bundle's picture (image to image). Its note lists the models it
    needs and where they go.
 2. **Import the example bundles.** Open the library from the box icon in the sidebar (**Open library**). An empty
-   library offers **Import the examples**: click it, then **Import 4 bundles**.
+   library offers **Import the examples**: click it, then **Import 7 bundles**.
 3. **Run it.** Choose a bundle on the workflow's Load Bundle node and run. Choose another one and run again.
+
+![The same workflow run with each example bundle: the picture and the prompt that reach it follow the bundle](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/one-workflow-many-bundles.gif)
+
+The three bundles in **Field types** have other fields (a video and audio, numbers and a switch, two pictures).
+Choose one on a Load Bundle node to see its outputs follow it.
 
 To make your own, select an example, **Duplicate → Duplicate with values**, change its prompt and picture, and save.
 Your bundle fits the same workflow, since it has the same fields. See
 [Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Getting-started) for more.
 
-![The library window: the example bundles in their groups, and Example open in the editor with its five fields](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/library-window.png)
+![The library window: the seven example bundles in their groups, and Sunset loop open in the editor with its video, audio and text](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/library-window.png)
 
 ## Documentation
 

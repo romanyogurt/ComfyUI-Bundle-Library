@@ -17,10 +17,13 @@ The first public release, to be 0.1.0. Bundle Library as the [README](README.md)
 - Import and export of bundles, with their files, as ZIP files.
 - English and Korean, following ComfyUI's language.
 - An HTTP API, documented in the wiki, for scripts and AI agents.
-- An example workflow, `z-image-turbo`, and four example bundles that an empty library offers to import.
+- An example workflow, `z-image-turbo`, and seven example bundles that an empty library offers to import: four made
+  for that workflow, and three that show the other field types.
 
 ## Development before 0.1.0
 
+- **0.0.35**: three example bundles of other field types (a video and audio, numbers and a switch, two
+  pictures), to show that a node's outputs follow its bundle.
 - **0.0.34**: uploaded files are synced to the disk before they take their place; every write whose folder could not
   be synced says so; a failure after a file is in place is no longer reported as a failed write.
 - **0.0.33**: the `z-image-turbo` template and its example bundles; the MIT license and third-party notices.

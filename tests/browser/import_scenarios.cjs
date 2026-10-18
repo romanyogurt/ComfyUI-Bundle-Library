@@ -363,8 +363,8 @@ function held(token) {
     const offered = await until(() => document.querySelector(".bl-overlay .bl-empty-state .bl-import-examples"));
     const empty = await ev(() => document.querySelector(".bl-overlay .bl-empty-state")?.textContent);
     check("an empty library offers the example bundles", offered
-        && empty === "No bundles yet. Create one with + New bundle.Import the examplesBundles to try with the z-image-turbo "
-            + "workflow among ComfyUI's templates.", empty);
+        && empty === "No bundles yet. Create one with + New bundle.Import the examplesExample bundles to try, some made "
+            + "for the z-image-turbo workflow among ComfyUI's templates.", empty);
     const sent = page.waitForResponse((r) => r.request().method() === "POST"
         && new URL(r.url()).pathname === "/api/bundle-library/v1/import", { timeout: 30000 });
     await button("Import the examples").click();
@@ -373,12 +373,14 @@ function held(token) {
     shown = await pane();
     await page.unroute("**/api/bundle-library/v1/bundles");
     check("it shows the import preview of the pack's ZIP; nothing changes before Import",
-        answer.ok() && (await answer.json()).file_name === "example-bundles.zip" && Object.keys(shown?.rows ?? {}).length === 4
-        && shown.rows[EXAMPLE] && shown.go?.text === "Import 4 bundles", shown && { rows: Object.keys(shown.rows), go: shown.go });
+        answer.ok() && (await answer.json()).file_name === "example-bundles.zip" && Object.keys(shown?.rows ?? {}).length === 7
+        && shown.rows[EXAMPLE] && shown.go?.text === "Import 7 bundles", shown && { rows: Object.keys(shown.rows), go: shown.go });
     let examples = await runImport();
-    check("the four come in, in their category",
-        examples?.groups.new?.length === 4 && (await api("GET", `/bundles/${BLACK_ROSE}`)).name === "Black Rose"
-        && (await api("GET", "/categories")).categories.some((c) => c.name === "My Resources"), examples);
+    const exampleCategories = (await api("GET", "/categories")).categories.map((c) => c.name);
+    check("the seven come in, in their categories (four for the template, three of other field types)",
+        examples?.groups.new?.length === 7 && (await api("GET", `/bundles/${BLACK_ROSE}`)).name === "Black Rose"
+        && exampleCategories.includes("My Resources") && exampleCategories.includes("Field types"),
+        { examples, exampleCategories });
     await button("Done").click();
     await page.keyboard.press("Escape");
 
@@ -411,7 +413,7 @@ function held(token) {
     check("another example keeps every link", node.bundle === BLACK_ROSE && node.outputs === WANTED && !node.notice, node);
     await ev(() => window.__bl.app.graph.clear());
 
-    await finish({ expectRemoved: 13 }); // the three, two rounds of copies, and the four examples
+    await finish({ expectRemoved: 16 }); // the three, two rounds of copies, and the seven examples
 })().catch((e) => {
     console.error(e);
     process.exit(1);

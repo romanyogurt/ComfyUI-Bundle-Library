@@ -404,7 +404,7 @@
   "library.empty_group": "No bundles yet.",
   "library.empty_library": "No bundles yet. Create one with + New bundle.",
   "library.examples_failed": "Could not get the example bundles: {reason}",
-  "library.examples_hint": "Bundles to try with the z-image-turbo workflow among ComfyUI's templates.",
+  "library.examples_hint": "Example bundles to try, some made for the z-image-turbo workflow among ComfyUI's templates.",
   "library.expand": "Expand",
   "library.exporting": "Exporting {bundles}",
   "library.favorite_added": "Added to the favorites",

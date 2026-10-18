@@ -34,22 +34,28 @@ After the restart, reload the browser page.
 
 ## Try the example
 
-The pack comes with a workflow template and four bundles made for it. The workflow makes a picture with Z-Image Turbo
-from a bundle's prompt, and can start from the bundle's picture instead (image to image).
+The pack comes with a workflow template, four bundles made for it, and three more that show other kinds of fields.
+The workflow makes a picture with Z-Image Turbo from a bundle's prompt, and can start from the bundle's picture instead
+(image to image).
 
 1. **Get the models.** Open ComfyUI's template browser (**Workflow → Browse Templates**) and search for
    **z-image-turbo**. The note in the workflow lists the three model files and where they go; ComfyUI may also offer
    to download missing models when the workflow opens.
 2. **Get the example bundles.** Open the library window. While the library is empty, it offers
-   **Import the examples**: click it, look at the preview, and click **Import 4 bundles**. (A library that has
+   **Import the examples**: click it, look at the preview, and click **Import 7 bundles**. (A library that has
    bundles already can import `web/examples/example-bundles.zip` from the pack's folder with the import button below
    the list. See [Import and export](Import-and-export).)
 3. **Run it.** On the workflow's Load Bundle node, choose a bundle in the list (or with 📚), and run the workflow.
    Choose another bundle and run again: the same workflow now makes that bundle's picture.
 
-The four bundles have the same five fields (`image`, `text`, `steps`, `denoise`, `i2i`), so the node's links stay as
-they are whichever one you choose. Black Rose, Hamster and Santorini make a picture from their prompt; their picture
-shows a result. Example starts from ComfyUI's example picture.
+The four bundles made for it have the same five fields (`image`, `text`, `steps`, `denoise`, `i2i`), so the node's
+links stay as they are whichever of them you choose. Black Rose, Hamster and Santorini make a picture from their
+prompt; their picture shows a result. Example starts from ComfyUI's example picture.
+
+The three bundles in **Field types** have other fields: **Sunset loop** a video, an audio file and a text, **Sampler
+settings** numbers, a text and a switch, and **Two references** two pictures and a text. Choose them on a Load Bundle
+node to see its outputs follow the bundle. On the example workflow, the outputs a bundle lacks are marked, and a run
+stops with the reason (see [The Load Bundle node](The-Load-Bundle-node#when-a-bundle-cannot-fill-an-output)).
 
 ## Make your own bundle
 

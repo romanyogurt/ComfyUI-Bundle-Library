@@ -5,7 +5,7 @@
 
 [English](README.md) | 한국어
 
-![Load Bundle에서 번들을 바꿔 실행하면 워크플로로 가는 그림과 프롬프트가 번들을 따른다](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/load-bundle.gif)
+![Load Bundle 노드 하나가 예제 번들을 바꿔 가며 출력을 번들의 필드에 맞춘다: 그림과 설정, 동영상과 오디오, 숫자와 스위치, 그림 두 장](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/outputs-follow-the-bundle.gif)
 
 ## 개요
 
@@ -51,19 +51,24 @@ BETA 표시가 붙는다.
 
 ## 빠른 시작
 
-예제 워크플로 하나와 그에 맞춘 번들 네 개가 함께 들어 있다.
+예제 워크플로 하나, 그에 맞춘 번들 네 개, 다른 종류의 필드를 보이는 번들 세 개가 함께 들어 있다.
 
 1. **예제 열기.** **Workflow → Browse Templates**에서 **z-image-turbo**를 검색한다. 번들의 프롬프트로, 또는 번들의
    그림에서 시작해(이미지에서 이미지로) Z-Image Turbo로 그림을 만든다. 필요한 모델과 둘 곳은 워크플로의 메모에 있다.
 2. **예제 번들 가져오기.** 사이드바의 상자 아이콘(**Open library**)으로 라이브러리를 연다. 빈 라이브러리에는
-   **Import the examples**가 보인다. 누른 뒤 **Import 4 bundles**를 누른다.
+   **Import the examples**가 보인다. 누른 뒤 **Import 7 bundles**를 누른다.
 3. **실행.** 워크플로의 Load Bundle 노드에서 번들을 고르고 실행한다. 다른 번들을 골라 다시 실행한다.
+
+![같은 워크플로를 예제 번들마다 실행하면 워크플로로 가는 그림과 프롬프트가 번들을 따른다](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/one-workflow-many-bundles.gif)
+
+**Field types**의 번들 셋은 필드가 다르다(동영상과 오디오, 숫자와 스위치, 그림 두 장). Load Bundle 노드에서 하나를
+골라 보면 출력이 그 번들을 따르는 것이 보인다.
 
 내 번들은 예제 하나를 고르고 **Duplicate → Duplicate with values**로 복제한 뒤, 프롬프트와 그림을 바꿔 저장하면
 된다. 필드가 같으므로 같은 워크플로에 맞는다. 자세한 것은
 [Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Getting-started)(영어)에 있다.
 
-![라이브러리 창: 묶음별 예제 번들과, 다섯 필드를 가진 Example을 연 편집기](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/library-window.png)
+![라이브러리 창: 묶음별 예제 번들 일곱 개와, 동영상·오디오·텍스트를 가진 Sunset loop를 연 편집기](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/library-window.png)
 
 ## 문서
 

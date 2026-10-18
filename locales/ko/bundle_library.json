@@ -1485,8 +1485,8 @@
     "text": "예제 번들을 가져올 수 없습니다: {reason}"
   },
   "library.examples_hint": {
-    "en": "Bundles to try with the z-image-turbo workflow among ComfyUI's templates.",
-    "text": "ComfyUI 템플릿 가운데 z-image-turbo 워크플로와 함께 써 볼 번들입니다."
+    "en": "Example bundles to try, some made for the z-image-turbo workflow among ComfyUI's templates.",
+    "text": "써 볼 예제 번들입니다. 일부는 ComfyUI 템플릿 가운데 z-image-turbo 워크플로에 맞춰 만들었습니다."
   },
   "library.expand": {
     "en": "Expand",
