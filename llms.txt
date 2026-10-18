@@ -1,0 +1,44 @@
+# Bundle Library for ComfyUI
+
+> A ComfyUI node pack that keeps named bundles of prompts, numbers, switches, images, videos and audio in a library on
+> the ComfyUI server, and loads one into a workflow with a single Load Bundle node whose outputs follow the chosen
+> bundle. Everything it does goes through an HTTP API that scripts and AI agents can use.
+
+Key facts for using it from code:
+
+- The API is served at `/api/bundle-library/v1` on the ComfyUI server (default `http://127.0.0.1:8188`). Every write
+  (`POST`, `PUT`, `PATCH`, `DELETE`) needs the header `X-Bundle-Library: 1`; JSON bodies need
+  `Content-Type: application/json`.
+- Upload a file first (`POST /assets`, multipart, the `kind` field before the `file` field), then put its `sha256` in
+  an image, video or audio field.
+- `PUT /bundles/{id}` replaces the whole bundle: read it (`GET /bundles/{id}`), change it, and send it back with
+  `expected_revision` set to the revision you read. A stale revision gets 409 `revision_conflict`.
+- Errors are `{"error": {"code", "message"}}`; act on `code`.
+- In an API-format prompt, the Load Bundle node is `class_type` `BundleLibraryLoad` with the inputs `bundle_id` and
+  `slot_spec` (`{"v": 1, "slots": [{"name", "type"}, ...]}`, the bundle's fields that are on, in order); output `n`
+  carries slot `n`, counting from 0.
+
+## Docs
+
+- [Automating with the API](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Automating-with-the-API.md): worked examples with curl and Python
+- [HTTP API](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/HTTP-API.md): every endpoint, request, answer and error
+- [File formats](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/File-formats.md): the library folder, bundle files, the export ZIP, the node in a workflow
+- [Compatibility and versions](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Compatibility-and-versions.md): supported ComfyUI versions and how files of other versions are treated
+
+## Using it
+
+- [Getting started](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Getting-started.md)
+- [Bundles and fields](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Bundles-and-fields.md)
+- [The Load Bundle node](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/The-Load-Bundle-node.md)
+- [The library window](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/The-library-window.md)
+- [Import and export](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Import-and-export.md)
+- [Images, video and audio](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Images-video-and-audio.md)
+- [Data and backups](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Data-and-backups.md)
+- [FAQ and troubleshooting](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/FAQ-and-troubleshooting.md)
+
+## Optional
+
+- [README](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/README.md)
+- [Changelog](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/CHANGELOG.md)
+- [Translations](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Translations.md)
+- [Reporting problems](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/wiki/Reporting-problems.md)

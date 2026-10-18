@@ -1,299 +1,115 @@
-# ComfyUI Bundle Library
+# Bundle Library for ComfyUI
 
-텍스트·이미지·비디오·오디오·값을 이름 붙은 **번들**로 묶어 보관하고, **Load Bundle** 노드에서 번들을
-고르면 그 번들의 필드가 그대로 출력 슬롯이 되는 커스텀 노드 팩이다. 같은 이름의 필드를
-가진 번들끼리는 선택만 바꿔도 연결이 유지된다.
+Keep the prompts, pictures, videos, audio and settings that belong together as named **bundles**, and load any of
+them with one node. Choose another bundle, and the same workflow runs with that bundle's prompt, pictures and
+settings.
 
-## 현재 구현과 문서
+English | [한국어](README.ko.md)
 
-이 문서는 노드 0.0.34의 소스를 기준으로 한다.
+<!-- A short GIF goes here: choosing bundles on Load Bundle, each run with its own prompt and picture. -->
 
-- 번들과 미디어는 ComfyUI 사용자 디렉토리의 `bundle_library/`에 저장한다. 번들은 UUID로 구분하고,
-  이름은 같아도 된다. 라이브러리 창에서 만들기·편집·복제·삭제를 지원한다.
-- Load Bundle의 출력은 필드의 이름과 타입을 따른다. 노드 패널에는 이미지 갤러리, 텍스트 발췌와 값이
-  보이며, 비디오와 오디오를 재생할 수 있다. 필드 구성이 바뀌면 "Update outputs"로 슬롯을 맞춘다.
-- 카테고리와 즐겨찾기는 `organization.json`에 따로 저장한다. 번들 이름·메모·태그나 정리 정보만
-  바꾸면 출력 내용의 지문은 유지된다.
-- 휴지통은 번들 파일의 삭제 상태다. 같은 UUID와 이름으로 되살리며, 복원 전까지 워크플로에서
-  실행되지 않는다. 미사용 미디어 파일은 별도 확인을 거쳐 정리한다.
-- 옛 번들 형식을 읽고, 지원하지 않는 데이터는 상태와 이유를 표시한다. 저장·복제·삭제 중 창 잠금, 늦은
-  응답 제외, 업로드 취소를 지원한다.
+## Overview
 
-이 README는 사용법과 테스트 실행 방법을 다룬다. 개발 노트(설계 개요, 데이터 형식과 API, Phase 0 호환성
-검증 기록)와 운영 문서·계획·기록은 개발 환경(comfy-docker 저장소)의 `docs/bundle-library/`에 있다(2026-10-17에
-이 저장소에서 옮겼다).
+A workflow often runs the same graph with different inputs: one character with its reference pictures and prompt,
+another with its own; a location, a style, a voice. Bundle Library keeps each such set as a bundle in a library on
+the ComfyUI server, and the **Load Bundle** node puts the bundle you choose into the workflow. Its outputs follow the
+bundle: one output for each field, named after it. Bundles whose fields share names and types fill the same links, so
+switching between them is one click.
 
-## 예제
+Unlike values saved inside a workflow, bundles live in their own library: they are made and edited in a window of
+their own, found by search, tags and categories, shared between workflows, and moved between machines as ZIP files.
 
-(0.0.33부터)
+## Features
 
-- 템플릿 `z-image-turbo`(ComfyUI의 템플릿 목록, 이 팩의 `workflows/z-image-turbo.json`): Load Bundle 하나가 Z-Image
-  Turbo 하위 그래프에 프롬프트(`text`), 시작 그림(`image`), `steps`, `denoise`, 그림에서 시작할지(`i2i`)를 넣는다.
-  모델 링크는 워크플로의 메모에 있다.
-- 예제 번들 넷(`web/examples/example-bundles.zip`): Black Rose·Hamster·Santorini는 프롬프트로 그리고(`i2i` 꺼짐),
-  Example은 ComfyUI의 예제 그림에서 시작한다. 모두 같은 다섯 필드라서 노드에서 번들만 바꿔도 연결이 그대로다.
-- 라이브러리가 비어 있으면 목록에 "Import the examples" 단추가 보인다. 누르면 그 ZIP의 가져오기 미리 보기가
-  열리고, Import를 눌러야 들어온다. 번들이 있는 라이브러리에서는 가져오기 단추로 그 ZIP을 고르면 된다.
-- 남의 것에서 온 부분(ComfyUI의 예제 그림, Comfy-Org 템플릿)의 라이선스는 `THIRD-PARTY-NOTICES.md`에 있다.
+- **One node, outputs that follow the bundle.** Load Bundle has an output for each field of the chosen bundle. Links
+  stay when you switch to a bundle with the same fields; nothing is rebuilt behind your back.
+- **Text, numbers, switches, images, video and audio.** Seven field types, loaded as ComfyUI's own Load Image, Load
+  Video and Load Audio load them.
+- **A library window.** Make and edit bundles; search, sort, filter by tag, group in categories, star favorites, and
+  act on many bundles at once.
+- **Safe editing.** Unsaved drafts are kept apart, a change saved elsewhere is never overwritten silently, deleted
+  bundles go to a trash you can restore from, and files are written in full or not at all.
+- **Files stored once.** Each picture, video or audio file is kept once, whatever number of bundles use it, and can
+  be reused from the library. Unused files are cleaned up only when you ask.
+- **Import and export.** Move bundles, with their files, between libraries as ZIP files; workflows keep finding them.
+- **English and Korean.** The pack follows ComfyUI's language setting, and more languages can be added.
+- **An HTTP API.** Scripts and AI agents can make, change and use bundles too.
 
-## 라이브러리 열기
+## Installation
 
-- Load Bundle 노드의 📚 버튼: 번들 고르기 모드로 열린다. "Use this bundle"을 누르면(또는 번들을 두 번
-  누르면) 그 노드의 번들이 바뀐다. 노드에는 편집기가 보여 주는 번들이 저장된 그대로 넘어가고, 저장하고
-  목록을 다시 읽는 동안에는 기다린다(0.0.17부터). 노드에서 연결해 둔 출력에 맞는 필드가 없는 번들에는 ⚠
-  표시가 붙는다.
-- 상단 메뉴: Extensions → Open Bundle Library
-- 왼쪽 사이드바의 Bundle Library 탭: 번들이 라이브러리와 같은 묶음으로 보이고, 번들 이름을 누르면
-  라이브러리가 그 번들을 연 채로 열린다.
+Bundle Library needs ComfyUI 0.38.0 or later, with its frontend 1.53.10 or later. It needs nothing beyond what
+ComfyUI installs.
 
-번들을 연 채로 열리면(번들이 골라진 노드의 📚 버튼, 사이드바) 목록이 그 번들의 행으로 스크롤한다. 행이 접힌
-카테고리 안이면 그 카테고리를 펼친다. 새 번들을 처음 저장했을 때와 복제했을 때도 그 행으로 간다. 이미 있는
-번들을 저장하면 목록은 그대로다(0.0.23부터).
-- 명령 `BundleLibrary.Open`: 기본 단축키는 없다. 설정의 Keybinding에서 지정할 수 있다.
+- **ComfyUI-Manager**: search for **Bundle Library** and install it.
+- **comfy-cli**: `comfy node install bundle-library`
+- **By hand**:
 
-편집기 머리의 저장·되돌리기·복제·내보내기·삭제는 아이콘이다(0.0.26부터). 마우스를 올리면 이름이 보인다.
-필드 카드 머리 왼쪽의 손잡이(점 여섯 개)를 끌어 다른 카드 사이에 놓으면 필드의 순서가 바뀐다(0.0.28부터). 끄는
-동안 놓일 자리에 선이 보인다. 키보드로는 ▲▼로 한 칸씩 옮긴다. 순서를 바꾸는 것도 저장하지 않은 변경이다.
+  ```bash
+  cd ComfyUI/custom_nodes
+  git clone https://github.com/romanyogurt/ComfyUI-Bundle-Library
+  ```
 
-미디어 필드의 "Choose from the library…"는 라이브러리가 이미 가진 그 종류의 파일(이미지·동영상·오디오)을
-격자로 보인다(0.0.29부터). 최근에 저장된 것부터, 번들이 그 파일에 붙인 이름과 쓰는 번들의 수를 보인다(휴지통에만
-있거나 쓰는 번들이 없으면 그렇게 보인다). 마우스를 올리면 쓰는 번들과 필드가 보이고, 위의 칸으로 파일·번들 이름을
-거를 수 있다. 필드의 지금 파일은 "Current"로 표시된다. 고른 파일은 다시 올리지 않고 그 필드의 파일이 되며, 저장하지
-않은 변경이다.
+Then restart ComfyUI and reload the browser page. The node is marked BETA while the first public releases meet more
+setups.
 
-필드 카드 머리의 눈 단추로 필드를 끄고 켠다(0.0.30부터). 끈 필드는 값·파일과 함께 번들에 남지만 노드의 출력이
-되지 않는다. 카드가 흐려지고 OFF가 붙으며, 값은 그대로 고칠 수 있다. 필드를 지우지 않고 다른 출력 구성을 빠르게
-시험할 때 쓴다. 워크플로가 끈 필드의 출력에 연결돼 있으면 노드는 그 출력을 "turned off in this bundle"로
-표시해 남기고, 다시 켜거나 연결을 끊을 때까지 실행이 그 이유로 실패한다. 연결되지 않은 출력은 Update outputs로
-빠지고, 다시 켜면 다시 더해진다. 끈 필드가 있는 번들은 스키마 3으로 저장되어 0.0.29 이하에서는 쓰지 못한다(끈
-필드가 없는 번들은 그대로 쓴다).
-편집기 머리에는 저장하지 않은 변경이 있을 때만 상태가 보인다("● Unsaved changes", 새 번들은 "● New, not
-saved yet", 저장 중에는 "Saving…"). 카테고리 선택과 태그 칸에는 이름표를 두지 않는다(0.0.23부터).
+## Quick start
 
-창 안에서 Ctrl+S는 저장, Esc는 닫기다. 열린 메뉴나 확인 창이 있으면 Esc는 그것만 닫고, 번들을 여러 개
-골라 두었으면 먼저 그 선택을 푼다.
+The pack comes with an example workflow and four bundles made for it.
 
-편집기에 저장하지 않은 변경이 있는 동안(0.0.14부터)에는 편집 말고는 잠긴다: 다른 번들 고르기, 검색, 정렬,
-태그 필터, 새 번들·카테고리, 휴지통, 목록의 별표·끌기·카테고리 메뉴. 상태 줄이 "Save or discard your
-changes first."라고 알린다. 저장(Save)하거나 되돌리면(Revert) 풀린다. 잘못 입력한 숫자와 올리는 중인
-파일도 변경으로 친다. 편집기 머리의 ☆/★와 Category 선택은 그 번들 자신의 정리라 잠그지 않는다. 손대지
-않은 새 번들 초안은 잠그지 않고, 다른 곳으로 가면 버려진다. 변경이 있을 때 창을 닫으면(Esc, ✕, 바깥
-클릭) Save / Discard / Keep editing을 묻는다. Save로 닫을 때 저장이 실패하거나 카테고리에 넣지 못하면 창은
-열린 채 이유를 보인다.
+1. **Open the example.** In **Workflow → Browse Templates**, search for **z-image-turbo**. It makes a picture with
+   Z-Image Turbo from a bundle's prompt, or from the bundle's picture (image to image). Its note lists the models it
+   needs and where they go.
+2. **Import the example bundles.** Open the library from the box icon in the sidebar (**Open library**). An empty
+   library offers **Import the examples**: click it, then **Import 4 bundles**.
+3. **Run it.** Choose a bundle on the workflow's Load Bundle node and run. Choose another one and run again.
 
-저장, 복제, 삭제의 답을 기다리는 동안에도 창은 기다린다(0.0.17부터). 편집기에 "Saving…",
-"Duplicating…", "Moving to the trash…"가 보이고, 답이 오고 목록을 다시 읽으면 풀린다. 확인 창이나 이름을
-묻는 창이 열려 있는 동안에는 그 뒤의 창을 조작할 수 없다. Tab도 그 창 안에서만 돌고, 닫으면 초점이
-원래 자리로 돌아간다. 목록을 읽지 못하면 보이던 목록과 선택을 그대로 두고 상태 줄에 이유를 보인다.
+To make your own, select an example, **Duplicate → Duplicate with values**, change its prompt and picture, and save.
+Your bundle fits the same workflow, since it has the same fields. See
+[Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Getting-started) for more.
 
-목록 아래의 도구줄(0.0.13부터, 마우스를 올리면 설명이 뜬다):
+<!-- A screenshot of the library window goes here. -->
 
-| 버튼 | 하는 일 |
-| --- | --- |
-| 폴더와 + | 새 카테고리 |
-| 정렬(A→Z 또는 막대) | 이름 A→Z·Z→A, 최근 수정순·오래된 순을 고르는 메뉴(0.0.26부터 넷). 고른 정렬은 브라우저마다 기억한다. 정렬은 묶음 안에서 한다 |
-| 깔때기 | 태그로 거르는 메뉴. 태그마다 번들 수가 보이고, 위의 칸에 입력해 태그를 찾는다. 건 필터는 목록 위에 `Tag: …` 칩으로 보이고 ×로 푼다 |
-| 휴지통 | 휴지통을 연다. 숫자는 휴지통의 번들 수다 |
+## Documentation
 
-메뉴는 키보드로도 쓴다: 버튼에서 ↓로 열고, ↑/↓·Home·End로 옮기고, Enter로 고른다.
+Everything else is in the [wiki](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki):
 
-## 여러 번들 한 번에
+- **Using it**: [Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Getting-started),
+  [Bundles and fields](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Bundles-and-fields),
+  [The Load Bundle node](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/The-Load-Bundle-node),
+  [The library window](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/The-library-window),
+  [Import and export](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Import-and-export),
+  [Images, video and audio](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Images-video-and-audio),
+  [Data and backups](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Data-and-backups),
+  [FAQ and troubleshooting](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/FAQ-and-troubleshooting).
+- **Reference**: [HTTP API](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/HTTP-API),
+  [File formats](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/File-formats),
+  [Compatibility and versions](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Compatibility-and-versions),
+  [Automating with the API](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Automating-with-the-API).
+- **Contributing**: [Translations](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Translations),
+  [Reporting problems](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Reporting-problems).
 
-(0.0.14부터. 0.0.15부터는 📚로 연 고르기 모드에서도 여러 개를 고를 수 있다. 그때 "Use this bundle"은 한
-번들만 골랐을 때 쓸 수 있고, 아래쪽 안내가 "Select only one bundle to use it."이라고 알린다)
+For AI agents, [`llms.txt`](llms.txt) points to the plain-text versions of these pages.
 
-- Ctrl(macOS는 ⌘)+클릭으로 번들을 더하거나 빼고, Shift+클릭으로 처음 누른 행부터 그 행까지 고른다.
-  목록에 초점이 있을 때 Ctrl+A는 펼쳐 보이는 번들을 모두 고른다. Favorites와 제 카테고리에 두 번 보이는
-  번들도 한 번으로 센다.
-- 2개 이상 고르면 편집기 자리에 고른 번들의 목록과 작업이 보인다: 카테고리로 옮기기(Move), 즐겨찾기에
-  더하기·빼기, 태그(0.0.19부터: 고른 번들의 태그가 `몇 개/전체`와 함께 칩으로 보이고, ×는 고른 번들 모두에서
-  그 태그를 떼며, "+ tag for all"에 입력한 태그는 모두에 붙는다), 휴지통으로 보내기(확인을 받는다). 고른 행을
-  끌어다 놓으면 고른 번들이 모두 옮겨진다.
-- 작업은 누른 순간의 대상과 revision으로 보내고, 답이 올 때까지 창이 잠긴다. 결과는 바뀐 것, 이미 그
-  상태였던 것, 하지 못한 것(이유와 함께: 다른 곳에서 고쳐져 옮기지 않음, 이 버전이 바꿀 수 없음, 다시
-  시도하면 될 수 있음)으로 나뉘어 보이고, Done을 누르거나 다른 번들을 고를 때까지 남는다.
-- 답이 30초 넘게 없으면 "Stop waiting"으로 기다리기를 그만둘 수 있다. 그때와 통신 오류 때는 서버가 얼마나
-  했는지 알 수 없다고 보이고, 목록 다시 읽기와 다시 시도를 준다.
-- 검색이나 태그 필터로 가려진 번들은 선택에서 빠지고, 몇 개가 빠졌는지 상태 줄에 보인다.
+## Updates
 
-## 내보내기
+What changed in each release is in the [changelog](CHANGELOG.md) and on the
+[releases page](https://github.com/romanyogurt/ComfyUI-Bundle-Library/releases).
 
-(0.0.21부터)
+To update safely, back up the library folder (`ComfyUI/user/bundle_library/`), update the node pack, restart ComfyUI
+and reload the page. Your bundles and workflows keep working across updates; see
+[Compatibility and versions](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Compatibility-and-versions).
 
-- 번들을 여러 개 고르고 일괄 화면의 Export ZIP을 누르거나, 편집기 머리의 내려받기 버튼을 누르면 ZIP 하나로
-  내려받는다. ZIP에는 번들 파일(저장된 그대로), 번들들이 쓰는 이미지·비디오·오디오 원본, 목록(`manifest.json`)이
-  들어 있다. 카테고리는 이름으로 담고 즐겨찾기는 담지 않는다.
-- 태그 하나나 전체를 내보내려면 태그 필터를 걸거나 걸지 않은 채 목록에서 Ctrl+A로 모두 고른 뒤 Export ZIP을
-  누른다.
-- 휴지통의 번들과 이 버전이 읽지 못하는 파일은 빠지고, 결과에 이유가 보인다. 내려받기는 저절로 시작하고, 1시간
-  동안 다시 내려받을 수 있다. 편집기에 저장하지 않은 변경이 있으면 먼저 저장하거나 되돌린다.
-- 내보낸 ZIP은 아래 가져오기로 다른 라이브러리나 같은 라이브러리에 들인다.
+## Good to know
 
-## 가져오기
+- The library lives on the ComfyUI server and has no login of its own, like ComfyUI. If ComfyUI is reachable from
+  other computers (`--listen`), so is the library: keep it on a trusted network.
+- With `--multi-user`, all users share one library.
 
-(0.0.22부터)
+More in [Data and backups](https://github.com/romanyogurt/ComfyUI-Bundle-Library/wiki/Data-and-backups).
 
-- 목록 아래 도구줄의 올리기 버튼(휴지통 왼쪽)으로 내보내기 ZIP을 고르면, 올린 뒤 가져오면 어떻게 되는지 먼저
-  보인다. 번들마다 여기 없는지, 이미 있는지(휴지통에 있는지), 가져올 수 없는지(이유와 함께)가 보이고, ZIP에서 들어올
-  파일의 수와 크기가 보인다. 이때는 라이브러리가 아직 바뀌지 않았다. 올리는 동안은 창이 기다리고, Cancel upload로
-  그만둘 수 있다.
-- 이미 있는 번들은 그대로 두거나(기본), 파일의 내용으로 바꾸거나(휴지통에 있던 번들은 되살아난다), 새 번들로
-  따로 들인다. 카테고리는 파일에 적힌 이름을 따르거나(같은 이름이 없으면 만든다), 모두 한 카테고리에 넣거나,
-  카테고리 없이 둔다. 즐겨찾기는 가져오지 않는다.
-- Import를 누르면 결과가 새로 들어온 것, 바뀐 것, 따로 들어온 것, 그대로 둔 것, 가져오지 못한 것(이유와 함께)으로
-  나뉘어 보인다. Cancel을 누르거나 다른 번들을 열면 올린 파일은 서버에서 지워진다.
-- 서버는 같은 가져오기를 한 번만 한다. 답을 받지 못했으면(통신 오류나 Stop waiting) 결과의 Check again이 서버가
-  남긴 답을 받아 온다(1시간 동안, 0.0.23부터). 그사이 고른 카테고리를 지웠어도 그 답이 오고, 이유는 처음 답처럼
-  화면의 언어로 보인다(0.0.32부터).
-- 이 버전이 읽거나 쓸 수 없는 번들, 내용이 목록(`manifest.json`)과 다른 번들, 필드가 다른 종류의 파일을 가리키는
-  번들은 빠진다. ZIP이 아니거나 더 새 버전이 만든 ZIP은 받지 않는다. 올리는 파일은 4 GiB까지다.
+## License
 
-## 태그
-
-(0.0.19부터)
-
-- 태그는 대소문자를 가리지 않는다: `Portrait`와 `portrait`는 한 태그로 묶여 보이고 함께 바뀐다.
-- 목록 아래 깔때기 메뉴의 "Manage tags…"는 라이브러리 전체의 태그를 오른쪽 칸에 보인다. 태그마다 쓰는 번들
-  수, 휴지통의 번들 수, 이 버전이 바꿀 수 없는 번들 수가 보인다.
-- Rename…은 그 태그가 있는 모든 번들(휴지통의 번들 포함)에서 이름을 바꾼다. 이미 있는 태그 이름으로 바꾸면
-  둘을 합친다. Delete…는 모든 번들에서 그 태그를 뗀다(번들은 그대로). 둘 다 무엇이 얼마나 바뀌는지 먼저
-  보이고 확인받는다. 걸려 있던 태그 필터는 새 이름을 따른다.
-- 태그를 바꿔도 번들의 다른 값은 그대로다. 그 뒤 엄격해진 규칙 밖의 옛 값도 남는다.
-
-## 카테고리와 즐겨찾기
-
-- 목록은 접고 펼 수 있는 묶음으로 보인다. 순서는 ⚠ Needs attention(있을 때), ★ Favorites,
-  카테고리(이름순), Uncategorized(있을 때)다. Favorites는 비어 있어도 보이고, 카테고리도 비어 있어도
-  보인다. 접은 묶음은 브라우저마다 기억한다. 검색하거나 태그로 거르는 동안에는 Favorites와 맞는 번들이
-  있는 묶음만 모두 펼쳐 보인다. 검색은 카테고리 이름도 찾는다.
-- 번들마다 카테고리는 하나다(없으면 Uncategorized). 목록 아래 도구줄의 새 카테고리 버튼으로 만들고,
-  묶음 머리의 ⋯ 메뉴로 이름을 바꾸거나 지운다. 지우면 그 번들은 Uncategorized로 간다.
-- 번들을 옮기는 방법
-  - 편집기의 Category 선택. 맨 끝의 "New category…"로 새 카테고리를 만들어 바로 옮길 수 있다.
-  - 목록에서 번들을 다른 묶음으로 끌어다 놓는다. Uncategorized에 놓으면 카테고리를 빼고, ★ Favorites에
-    놓으면 즐겨찾기에 더한다. 카테고리에 든 번들을 끄는 동안에는 도구줄 자리가 "Drop here to take it out
-    of its category" 칸으로 바뀐다. Uncategorized가 비어 숨어 있어도 여기에 놓으면 카테고리를 뺀다.
-- ☆/★ 버튼(목록의 행과 편집기 머리)으로 즐겨찾기한다. 즐겨찾기한 번들은 Favorites와 제 카테고리에
-  함께 보인다.
-- 카테고리와 즐겨찾기는 바로 저장되고 번들 자체는 바뀌지 않는다. 저장하지 않은 편집이 있어도 그대로
-  남고, Revert는 카테고리와 즐겨찾기를 되돌리지 않는다. 새 번들은 고른 카테고리에 첫 저장 때 들어간다.
-- 노드의 번들 드롭다운도 ★ Favorites, 카테고리, Uncategorized로 묶인다.
-- ⚠ Needs attention에는 고쳐야 저장할 수 있는 번들, 이 버전이 바꿀 수 없는 번들, 이 버전이 읽지 못하는
-  파일(더 새 버전이 저장했거나 손상된 것)이 이유와 함께 보인다. 읽지 못하는 번들 파일은 그 행의
-  "Delete forever"로 명시적으로 지울 때만 지워지고, 휴지통을 비워도 남는다.
-
-## 휴지통과 정리
-
-- 지운 번들은 휴지통으로 간다. 목록 아래 도구줄의 휴지통 버튼으로 휴지통을 열어, 되살리거나
-  (Restore) 영구 삭제한다(Delete forever, Empty trash). 되살린 번들은 원래 id와 이름 그대로라 그
-  번들을 쓰던 워크플로가 다시 동작한다. 휴지통에 있는 동안에는 워크플로에서 실행되지 않는다.
-  되살리면 원래 카테고리와 즐겨찾기로 돌아오며, 휴지통 목록에 돌아갈 카테고리가 보인다.
-- 이 버전이 바꿀 수 없는 번들(더 새 버전의 데이터가 있는 것)은 휴지통에서 🔒로 보이고 되살릴 수 없다.
-  Delete forever는 무엇을 잃는지 알리고 확인을 받아 지우며, Empty trash는 그 번들을 남긴다(0.0.17부터).
-- 휴지통의 "Clean up unused files…"는 라이브러리의 번들도, 휴지통의 번들도 쓰지 않는 파일을
-  크기와 함께 보여 주고, 확인을 받아 지운다. 올린 지 24시간이 안 된 파일은 저장하지 않은
-  편집에 쓰일 수 있어 남긴다. 라이브러리에서 고른 파일도 고른 때부터 24시간을 기다린다(0.0.29부터). 그런
-  최근 파일도 지우려면 질문의 상자("Delete the N recent files too")를 고른다(0.0.31부터, 처음에는 꺼져 있다). 다른
-  탭이나 브라우저에서 저장하지 않은 변경이 그 파일을 쓰고 있었다면, 그 변경은 파일을 다시 고를 때까지 저장되지
-  않는다. 지운 파일은 되돌릴 수 없으므로 필요하면 먼저 라이브러리 폴더를 백업한다.
-- 이 버전이 다 알 수 없는 번들 파일(더 새 버전이 쓴 것, 모르는 데이터나 필드 타입이 있는 것)이 있으면 정리하지
-  않는다. 그 파일이 쓰는 파일이 쓰이지 않는 것처럼 보일 수 있어서다. 손상된 파일은 그 밖의 부분이 이 버전의 모양이면
-  그 파일이 가리키는 파일을 남기고 정리한다(0.0.32부터 모르는 데이터가 있는 손상 파일도 정리를 멈춘다).
-
-## 언어
-
-(0.0.24부터, 언어별 메시지 목록은 0.0.27부터)
-
-- 화면은 ComfyUI의 언어 설정(Settings → Comfy → Locale)을 따른다. 목록이 있는 언어(지금은 한국어)면 그 언어로,
-  그 밖의 언어면 영어로 보인다. 설정을 바꾸면 그다음에 그리는 화면부터 바뀐다(열려 있던 창은 다시 열 때).
-- 메시지 목록은 페이지를 열 때 서버에서 받는다. 받지 못하면 0.5초, 1.5초 뒤 다시 받고, 그래도 없으면 5초, 15초,
-  30초 뒤, 그다음 1분마다 다시 받는다. 받으면 노드 패널과 사이드바가 새로고침 없이 바뀌고, 라이브러리 창은 다음에
-  열 때 바뀐다. 영어 목록도 없는 동안은 글 대신 메시지 id가 보이며, 시작할 때 그렇다고 한 번 알린다(0.0.32부터).
-- 노드의 이름·설명·입력 설명과 명령 이름은 ComfyUI가 노드 팩의 `locales/ko/`로 바꾼다. ComfyUI는 이 파일을
-  시작할 때 읽고, 노드 이름은 페이지를 열 때 정해진다.
-- 서버가 보내는 오류와 이유(일괄·내보내기·가져오기의 번들별 이유, 읽기 전용의 이유, 저장 규칙의 경고 등)도
-  한국어로 보인다(0.0.25부터). 번들·태그·필드·카테고리 이름 같은 사용자의 데이터와, 디스크 오류처럼 시스템이 주는
-  글은 그대로 보인다.
-- 언어를 더하려면 `locales/ko/`를 본떠 `locales/<언어 코드>/`를 만든다. 코드는 ComfyUI의 것(`ja`, `zh-TW` 등)이다.
-  `bundle_library.json`(이 노드 팩의 메시지. 항목마다 `{"en": 번역한 영어, "text": 번역}`), `nodeDefs.json`,
-  `commands.json`을 둔다. 번역하지 않은 메시지는 영어로 보인다. `node --test tests/js/*.test.mjs`가 빠진 메시지와,
-  번역한 뒤 영어가 바뀐 메시지를 보고한다. 형식은 `locales/en/`과 `locales/ko/`의 `bundle_library.json`이 보여 준다.
-
-## 개발 규칙
-
-- 코드에 나오는 문자열(UI, 오류·로그 메시지, 자동으로 만드는 이름)은 영어로 쓴다. 문서는
-  한국어로 쓴다.
-- 화면과 서버의 메시지는 id로 쓴다. 화면은 `web/i18n.js`의 `t(id, values)`·`msg(id)`·`around()`, 서버는
-  `bundle_library/text.py`의 `Text(id, ...)`다. 문장은 `locales/en/bundle_library.json`에, 한국어는
-  `locales/ko/bundle_library.json`에 더한다. 문장을 조각으로 잇지 않는다(언어마다 어순이 다르다). 영어를 고치면
-  한국어를 다시 번역하고 그 `en`을 지금의 영어로 바꾼다. `tests/js/i18n.test.mjs`가 없는 id, 쓰이지 않는 항목,
-  꼴이나 자리표시가 다른 번역, 빠지거나 오래된 한국어를 잡는다. 서버가 내는 오류는 `Text`여야 한다
-  (`tests/test_text.py`).
-
-## 테스트
-
-테스트는 운영 ComfyUI가 아니라 테스트 서버에서 실행한다. comfy-docker의
-`scripts/bundle-library-test-server.sh`가 같은 이미지로 컨테이너 `bundle-library-test`를 띄운다.
-
-- GPU 없이(`--cpu`) 이 노드만 불러온다.
-- ComfyUI 소스와 `custom_nodes`는 읽기 전용으로 붙인다.
-- user·temp·output·input 폴더는 컨테이너의 `/tmp` 안에 있어서, 컨테이너를 멈추면 함께 사라진다.
-- `127.0.0.1:8189`로 연다. 10초 남짓이면 준비되고, 메모리는 0.9 GiB 정도 쓴다.
-
-명령은 comfy-docker 저장소 루트에서 실행한다.
-
-```bash
-npm install --prefix /tmp/bl-pw playwright-core@1.60.0   # 브라우저 시나리오용, 처음 한 번
-
-scripts/bundle-library-test-server.sh run     # 서버를 띄워 모든 테스트를 실행하고 멈춘다
-```
-
-하나씩 실행할 때는 서버를 띄워 둔다(`start`, `status`, `stop`).
-
-```bash
-scripts/bundle-library-test-server.sh start
-docker exec -w /opt/ComfyUI/custom_nodes/ComfyUI-Bundle-Library bundle-library-test \
-    python tests/e2e/node_smoke.py
-NODE_PATH=/tmp/bl-pw/node_modules \
-    node custom_nodes/ComfyUI-Bundle-Library/tests/browser/library_scenarios.cjs
-scripts/bundle-library-test-server.sh stop
-```
-
-| 테스트 | 확인하는 것 |
-| --- | --- |
-| `tests/test_*.py` (`python -m unittest discover -s tests -t .`) | 저장소, 모델, API, 변환, 미디어 검사. `test_compat.py`는 `tests/fixtures/compat/`의 출시 표본으로 호환성 계약을, `test_versions.py`는 버전 번호와 JS 상수 사본을, `test_examples.py`는 팩의 예제 ZIP이 그대로 들어오고 `workflows/`의 템플릿이 어느 예제 번들로도 연결을 지키는지를, `test_wiki.py`는 위키(`wiki/`) 쪽 사이의 링크·제목과 사이드바를 확인한다 |
-| `tests/js/*.test.mjs` (호스트의 `node --test`) | 슬롯 조정, 이름 표시, 목록 묶음의 순수 함수, 메시지 목록(코드가 쓰는 id가 영어 목록에 있고 쓰이지 않는 항목이 없는지, 번역의 꼴·자리표시가 영어와 맞는지, 한국어에 빠지거나 오래된 번역이 없는지), 받지 못한 메시지 목록을 다시 받는 간격과 늦은 도착의 알림(`messages.test.mjs`) |
-| `tests/e2e/compare_load_image.py`, `compare_media.py` | 변환 결과가 core LoadImage·LoadVideo·LoadAudio와 같은지 |
-| `tests/e2e/api_smoke.py` | 테스트 번들 두 개를 만들어 API로 확인한다 |
-| `tests/e2e/node_smoke.py` | Load Bundle을 실행해 출력, 캐시, 오류를 확인한다 |
-| `tests/e2e/cache_race.py` | ComfyUI의 실행기를 프로세스 안에서 돌려 캐시를 확인한다: 캐시 키를 정한 뒤 바뀐 번들, 빈 미디어 필드의 캐시, 나중에 연결한 문제 슬롯 |
-| `tests/e2e/media_smoke.py` | 비디오·오디오 필드로 Load Bundle을 실행해 VIDEO·AUDIO 출력을 확인한다 |
-| `tests/e2e/security_smoke.py` | 쓰기 보호와 제한값 (거부되는 요청만 보낸다) |
-| `tests/browser/*_scenarios.cjs` | 헤드리스 Chromium으로 노드, 라이브러리, 비디오·오디오 화면을 조작한다. `race_scenarios.cjs`는 응답을 늦추거나 순서를 뒤집어 열기·검색·저장·업로드를, `trash_scenarios.cjs`는 휴지통과 파일 정리를, `compat_scenarios.cjs`는 옛 워크플로·큰 정수·읽지 못하는 파일·버전 불일치를, `category_scenarios.cjs`는 카테고리·즐겨찾기·끌어다 놓기·묶인 목록을, `list_scenarios.cjs`는 목록 도구줄·메뉴의 키보드 조작·빈 묶음·끌기 뒤의 정리·코드 글꼴 이름을, `batch_scenarios.cjs`는 여러 번들 선택·일괄 작업과 결과·느리거나 답이 없는 요청·편집 중 잠금을, `window_scenarios.cjs`는 취소한 질문의 늦은 답·질문 뒤의 창·일괄 화면의 선택 유지·목록 읽기 실패·다시 그린 뒤의 숫자 입력과 초점·복제와 삭제의 대기·고르기가 넘기는 번들·휴지통의 읽기 전용 번들·노드 소리의 정리·창이 고른 번들로의 목록 스크롤을, `tags_scenarios.cjs`는 일괄 화면의 태그·Tags 칸의 이름 바꾸기·합치기·지우기·태그 필터·다른 곳에서 저장된 번들의 편집기·대소문자만 다른 태그를, `export_scenarios.cjs`는 일괄 화면과 편집기의 내보내기·내려받은 ZIP의 내용·빠진 번들의 이유·닫힌 창의 늦은 답을, `import_scenarios.cjs`는 가져오기의 올리기와 취소·미리 보기·건너뛰기·덮어쓰기·복사·카테고리 선택·떠난 미리 보기의 정리·잃어버린 답과 Check again·동기화 경고·받지 않는 ZIP·팩의 예제(빈 라이브러리의 단추, 템플릿의 연결)를, `i18n_scenarios.cjs`는 ComfyUI를 한국어로 열어 노드·사이드바·창·편집기·일괄·내보내기·가져오기·태그·휴지통·질문창에 영어 목록의 문장이 남지 않았는지, 서버의 거절과 번들별 이유가 한국어인지, ComfyUI가 노드 이름을 한국어로 바꾸는지, 메시지 목록을 받지 못한 시작과 새로고침 없는 복구를 확인한다 |
-| `tests/e2e/bench_store.py --count 100 --count 1000` | 번들 수에 따른 저장소 속도 (임시 폴더, `run`에는 없음) |
-
-- e2e 스크립트와 브라우저 시나리오의 기본 주소는 테스트 서버다. 다른 서버는 Python 스크립트의
-  `--base`, 브라우저 시나리오의 `COMFY_URL`로 지정한다.
-- 테스트는 자기가 만든 번들만 id로 골라 지우고, 그 번들의 휴지통 항목도 지운다. 브라우저
-  시나리오는 자기가 만든 카테고리도 지우고, 시작할 때 있던 번들, 휴지통 항목, 카테고리, 번들의 배치와
-  즐겨찾기가 끝날 때도 그대로인지 확인한다. `run`은
-  테스트가 만들지 않은 번들을 하나 먼저 만들고, 마지막에 그 번들이 남아 있는지 확인한다.
-- `compat_scenarios.cjs`는 손으로 만든 번들 파일(`tests/fixtures/compat/handmade/`)을 테스트 서버
-  컨테이너 안의 라이브러리에 넣었다가 끝날 때 지운다. `BL_TEST_CONTAINER`가 없으면 그 단계를 건너뛴다.
-- `trash_scenarios.cjs`는 휴지통이 자기가 만든 번들만 담고 있을 때만 휴지통을 비우고, 정리 목록이
-  자기 파일 하나뿐일 때만 파일을 지운다. 파일을 지우려면 24시간이 지난 파일이 필요해서,
-  `BL_TEST_CONTAINER`와 `BL_TEST_LIBRARY`가 있으면(`run`이 준다) 테스트 서버 컨테이너 안에서 자기
-  파일의 수정 시각을 사흘 전으로 바꾼다. 없으면 그 단계를 건너뛴다.
-- 프롬프트를 실행하는 테스트(`node_smoke.py`, `media_smoke.py`, `loader_scenarios.cjs`)는 끝날 때
-  자기가 넣은 작업을 작업 기록(job history)에서 client id로 골라 지운다.
-- `security_smoke.py`는 표준 라이브러리만 써서 호스트에서도 실행된다. 루프백 주소에서는
-  ComfyUI 자체의 Origin 검사가 먼저 거부하므로, `run`은 `--host 192.0.2.1:8189`로 한 번 더
-  실행해 Tailscale 주소로 들어온 요청처럼 이 API의 Origin 검사가 답하는지 본다.
-- 브라우저 시나리오
-  - 설정·워크플로 저장 같은 쓰기 요청은 브라우저에서 가로채 서버로 보내지 않는다.
-  - 브라우저 콘솔 오류는 예상한 것만 허용한다: 새 user 폴더에 없는 파일, 시나리오가 일부러
-    일으킨 오류 응답, 프런트엔드 시작 때의 경고. 그 밖의 오류가 있으면 실패한다.
-  - `loader_scenarios.cjs`만 프리뷰 노드로 된 작은 그래프를 실행한다.
-  - `media_scenarios.cjs`는 `tests/browser/fixtures/`의 작은 비디오·오디오 파일을 올린다. 이
-    파일은 `tests/browser/make_fixtures.py`(컨테이너에서 실행)로 다시 만들 수 있다.
-  - 스크린샷과 결과(`results.json`)는 `/tmp/bundle-library-<시나리오>/`(`BL_TEST_OUT`로 변경)에 남는다.
+Bundle Library is under the [MIT License](LICENSE). Some example material comes from others and keeps its own
+license: ComfyUI's example picture (GPL-3.0) and the parts of the template that come from Comfy-Org's Z-Image Turbo
+template (MIT). The other example pictures were made with Z-Image Turbo for this pack. See
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
