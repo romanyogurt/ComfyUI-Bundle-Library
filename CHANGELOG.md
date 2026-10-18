@@ -3,9 +3,9 @@
 Notable changes to Bundle Library. Versions follow [Semantic Versioning](https://semver.org/). The 0.0.x versions
 came before the first public release; they are in this repository's history and tags.
 
-## [Unreleased]
+## [0.1.0] - 2026-10-18
 
-The first public release, to be 0.1.0. Bundle Library as the [README](README.md) and the
+The first public release: Bundle Library as the [README](README.md) and the
 [wiki](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Home.md) describe it:
 
 - **Load Bundle**, a node whose outputs follow the chosen bundle: one output per field, links kept across bundles
@@ -19,6 +19,8 @@ The first public release, to be 0.1.0. Bundle Library as the [README](README.md)
 - An HTTP API, documented in the wiki, for scripts and AI agents.
 - An example workflow, `z-image-turbo`, and seven example bundles that an empty library offers to import: four made
   for that workflow, and three that show the other field types.
+- Runs with ComfyUI 0.38.0 or later on Python 3.10 or later, on Linux, Windows and macOS. Marked BETA while the first
+  public releases meet more setups.
 
 ## Development before 0.1.0
 

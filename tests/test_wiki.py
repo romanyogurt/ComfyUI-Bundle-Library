@@ -1,6 +1,6 @@
-"""The wiki's pages (wiki/, published to the repository's wiki): every link between them leads to a page
-and a heading that exist, and the sidebar lists every page. Links name the file (Page.md), so that they also
-work where the pages are read in the repository; publishing them to the wiki takes the ".md" off."""
+"""The wiki's pages (wiki/, read in the repository): every link between them leads to a page and a
+heading that exist, and the sidebar lists every page. Links name the file (Page.md), as the repository
+shows them."""
 
 import re
 import unittest
