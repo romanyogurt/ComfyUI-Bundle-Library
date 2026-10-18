@@ -359,6 +359,98 @@ const CHOICE_HELPERS = () => {
     }
     await ev(() => window.__bl.app.graph.clear());
 
+    // ---- ComfyUI reads its node definitions again: the sources are read again too (R020-01) ---------
+    // The page is given the lists below for both the node definitions (the dropdowns' widgets) and the
+    // sources' answers; the test changes them and calls ComfyUI's own refresh, with no click or key after.
+    const plan = { KSamplerSelect: ["euler", "heun"], LoraLoader: ["flux\\detail.safetensors"], delays: {}, asked: [] };
+    await page.route("**/api/object_info", async (route) => {
+        const response = await route.fetch();
+        const defs = await response.json();
+        defs.KSamplerSelect.input.required.sampler_name[1].options = plan.KSamplerSelect; // a V3 dropdown
+        defs.LoraLoader.input.required.lora_name[0] = plan.LoraLoader; // an old node's list
+        await route.fulfill({ response, json: defs });
+    });
+    await page.route("**/api/bundle-library/v1/choices/options?*", async (route) => {
+        const node = new URL(route.request().url()).searchParams.get("node");
+        plan.asked.push(node);
+        // the list as it is when asked, answered maybe later
+        const answer = { state: "read", label: node, options: [...plan[node]], paths: node === "LoraLoader" };
+        const delay = plan.delays[node]?.shift() ?? 0;
+        if (delay) await new Promise((done) => setTimeout(done, delay));
+        await route.fulfill({ json: answer });
+    });
+    const refreshDefinitions = () => ev(() => window.__bl.app.refreshComboInNodes());
+    await refreshDefinitions(); // the widgets take the lists above
+    const refreshBundle = (await api("POST", "/bundles", { name: "[test] Refresh", tags: ["test"], fields: [
+        { name: "sampler", type: "choice", value: "euler", source: { node: "KSamplerSelect", input: "sampler_name" } },
+        { name: "lora", type: "choice", value: "flux/detail.safetensors", source: { node: "LoraLoader", input: "lora_name" } },
+    ] })).id;
+    await ev(async (bundle) => {
+        const g = window.__bl.app.graph;
+        g.clear();
+        // As after a save in the library: the nodes' list and what the page knows of sources start again.
+        window.dispatchEvent(new CustomEvent("bundle-library:changed"));
+        const one = window.__bl.add("BundleLibraryLoad", [100, 100]);
+        const two = window.__bl.add("BundleLibraryLoad", [100, 600]); // the same sources, not linked
+        await window.__bl.pick(one, bundle);
+        await window.__bl.pick(two, bundle);
+        const select = window.__bl.add("KSamplerSelect", [700, 100]);
+        const lora = window.__bl.add("LoraLoader", [700, 300]);
+        one.connect(0, select, select.findInputSlot("sampler_name"));
+        one.connect(1, lora, lora.findInputSlot("lora_name"));
+        window.__panels = [one, two];
+    }, refreshBundle);
+    const both = () => ev(() => window.__panels.map((node) => Object.fromEntries([...node.bundlePanel.rows
+        .querySelectorAll(".bl-choice-block")].map((b) => [b.dataset.field, [...b.children].slice(1).map((c) => c.textContent)
+        .concat([b.querySelector(".bl-value").textContent])]))));
+    const settled = (predicate) => until(predicate, null, 6000);
+    await settled(() => window.__panels.every((n) => n.bundlePanel.rows.querySelector('.bl-choice-block[data-field="lora"]')));
+    await settle(800);
+    let panels = await both();
+    const fine = (block, output) => block && block.length === 2 && block[1] === output;
+    check("R020-01 (set-up): both nodes show the choices as their sources spell them, nothing wrong",
+        fine(panels[0].sampler, "euler") && fine(panels[0].lora, "flux\\detail.safetensors")
+        && fine(panels[1].sampler, "euler"), panels);
+    check("…each source read once for both nodes", plan.asked.length === 2, plan.asked);
+    let readsBefore = plan.asked.length;
+    plan.KSamplerSelect = ["heun"];
+    await refreshDefinitions();
+    await settled(() => window.__panels[0].bundlePanel.rows.querySelector('.bl-choice-block[data-field="sampler"]')?.children.length === 4);
+    panels = await both();
+    check("refreshed, no longer among the options: the source's warning and the target's, on both nodes, with no click",
+        panels[0].sampler?.[1] === "⚠ not among the options of KSamplerSelect › sampler_name on this ComfyUI; running will fail"
+        && panels[0].sampler?.[2] === "⚠ Not among the options of KSamplerSelect › sampler_name"
+        && panels[1].sampler?.[1] === "not among the options of KSamplerSelect › sampler_name on this ComfyUI (not connected)", panels);
+    check("…each source read once again for both nodes", plan.asked.length === readsBefore + 2, plan.asked.slice(readsBefore));
+    readsBefore = plan.asked.length;
+    plan.KSamplerSelect = ["euler"];
+    await refreshDefinitions();
+    await settled(() => window.__panels[0].bundlePanel.rows.querySelector('.bl-choice-block[data-field="sampler"]')?.children.length === 2);
+    panels = await both();
+    check("refreshed, among the options again: the warnings go", fine(panels[0].sampler, "euler") && fine(panels[1].sampler, "euler"),
+        panels);
+    plan.LoraLoader = ["flux/detail.safetensors"];
+    await refreshDefinitions();
+    await settled(() => window.__panels[0].bundlePanel.rows.querySelector('.bl-choice-block[data-field="lora"] .bl-value')
+        ?.textContent === "flux/detail.safetensors");
+    panels = await both();
+    check("refreshed with another spelling of the path: the output shown follows", fine(panels[0].lora, "flux/detail.safetensors")
+        && fine(panels[1].lora, "flux/detail.safetensors"), panels);
+    readsBefore = plan.asked.length;
+    plan.KSamplerSelect = ["heun"];
+    plan.delays.KSamplerSelect = [2500]; // this answer comes after the next refresh's
+    await refreshDefinitions();
+    plan.KSamplerSelect = ["euler"];
+    await refreshDefinitions();
+    await settle(3500);
+    panels = await both();
+    check("an answer asked for before the latest refresh, coming after it, is dropped", fine(panels[0].sampler, "euler")
+        && fine(panels[1].sampler, "euler") && plan.asked.slice(readsBefore).filter((n) => n === "KSamplerSelect").length === 2,
+        { panels, asked: plan.asked.slice(readsBefore) });
+    await page.unroute("**/api/object_info");
+    await page.unroute("**/api/bundle-library/v1/choices/options?*");
+    await ev(() => window.__bl.app.graph.clear());
+
     await session.finish();
 })().catch((e) => {
     console.error(e);

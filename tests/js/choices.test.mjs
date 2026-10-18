@@ -4,7 +4,9 @@ import test from "node:test";
 
 import "./english.mjs"; // the English catalog, as the page has it
 
-import { choiceTargets, resolveChoice, sourceKey, sourceLabel, targetVerdicts, uncheckedText } from "../../web/choices.js";
+import {
+    SourceOptions, choiceTargets, resolveChoice, sourceKey, sourceLabel, targetVerdicts, uncheckedText,
+} from "../../web/choices.js";
 
 const FIXTURE = JSON.parse(readFileSync(new URL("../fixtures/choices.json", import.meta.url), "utf8"));
 const SOURCE = { node: "LoraLoader", input: "lora_name" };
@@ -82,4 +84,69 @@ test("links as an object, as older graphs hold them; a link seen twice counts on
     const pick = dropdown(11, "KSamplerSelect", "sampler_name", ["euler"]);
     const plain = { links: { 1: link(1, 1, 11) }, getNodeById: (id) => (id === 11 ? pick : null) };
     assert.equal(choiceTargets(plain, loader([1, 1]), 0).length, 1);
+});
+
+// ---- what the page knows of the sources (R020-01) -----------------------------------------------
+
+/** A server whose answers come when the test says: each ask waits for answer(i, …). */
+function server() {
+    const asks = [];
+    return {
+        asks,
+        read: (source) => new Promise((resolve, reject) => asks.push({ source, resolve, reject })),
+        answer: (i, options) => asks[i].resolve({ state: "read", options, paths: false }),
+        fail: (i, message) => asks[i].reject(new Error(message)),
+    };
+}
+const settle = () => new Promise((done) => setImmediate(done));
+
+test("each source is read once for everything that shows it, and again after a refresh", async () => {
+    const remote = server();
+    let changes = 0;
+    const known = new SourceOptions(remote.read, () => { changes += 1; });
+    const other = { node: "KSampler", input: "scheduler" };
+    known.get(SOURCE);
+    known.get(SOURCE);
+    known.get(other);
+    await settle();
+    assert.equal(remote.asks.length, 2, "one ask per source");
+    assert.deepEqual(known.get(SOURCE), { done: false, answer: null, failure: null, asked: 0 });
+    remote.answer(0, ["a.safetensors"]);
+    await settle();
+    assert.equal(changes, 1);
+    assert.deepEqual(known.get(SOURCE).answer.options, ["a.safetensors"]);
+    known.get(SOURCE);
+    await settle();
+    assert.equal(remote.asks.length, 2, "answered: not asked again until a refresh");
+    known.refresh();
+    const kept = known.get(SOURCE);
+    await settle();
+    assert.equal(remote.asks.length, 3, "asked again after the refresh");
+    assert.deepEqual(kept.answer.options, ["a.safetensors"], "the last answer stays until the new one comes");
+    remote.answer(2, ["b.safetensors"]);
+    await settle();
+    assert.deepEqual(known.get(SOURCE).answer.options, ["b.safetensors"]);
+    assert.equal(changes, 2);
+});
+
+test("an answer asked for before the latest refresh is dropped, whenever it comes", async () => {
+    const remote = server();
+    let changes = 0;
+    const known = new SourceOptions(remote.read, () => { changes += 1; });
+    known.get(SOURCE); // ask 0
+    known.refresh();
+    known.get(SOURCE); // ask 1, after the refresh
+    await settle();
+    remote.answer(1, ["new.safetensors"]);
+    await settle();
+    remote.answer(0, ["old.safetensors"]); // the old list, coming last
+    await settle();
+    assert.deepEqual(known.get(SOURCE).answer.options, ["new.safetensors"]);
+    assert.equal(changes, 1, "only the answer taken redraws");
+    known.refresh();
+    known.get(SOURCE); // ask 2
+    await settle();
+    remote.fail(2, "Could not reach ComfyUI.");
+    await settle();
+    assert.deepEqual(known.get(SOURCE), { done: true, answer: null, failure: "Could not reach ComfyUI.", asked: 2 });
 });

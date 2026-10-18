@@ -55,7 +55,17 @@ class Resolved:
 
 def classify(spec):
     """(state, options, reason) of an input definition from INPUT_TYPES(): one
-    choice among text options is READ; anything else is UNSUPPORTED, with why."""
+    choice among text options is READ; anything else is UNSUPPORTED, with why.
+    A definition this cannot read (a node pack's own shape, such as options that
+    are not a list) is not a dropdown it can use: it stays with that input, and
+    the other inputs and nodes are read as usual."""
+    try:
+        return _classify(spec)
+    except Exception:  # noqa: BLE001 — a node's own definition: its failure stays with it
+        return UNSUPPORTED, None, NOT_COMBO
+
+
+def _classify(spec):
     if not isinstance(spec, (list, tuple)) or not spec:
         return UNSUPPORTED, None, NOT_COMBO
     kind = spec[0]
@@ -69,6 +79,8 @@ def classify(spec):
     elif kind == "COMBO":
         if extra.get("options") is None:  # options only the page is given
             return UNSUPPORTED, None, REMOTE
+        if not isinstance(extra["options"], (list, tuple)):  # not a list of options (a string would read as letters)
+            return UNSUPPORTED, None, NOT_COMBO
         options = list(extra["options"])
     else:
         return UNSUPPORTED, None, NOT_COMBO

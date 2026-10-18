@@ -49,7 +49,9 @@ Under a choice, the panel says what does not fit:
   through Reroute nodes. This is a warning only: Load Bundle does not stop for it, but that node may.
 
 The panel looks again when the node's links change, and shortly after you click or press a key, so links changed
-inside a subgraph, or a dropdown's list read again, are seen too.
+inside a subgraph are seen too. When ComfyUI reads its node definitions again (**Refresh Node Definitions**, or R,
+after you add or remove a model), the panel reads the choices' sources again as well, and its warnings follow the
+new lists.
 
 ## When a bundle cannot fill an output
 

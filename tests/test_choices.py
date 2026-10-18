@@ -59,6 +59,23 @@ class ClassifyTest(unittest.TestCase):
             with self.subTest(label):
                 self.assertEqual(classify(spec), (choices.UNSUPPORTED, None, reason))
 
+    def test_a_definition_this_cannot_read_is_no_dropdown(self):
+        class Odd:
+            def __eq__(self, other):
+                raise ValueError("compared")  # as an array is, compared with a text
+            __hash__ = None
+
+        cases = {
+            "options that are a number": ("COMBO", {"options": 5}),
+            "options that are a text": ("COMBO", {"options": "euler"}),
+            "options that are an object": ("COMBO", {"options": {"euler": 1}}),
+            "a kind that cannot be compared": (Odd(), {}),
+            "settings that cannot be compared": (["a"], {"multi_select": Odd()}),
+        }
+        for label, spec in cases.items():
+            with self.subTest(label):
+                self.assertEqual(classify(spec), (choices.UNSUPPORTED, None, choices.NOT_COMBO))
+
     def test_numbers_stay_numbers(self):
         # "1" is not 1: a list of numbers is not taken as their text.
         state, options, _ = classify((["1", "2"],))
@@ -132,6 +149,7 @@ CLASSES = {
     "Broken": RuntimeError("cannot list its models"),
     "Odd": {"required": {"voices": ("COMBO", {"remote": {"route": "/voices"}}), "tags": (["a", "b"], {"multi_select": {}})}},
     "NoCombo": {"required": {"text": ("STRING", {})}},
+    "OddPack": {"required": {"mode": ("COMBO", {"options": 5}), "style": (["warm", "cold"],)}},
 }
 FOLDERS = {"loras": (PT, LORAS), "vae": (PT, ["a.safetensors"]), "embeddings": (PT, []),
            "custom_nodes": (set(), ["x/__init__.py"]), "configs": ({".yaml"}, ["v1.yaml"])}
@@ -173,6 +191,7 @@ class ComfyProviderTest(unittest.TestCase):
             ("Odd", "voices"): (choices.UNSUPPORTED, choices.REMOTE, "Odd"),
             ("Odd", "tags"): (choices.UNSUPPORTED, choices.MULTISELECT, "Odd"),
             ("Broken", "x"): (choices.ERROR, choices.FAILED, "Broken"),
+            ("OddPack", "mode"): (choices.UNSUPPORTED, choices.NOT_COMBO, "OddPack"),
         }
         for (node, name), (state, reason, label) in cases.items():
             with self.subTest(f"{node}.{name}"), self.assertNoLogs() if node != "Broken" else self.assertLogs(level="WARNING"):
@@ -215,6 +234,8 @@ class ComfyProviderTest(unittest.TestCase):
         ])
         self.assertEqual(by_node["Odd"]["inputs"], [{"input": "voices", "supported": False, "reason": choices.REMOTE},
                                                     {"input": "tags", "supported": False, "reason": choices.MULTISELECT}])
+        # a node pack's input this cannot read leaves out that input only, not the list
+        self.assertEqual(by_node["OddPack"]["inputs"], [{"input": "style", "supported": True, "count": 2}])
 
 
 class Options:

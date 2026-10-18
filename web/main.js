@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { checkVersion, getMessages } from "./api.js";
-import { NODE_ID, setupLoaderNode } from "./loader_node.js";
+import { NODE_ID, refreshChoiceSources, setupLoaderNode } from "./loader_node.js";
 import { openLibrary, renderSidebar } from "./library_modal.js";
 import { hasEnglish, useLoader, useLocale } from "./i18n.js";
 
@@ -33,6 +33,11 @@ app.registerExtension({
 
     async beforeRegisterNodeDef(nodeType, nodeData) {
         if (nodeData.name === NODE_ID) setupLoaderNode(nodeType);
+    },
+
+    // After ComfyUI read its node definitions again and gave the dropdowns their new lists (R020-01).
+    async refreshComboInNodes() {
+        refreshChoiceSources();
     },
 
     setup() {

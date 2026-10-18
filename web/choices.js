@@ -28,6 +28,51 @@ export function resolveChoice(value, source, lookup) {
 /** The key a source is known by (as a Map key). */
 export const sourceKey = (source) => (source ? `${source.node}\n${source.input}` : "");
 
+/**
+ * What the page knows of each source's options, for everything that shows
+ * choices: each source is read once, and again after refresh(), when its list
+ * may have changed (ComfyUI read its node definitions again, the library
+ * changed). Until the new answer comes, the last one stays, so nothing
+ * flickers; an answer to an ask made before the latest refresh is dropped,
+ * whenever it comes. `read(source)` asks the server; `changed()` is told when an
+ * answer was taken.
+ */
+export class SourceOptions {
+    constructor(read, changed) {
+        this.read = read;
+        this.changed = changed;
+        this.entries = new Map(); // by sourceKey(): {done, answer, failure, asked (the refresh it was asked in)}
+        this.refreshes = 0;
+    }
+
+    /** What is known of `source`: {done, answer, failure}. Not read since the last refresh, it is asked for. */
+    get(source) {
+        const key = sourceKey(source);
+        let entry = this.entries.get(key);
+        if (!entry) {
+            entry = { done: false, answer: null, failure: null, asked: -1 };
+            this.entries.set(key, entry);
+        }
+        if (entry.asked !== this.refreshes) {
+            const asked = this.refreshes;
+            entry.asked = asked;
+            Promise.resolve().then(() => this.read(source))
+                .then((answer) => ({ answer, failure: null }), (error) => ({ answer: null, failure: error.message }))
+                .then((result) => {
+                    if (entry.asked !== asked || this.entries.get(key) !== entry) return; // asked again since
+                    Object.assign(entry, result, { done: true });
+                    this.changed();
+                });
+        }
+        return entry;
+    }
+
+    /** The lists may have changed: each source is read again when it is next shown. */
+    refresh() {
+        this.refreshes += 1;
+    }
+}
+
 /** A source as people read it: the node's display name (when this ComfyUI has it) and the input. */
 export function sourceLabel(source, lookup = null) {
     return t("choice.source", { node: lookup?.label || source.node, input: source.input });

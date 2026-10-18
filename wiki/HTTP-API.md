@@ -117,7 +117,8 @@ a file first, then put its `sha256` in a field.
 ### Choices
 
 The options of other nodes' dropdowns, for [choice fields](Bundles-and-fields.md#choices) (0.2.0). They are read
-from the node definitions of this ComfyUI each time you ask: model lists change when files are added.
+from the node definitions of this ComfyUI each time you ask, so a model list holds the files as ComfyUI lists them
+then. ComfyUI notices a changed model folder by its modification time, as it does for its own dropdowns.
 
 | Method | Path | Request | Answer |
 | --- | --- | --- | --- |

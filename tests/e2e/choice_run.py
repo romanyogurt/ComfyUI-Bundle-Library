@@ -44,6 +44,19 @@ from tests.e2e.cache_race import LocalServer, Runner, check, racing, spec, RESUL
 LORA_LOADER = nodes.NODE_DISPLAY_NAME_MAPPINGS.get("LoraLoader", "LoraLoader")
 
 
+def changed(folder):
+    """Make a change to `folder` show in ComfyUI's file lists. ComfyUI keeps a
+    folder's list until the folder's modification time changes, and a file system
+    may give changes close together the same time (tmpfs: one clock tick, R020-02).
+    So the time is moved on here, a second past any time it had."""
+    later = max(os.stat(folder).st_mtime_ns, changed.last) + 1_000_000_000
+    os.utime(folder, ns=(later, later))
+    changed.last = later
+
+
+changed.last = 0
+
+
 def choice_bundle(name, value, source=None, name_of_field="pick"):
     field = {"name": name_of_field, "type": "choice", "value": value}
     if source:
@@ -107,6 +120,7 @@ def main():
         # ---- a model folder's paths (CH05) and the cache (CH02) ----------------------------------------
         (loras / "flux\\detail.safetensors").touch()  # how Windows lists flux/detail.safetensors
         (loras / "style.safetensors").touch()
+        changed(loras)
         lora = store.create(choice_bundle("LoRA", "flux/detail.safetensors", ("LoraLoader", "lora_name")))
         prompt = {**loader(lora), **shows()}
         runner = Runner(server)
@@ -114,17 +128,20 @@ def main():
         check("a path written with the other slash goes out as the model folder's list spells it",
               spelled["success"] and spelled["shown"] == {"2": "flux\\detail.safetensors"}, spelled)
         (loras / "added.safetensors").touch()
+        changed(loras)
         kept = runner.run(prompt, ["2"])
         check("a file added to the folder that it is not keeps the cache", kept["success"]
               and {"1", "2"} <= set(kept["cached"]), kept)
         (loras / "flux\\detail.safetensors").unlink()
         (loras / "flux").mkdir()
         (loras / "flux" / "detail.safetensors").touch()  # now the list spells it as the bundle does
+        changed(loras)
         respelled = runner.run(prompt, ["2"])
         check("when the list spells it otherwise, the nodes reading it run again with that spelling",
               respelled["success"] and respelled["shown"] == {"2": "flux/detail.safetensors"}
               and "1" not in respelled["cached"], respelled)
         (loras / "flux\\detail.safetensors").touch()  # both spellings there now
+        changed(loras)
         both = runner.run(prompt, ["2"])
         check("the same text is taken first, and keeps the cache", both["success"]
               and both["shown"] == {"2": "flux/detail.safetensors"} and {"1", "2"} <= set(both["cached"]), both)
@@ -132,6 +149,7 @@ def main():
         (loras / "a" / "b\\c.safetensors").touch()  # a/b\c.safetensors
         (loras / "a\\b").mkdir()
         (loras / "a\\b" / "c.safetensors").touch()  # a\b/c.safetensors
+        changed(loras)
         ambiguous = store.create(choice_bundle("Ambiguous", "a/b/c.safetensors", ("LoraLoader", "lora_name")))
         clash = Runner(server).run({**loader(ambiguous), **shows()}, ["2"])
         check("two files it matches either way: neither is chosen, and the run stops with the reason",
@@ -141,7 +159,7 @@ def main():
         # ---- a list that changes between the cache key and the run (CH01, CH02) ------------------------
         race = store.create(choice_bundle("Race", "style.safetensors", ("LoraLoader", "lora_name")))
         prompt = {**loader(race), **shows()}
-        undo = racing(store, "1", lambda: (loras / "style.safetensors").unlink())
+        undo = racing(store, "1", lambda: ((loras / "style.safetensors").unlink(), changed(loras)))
         raced = Runner(server).run(prompt, ["2"])
         undo()
         check("a list that changed between the cache key and the run fails that run",

@@ -1,6 +1,6 @@
 import { app } from "../../scripts/app.js";
 import { CHANGED_EVENT, assetURL, forgetBundles, getChoiceOptions, listBundles, listLibrary, thumbnailURL } from "./api.js";
-import { choiceTargets, resolveChoice, sourceKey, sourceLabel, targetVerdicts, uncheckedText } from "./choices.js";
+import { SourceOptions, choiceTargets, resolveChoice, sourceLabel, targetVerdicts, uncheckedText } from "./choices.js";
 import { code, el, formatDuration, kindName } from "./dom.js";
 import { compactGroups, groupLabel } from "./groups.js";
 import { msg, onCatalogs, t } from "./i18n.js";
@@ -22,38 +22,29 @@ const PROBLEMS = { missing: msg("node.not_in_bundle"), off: msg("node.off_in_bun
 // Nodes showing a panel, for the refreshes that concern them all.
 const panels = new Set();
 
-// What this ComfyUI has of each choice's source (0.2.0), by sourceKey(): {done,
-// answer, failure}. Read once for all nodes, and again after a refresh of all
-// panels (the lists may have changed: a model added, ComfyUI's refresh); until
-// the new answer comes, the old one is shown.
-const sourceOptions = new Map();
+// What this ComfyUI has of each choice's source (0.2.0), read once for all
+// nodes; the panels showing choices are drawn again when an answer comes. Read
+// again after ComfyUI reads its node definitions again (R020-01) and after a
+// refresh of all panels: the lists may have changed (a model added or removed).
+const sourceOptions = new SourceOptions(getChoiceOptions, () => recheckChoices());
 
 function refreshAllPanels() {
     forgetBundles();
-    for (const entry of sourceOptions.values()) entry.stale = true;
+    sourceOptions.refresh();
     for (const node of panels) {
         if (node.graph) void refreshPanel(node);
     }
 }
 
-/** What is known of `source`'s options: {done, answer, failure}. Not read yet (or stale), it is asked for; the panels showing choices are drawn again when it comes. */
-function optionsOf(source) {
-    const key = sourceKey(source);
-    let entry = sourceOptions.get(key);
-    if (!entry) {
-        entry = { done: false, answer: null, failure: null, stale: true, reading: false };
-        sourceOptions.set(key, entry);
-    }
-    if (entry.stale && !entry.reading) {
-        entry.reading = true;
-        entry.stale = false;
-        getChoiceOptions(source).then((answer) => ({ answer, failure: null }), (error) => ({ answer: null, failure: error.message }))
-            .then((result) => {
-                Object.assign(entry, result, { done: true, reading: false });
-                recheckChoices();
-            });
-    }
-    return entry;
+/**
+ * ComfyUI read its node definitions again ("Refresh Node Definitions", R): the
+ * dropdowns of the graph have their new lists by now, and the sources may have
+ * new ones too. The panels with choices look again at once, and once more when
+ * the sources' new answers come.
+ */
+export function refreshChoiceSources() {
+    sourceOptions.refresh();
+    recheckChoices();
 }
 
 /** Draw again the panels whose choices say something else now. Each compares what it shows (renderPreview). */
@@ -371,7 +362,7 @@ function textBlock(slot, field) {
  * Its `signature` changes with anything the preview shows of it.
  */
 function choiceCheck(node, index, field) {
-    const entry = field.source ? optionsOf(field.source) : null;
+    const entry = field.source ? sourceOptions.get(field.source) : null;
     const resolved = resolveChoice(field.preview, field.source ?? null, entry?.done ? entry.answer : null);
     const targets = node.graph ? choiceTargets(node.graph, node, index) : [];
     const verdicts = targetVerdicts(resolved.output, targets);
