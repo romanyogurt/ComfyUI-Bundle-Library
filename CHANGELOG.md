@@ -3,6 +3,20 @@
 Notable changes to Bundle Library. Versions follow [Semantic Versioning](https://semver.org/). The 0.0.x versions
 came before the first public release; they are in this repository's history and tags.
 
+## [0.1.1] - 2026-10-19
+
+Fixes from an independent review of 0.1.0:
+
+- An imported bundle that was written but could not be read back at once is no longer reported as failed: it is
+  imported, and placed in its category.
+- An export whose manifest has text that is not valid Unicode, or files without a proper size, is refused at the
+  preview, instead of failing halfway through the import or showing a wrong total.
+- Deleting a bundle for good is reported as done even when the categories file cannot be read right after.
+- Importing the examples: the window waits for their download, so a second click or another view is not taken over
+  by its late answer.
+- Close → Save keeps the window open when the save comes with a warning, such as a folder not synced to the disk.
+- A request with an integer too long to read is refused as invalid JSON, not answered with an internal error.
+
 ## [0.1.0] - 2026-10-18
 
 The first public release: Bundle Library as the [README](README.md) and the
