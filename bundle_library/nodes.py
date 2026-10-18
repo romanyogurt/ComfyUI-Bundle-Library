@@ -1,11 +1,12 @@
 from comfy_api.latest import io
 from comfy_execution.graph_utils import ExecutionBlocker
 
+from .choices import ComfyProvider
 from .constants import MEDIA_TYPES, POOL_SIZE
 from .convert import load_audio, load_image, load_video
 from .library import get_store
 from .model import LibraryError
-from .slots import linked_outputs, output_fingerprint, parse_slot_spec, slot_problems
+from .slots import linked_outputs, output_fingerprint, parse_slot_spec, resolve_slots, slot_problems
 
 # The fingerprint each node's cache key was made with in the run going on, by
 # (node id, bundle id, slot_spec): execute() checks that what it reads is
@@ -63,8 +64,11 @@ class LoadBundle(io.ComfyNode):
         # Only what the outputs carry, and why a slot cannot be filled: a
         # renamed bundle or a new note keeps the cache of every node downstream,
         # and so does a bundle with an empty image field. A bundle in the trash
-        # fails before this, in get() (here and in validate_inputs).
-        fingerprint = output_fingerprint(slots, fields, slot_problems(store, slots, fields))
+        # fails before this, in get() (here and in validate_inputs). Choices
+        # are checked against their sources' options as they are now, outside
+        # the store's lock: execute() reads them again.
+        resolved = resolve_slots(slots, fields, ComfyProvider())
+        fingerprint = output_fingerprint(slots, fields, slot_problems(store, slots, fields, resolved), resolved)
         _keyed[(cls.hidden.unique_id, bundle_id, slot_spec)] = fingerprint
         return fingerprint
 
@@ -74,12 +78,17 @@ class LoadBundle(io.ComfyNode):
         bundle = store.get(bundle_id)  # one read: every output comes from the same revision
         fields = {f["name"]: f for f in bundle["fields"]}
         slots = parse_slot_spec(slot_spec)
-        problems = slot_problems(store, slots, fields)
+        resolved = resolve_slots(slots, fields, ComfyProvider())
+        problems = slot_problems(store, slots, fields, resolved)
         keyed = _keyed.pop((cls.hidden.unique_id, bundle_id, slot_spec), None)
-        if keyed is not None and keyed != output_fingerprint(slots, fields, problems):
-            # The bundle changed after this run made its cache key: the outputs
-            # would be kept under a key that does not describe them.
-            raise ValueError(f"Bundle '{bundle['name']}' changed while this run was starting. Run it again.")
+        if keyed is not None and keyed != output_fingerprint(slots, fields, problems, resolved):
+            # The bundle (or the options a choice is checked against) changed
+            # after this run made its cache key: the outputs would be kept under
+            # a key that does not describe them. Files a node makes while the
+            # run goes on are not waited for.
+            sourced = any(r.lookup is not None for r in resolved.values())
+            raise ValueError(f"Bundle '{bundle['name']}' changed while this run was starting"
+                             f"{', or the options its choices are checked against did' if sourced else ''}. Run it again.")
         linked = linked_outputs(cls.hidden.prompt, cls.hidden.unique_id)
         connected = [f"'{slots[index][0]}' {problem}" for index, problem in problems.items() if index in linked]
         if connected:
@@ -101,6 +110,8 @@ class LoadBundle(io.ComfyNode):
                     values.append(load(store.assets.path(field["asset"]["sha256"])))
                 except ValueError as e:
                     raise ValueError(f"Bundle '{bundle['name']}', field '{name}': {e}") from e
+            elif index in resolved:
+                values.append(resolved[index].output)  # as the source's options spell it
             else:
                 values.append(field["value"])
         values += [None] * (POOL_SIZE - len(values))

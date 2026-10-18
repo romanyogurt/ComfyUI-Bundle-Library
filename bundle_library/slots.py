@@ -4,6 +4,7 @@ Imports nothing from ComfyUI, so the tests can use it on their own."""
 import hashlib
 import json
 
+from . import choices
 from .constants import COMFY_TYPES, MEDIA_TYPES, POOL_SIZE
 from .model import load_json
 
@@ -40,8 +41,25 @@ def parse_slot_spec(text):
     return slots
 
 
-def field_problem(store, field, field_type):
-    """Why `field` cannot fill a slot of `field_type`, or None."""
+def resolve_slots(slots, fields, provider):
+    """What each choice slot carries (a choices.Resolved), by slot index: the
+    slots whose field is a choice field that is on. `provider` gives the options
+    of a source (choices.ComfyProvider), asked once per source node."""
+    resolved = {}
+    for index, (name, field_type) in enumerate(slots):
+        field = fields.get(name)
+        if field_type == "choice" and field is not None and field["type"] == "choice" and field.get("enabled") is not False:
+            source = field.get("source")
+            lookup = provider.lookup(source["node"], source["input"]) if source else None
+            resolved[index] = choices.resolve(field["value"], source, lookup)
+    return resolved
+
+
+def field_problem(store, field, field_type, resolved=None):
+    """Why `field` cannot fill a slot of `field_type`, or None. `resolved` is a
+    choice field's (from resolve_slots()): a value that is not one of its
+    source's options cannot fill it. A value without a source, or whose
+    source cannot be read here, can: nothing says it is wrong."""
     if field is None:
         return "is missing from the bundle"
     if field.get("enabled") is False:
@@ -53,30 +71,40 @@ def field_problem(store, field, field_type):
             return f"has no {field_type}"
         if store.assets.path(field["asset"]["sha256"]) is None:
             return f"has {'an' if field_type in ('image', 'audio') else 'a'} {field_type} file that is missing from the library"
+    if resolved is not None and resolved.state == choices.MISMATCH:
+        return f"is '{field['value']}', not one of {resolved.lookup.label}'s {field['source']['input']} here"
     return None
 
 
-def slot_problems(store, slots, fields):
-    """Why the bundle cannot fill each slot it cannot fill, by slot index."""
+def slot_problems(store, slots, fields, resolved=None):
+    """Why the bundle cannot fill each slot it cannot fill, by slot index.
+    `resolved` is from resolve_slots()."""
+    resolved = resolved or {}
     return {index: problem for index, (name, field_type) in enumerate(slots)
-            if (problem := field_problem(store, fields.get(name), field_type))}
+            if (problem := field_problem(store, fields.get(name), field_type, resolved.get(index)))}
 
 
-def output_fingerprint(slots, fields, problems=None):
+def output_fingerprint(slots, fields, problems=None, resolved=None):
     """A hash of what the outputs carry: for each slot (name, type) its field's
     value, the SHA-256 of its file (files never change under a hash), or why the
     bundle cannot fill it (`problems`, by slot index, from slot_problems()).
+    A choice carries its value as its source's options spell it (`resolved`,
+    from resolve_slots()): the hash changes with that spelling and with whether
+    the value is one of the options, not with other changes of the options.
     Everything else about the bundle (its name, note, tags, revision, times,
     category) leaves it unchanged, so editing those does not re-run the nodes
     that read the outputs. The same bundle gives the same hash, also when it
     cannot fill some slot: an empty image field is cached like any other."""
     problems = problems or {}
+    resolved = resolved or {}
     content = []
     for index, (name, field_type) in enumerate(slots):
         if index in problems:
             carried = {"problem": problems[index]}
         elif field_type in MEDIA_TYPES:
             carried = fields[name]["asset"]["sha256"]
+        elif index in resolved:
+            carried = resolved[index].output
         else:
             carried = fields[name]["value"]
         content.append([name, field_type, carried])
