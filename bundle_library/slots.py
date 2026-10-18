@@ -5,6 +5,7 @@ import hashlib
 import json
 
 from .constants import COMFY_TYPES, MEDIA_TYPES, POOL_SIZE
+from .model import load_json
 
 
 def parse_slot_spec(text):
@@ -12,9 +13,11 @@ def parse_slot_spec(text):
     if not text:
         return []
     try:
-        data = json.loads(text)
+        data = load_json(text)
     except json.JSONDecodeError as e:
         raise ValueError(f"not JSON ({e.msg})") from None
+    except RecursionError:
+        raise ValueError("nested too deeply") from None
     version = data.get("v") if isinstance(data, dict) else None
     if type(version) is float and version == 1:
         version = 1  # JSON's 1.0: JavaScript reads it as 1, so the frontend takes it too

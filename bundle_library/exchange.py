@@ -36,7 +36,7 @@ from pathlib import Path
 from . import schema
 from .assets import replace
 from .constants import VERSION
-from .model import LibraryError, check_bundle_id, invalid
+from .model import LibraryError, check_bundle_id, invalid, load_json
 from .store import UNSYNCED, kind_problem
 from .text import Text, said
 
@@ -261,7 +261,7 @@ class ExportFile:
         if "manifest.json" not in self.entries:
             raise _bad(Text("exchange.manifest_missing"))
         try:
-            data = json.loads(self.read("manifest.json", MAX_MANIFEST))
+            data = load_json(self.read("manifest.json", MAX_MANIFEST))
         except (ValueError, RecursionError):
             raise _bad(Text("exchange.manifest_not_json")) from None
         if not isinstance(data, dict) or data.get("format") != FORMAT:

@@ -1,6 +1,7 @@
 """Validation of bundles and fields. Imports nothing from ComfyUI, so the store
 and its tests can use it on their own."""
 
+import json
 import math
 import re
 import unicodedata
@@ -8,8 +9,8 @@ import unicodedata
 from .tags import key as tag_key
 from .text import Text
 from .constants import (
-    AUDIO_EXTENSIONS, FIELD_TYPES, IMAGE_FORMATS, MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_NOTE,
-    MAX_ORIGINAL_NAME, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES, MEDIA_TYPES, VIDEO_EXTENSIONS,
+    AUDIO_EXTENSIONS, FIELD_TYPES, IMAGE_FORMATS, MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_JSON_DEPTH,
+    MAX_NOTE, MAX_ORIGINAL_NAME, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES, MEDIA_TYPES, VIDEO_EXTENSIONS,
 )
 
 ASSET_EXTENSIONS = {e for e, _ in IMAGE_FORMATS.values()} | set(VIDEO_EXTENSIONS) | set(AUDIO_EXTENSIONS)
@@ -59,6 +60,27 @@ def check_sha256(value):
 def name_key(name):
     """Names sort regardless of case."""
     return name.casefold()
+
+
+def load_json(text):
+    """json.loads of a request or a file. Arrays and objects nested deeper than
+    MAX_JSON_DEPTH raise RecursionError, as JSON nested much deeper does in
+    json.loads itself: Python up to 3.13 stops at a depth of its own, but 3.14
+    parses as deep as the stack lets it, which depends on the machine (100,000
+    levels and more where the stack is unlimited), while this code walks values
+    by recursion (text.said). So every Python refuses the same."""
+    data = json.loads(text)
+    stack = [(data, 1)]
+    while stack:
+        value, depth = stack.pop()
+        if isinstance(value, dict):
+            value = value.values()
+        elif not isinstance(value, list):
+            continue
+        if depth > MAX_JSON_DEPTH:
+            raise RecursionError(f"nested more than {MAX_JSON_DEPTH} deep")
+        stack.extend((item, depth + 1) for item in value)
+    return data
 
 
 def lone_surrogates(data):

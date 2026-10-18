@@ -8,11 +8,10 @@ is an empty organization; a file this version does not fully understand is
 shown if it can be and never written. Imports nothing from ComfyUI.
 """
 
-import json
 import logging
 
 from . import schema
-from .model import UUID_RE, LibraryError, _name, _Rules, invalid, lone_surrogates
+from .model import UUID_RE, LibraryError, _name, _Rules, invalid, load_json, lone_surrogates
 from .text import Text
 
 FORMAT = "comfyui-bundle-library/organization"
@@ -70,7 +69,7 @@ def empty():
 def read(text):
     """Sort the content of organization.json into an Organization."""
     try:
-        data = json.loads(text)
+        data = load_json(text)
     except ValueError:
         return Organization(schema.CORRUPT, Text("common.not_json"))
     except RecursionError:

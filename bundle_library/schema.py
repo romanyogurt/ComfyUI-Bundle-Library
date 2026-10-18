@@ -7,12 +7,11 @@ current version only when the library saves it for another reason. Imports
 nothing from ComfyUI.
 """
 
-import json
 import logging
 import re
 
 from .constants import FIELD_TYPES, MEDIA_TYPES
-from .model import UUID_RE, LibraryError, lone_surrogates, read_bundle_content
+from .model import UUID_RE, LibraryError, load_json, lone_surrogates, read_bundle_content
 from .text import Text
 
 FORMAT = "comfyui-bundle-library/bundle"
@@ -142,7 +141,7 @@ def read(text, file_id=None):
     """Sort the content of a bundle file into a Loaded. `file_id` is the id its
     file name gives, which the bundle must have."""
     try:
-        data = json.loads(text)
+        data = load_json(text)
     except ValueError:  # includes text that is not UTF-8
         return Loaded(CORRUPT, problem=Text("common.not_json"))
     except RecursionError:

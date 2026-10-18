@@ -2,9 +2,9 @@ import unicodedata
 import unittest
 
 from bundle_library.constants import (
-    MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_NOTE, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES,
+    MAX_BUNDLE_NAME, MAX_FIELD_NAME, MAX_FIELDS, MAX_JSON_DEPTH, MAX_NOTE, MAX_TAG_LENGTH, MAX_TAGS, MAX_TEXT_BYTES,
 )
-from bundle_library.model import LibraryError, check_bundle_id, check_sha256, empty_value, normalize_bundle
+from bundle_library.model import LibraryError, check_bundle_id, check_sha256, empty_value, load_json, normalize_bundle
 
 SHA = "a" * 64
 
@@ -156,6 +156,18 @@ class IdTest(unittest.TestCase):
         for bad in ("", "a" * 63, "g" * 64, "a" * 63 + "/", None):
             with self.subTest(bad=bad), self.assertRaises(LibraryError):
                 check_sha256(bad)
+
+
+class JsonTest(unittest.TestCase):
+    def test_nesting_has_one_limit_whatever_the_python(self):
+        # Python 3.14 parses as deep as its stack lets it; the limit is this code's own.
+        self.assertEqual(load_json('{"a": ' + "[" * (MAX_JSON_DEPTH - 1) + "]" * (MAX_JSON_DEPTH - 1) + "}")["a"],
+                         load_json("[" * (MAX_JSON_DEPTH - 1) + "]" * (MAX_JSON_DEPTH - 1)))
+        for text in ('{"a": ' + "[" * MAX_JSON_DEPTH + "]" * MAX_JSON_DEPTH + "}",
+                     "[" * (MAX_JSON_DEPTH + 1) + "]" * (MAX_JSON_DEPTH + 1),
+                     "[" * 100000 + "]" * 100000):
+            with self.subTest(depth=text.count("[") + text.count("{")), self.assertRaises(RecursionError):
+                load_json(text)
 
 
 if __name__ == "__main__":

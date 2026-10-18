@@ -78,7 +78,9 @@ class AssetStoreTest(unittest.TestCase):
                 raise OSError(5, "Input/output error")
             return real_open(path, flags, *args)
 
-        with mock.patch.object(assets_module.os, "open", no_folder), self.assertLogs(level="WARNING"):
+        # As where folders are synced: Windows never tries (SYNC_FOLDERS), so nothing fails there.
+        with mock.patch.object(assets_module, "SYNC_FOLDERS", True), mock.patch.object(assets_module.os, "open", no_folder), \
+                self.assertLogs(level="WARNING"):
             info, created, ok = self.assets.finalize(*self.received(helpers.png("navy")), "b.png")
         self.assertEqual((created, ok), (True, False))  # in place, but a power loss could undo it
         self.assertIsNotNone(self.assets.path(info["sha256"]))

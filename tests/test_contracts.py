@@ -14,6 +14,7 @@ from unittest import mock
 
 from bundle_library import schema
 from bundle_library import store as store_module
+from bundle_library.constants import MAX_JSON_DEPTH
 from bundle_library.model import LibraryError
 from bundle_library.store import UNSYNCED, BundleStore
 
@@ -57,7 +58,9 @@ class ContractsTest(unittest.TestCase):
                 raise OSError(5, "Input/output error")
             return real_open(path, flags, *args)
 
-        with mock.patch.object(store_module.os, "open", no_folder_sync), self.assertLogs(level="WARNING") as logs:
+        # As where folders are synced: Windows never tries (assets.SYNC_FOLDERS), so nothing fails there.
+        with mock.patch("bundle_library.assets.SYNC_FOLDERS", True), mock.patch.object(store_module.os, "open", no_folder_sync), \
+                self.assertLogs(level="WARNING") as logs:
             starred = self.store.batch({"action": "set_favorite", "ids": [red["id"]], "favorite": True})
             trashed = self.store.batch({"action": "trash", "ids": [blue["id"]], "expected_revisions": {blue["id"]: 1}})
             updated = self.store.update(red["id"], {"name": "Red 2", "fields": []}, 1)
@@ -166,11 +169,12 @@ class ContractsTest(unittest.TestCase):
         self.path(surrogate).write_text(self.path(surrogate).read_text(encoding="utf-8").replace(
             '"value": "surrogate"', '"value": "\\ud800"'), encoding="utf-8")
         broken[surrogate["id"]] = "a lone surrogate"
-        nested = self.make("nested")
-        text = self.path(nested).read_text(encoding="utf-8")
-        self.path(nested).write_text(text.replace('"note": ""', '"note": "", "extra": ' + "[" * 100000 + "]" * 100000),
-                                     encoding="utf-8")
-        broken[nested["id"]] = "deep nesting"
+        for label, depth in (("deep nesting", 100000), ("one level too deep", MAX_JSON_DEPTH)):
+            nested = self.make(label)
+            text = self.path(nested).read_text(encoding="utf-8")
+            self.path(nested).write_text(text.replace('"note": ""', '"note": "", "extra": ' + "[" * depth + "]" * depth),
+                                         encoding="utf-8")
+            broken[nested["id"]] = label
         listing = BundleStore(self.root).list()  # read afresh, as after a restart
         self.assertEqual(sorted(b["id"] for b in listing["bundles"]), sorted([good["id"], details["id"]]))
         kept = next(b for b in listing["bundles"] if b["id"] == details["id"])

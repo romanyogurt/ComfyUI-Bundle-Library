@@ -13,7 +13,7 @@ from aiohttp.test_utils import AioHTTPTestCase
 from PIL import Image
 
 from bundle_library import routes
-from bundle_library.constants import MAX_JSON_BODY, VERSION
+from bundle_library.constants import MAX_JSON_BODY, MAX_JSON_DEPTH, VERSION
 from bundle_library.store import BundleStore
 
 from . import helpers
@@ -448,7 +448,8 @@ class RoutesTest(AioHTTPTestCase):
                                                       headers=WRITE), 201)
         self.assertEqual((copy["name"], copy["fields"][0]["value"]), ("Red Dress Girl copy", data["fields"][0]["value"]))
         for label, body in {"a lone surrogate": b'{"name": "\\ud800", "fields": []}'.replace(b"\\\\", b"\\"),
-                            "deep nesting": b'{"a": ' + b"[" * 100000 + b"]" * 100000 + b"}"}.items():
+                            "deep nesting": b'{"a": ' + b"[" * 100000 + b"]" * 100000 + b"}",
+                            "one level too deep": b'{"a": ' + b"[" * MAX_JSON_DEPTH + b"]" * MAX_JSON_DEPTH + b"}"}.items():
             with self.subTest(label):
                 await self.error(await self.client.post(P + "/bundles", data=body, headers={
                     **WRITE, "Content-Type": "application/json"}), 400, "invalid_json")

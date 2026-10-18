@@ -16,7 +16,7 @@ from aiohttp import web
 from .assets import MIME_TYPES
 from .constants import API_PREFIX, MAX_JSON_BODY, MEDIA_TYPES, VERSION
 from .exchange import MAX_IMPORT_BYTES, Exports, Imports, file_name
-from .model import LibraryError, check_bundle_id, check_sha256, lone_surrogates
+from .model import LibraryError, check_bundle_id, check_sha256, load_json, lone_surrogates
 from .store import UNSYNCED, present
 from .text import Text, catalogs, said
 
@@ -104,7 +104,7 @@ async def _read_json(request):
             raise _too_large(MAX_JSON_BODY)
         chunks.append(chunk)
     try:
-        data = json.loads(b"".join(chunks))
+        data = load_json(b"".join(chunks))
     except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
         raise LibraryError(400, "invalid_json", Text("request.json_invalid")) from None
     if not isinstance(data, dict):

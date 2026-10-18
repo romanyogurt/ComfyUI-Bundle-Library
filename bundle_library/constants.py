@@ -33,6 +33,7 @@ MAX_NOTE = 10_000
 MAX_ORIGINAL_NAME = 255
 MAX_TEXT_BYTES = 1024 * 1024
 MAX_JSON_BODY = 4 * 1024 * 1024
+MAX_JSON_DEPTH = 64  # arrays and objects in a request or a file: far more than the formats need
 MAX_IMAGE_BYTES = 50 * 1024 * 1024
 MAX_IMAGE_PIXELS = 64_000_000
 MAX_VIDEO_BYTES = 1024 * 1024 * 1024
