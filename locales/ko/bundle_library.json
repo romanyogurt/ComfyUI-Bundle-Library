@@ -1894,6 +1894,10 @@
     "en": "Bundle fields changed: ",
     "text": "번들 필드가 바뀌었습니다: "
   },
+  "node.library_hint": {
+    "en": "Press 📚 to open the library.",
+    "text": "📚 아이콘을 눌러 라이브러리를 열 수 있습니다."
+  },
   "node.list_failed": {
     "en": "⚠ Could not load the bundle list: {reason}",
     "text": "⚠ 번들 목록을 불러올 수 없습니다: {reason}"

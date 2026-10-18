@@ -5,7 +5,7 @@
 
 [English](README.md) | 한국어
 
-![Load Bundle 노드 하나가 예제 번들을 바꿀 때마다 출력 단자가 그 번들에 맞춰 바뀝니다: 이미지와 설정값, 동영상과 오디오, 숫자와 스위치, 이미지 두 장](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/outputs-follow-the-bundle.gif)
+![Load Bundle 노드 하나가 예제 번들을 바꿀 때마다 출력 단자가 그 번들에 맞춰 바뀝니다: 이미지와 설정값, 동영상과 오디오, 숫자와 스위치, 이미지 두 장](media/outputs-follow-the-bundle.gif)
 
 ## 소개
 
@@ -52,7 +52,7 @@ ComfyUI 0.38.0 이상이 필요합니다.
    **예제 가져오기** 버튼이 보이니, 누른 다음 **번들 7개 가져오기**를 누르세요.
 3. **실행하기**: 워크플로의 Load Bundle 노드에서 번들을 골라 실행합니다. 다른 번들로 바꿔 다시 실행해 보세요.
 
-![같은 워크플로를 예제 번들마다 실행하면, 워크플로로 들어가는 이미지와 프롬프트가 번들에 따라 바뀝니다](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/one-workflow-many-bundles.gif)
+![같은 워크플로를 예제 번들마다 실행하면, 워크플로로 들어가는 이미지와 프롬프트가 번들에 따라 바뀝니다](media/one-workflow-many-bundles.gif)
 
 **Field types** 묶음의 번들 세 개는 다른 종류의 입력을 담고 있습니다(동영상과 오디오, 숫자와 스위치, 이미지 두 장).
 Load Bundle 노드에서 골라 보면 출력 단자가 번들에 맞춰 바뀝니다.
@@ -61,7 +61,7 @@ Load Bundle 노드에서 골라 보면 출력 단자가 번들에 맞춰 바뀝�
 같은 워크플로에서 그대로 쓸 수 있습니다. 더 자세한 내용은
 [Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Getting-started.md)(영어)를 참고하세요.
 
-![라이브러리 창: 묶음별로 정리된 예제 번들 일곱 개와, 동영상·오디오·텍스트를 담은 Sunset loop를 연 편집기](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/library-window.png)
+![라이브러리 창: 묶음별로 정리된 예제 번들 일곱 개와, 동영상·오디오·텍스트를 담은 Sunset loop를 연 편집기](media/library-window.png)
 
 ## 문서
 

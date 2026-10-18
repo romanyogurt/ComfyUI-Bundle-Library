@@ -350,7 +350,7 @@ function renderPreview(node, bundle) {
     rows.replaceChildren();
     notice.hidden = true;
     if (!widget(node, "bundle_id")?.value) {
-        rows.append(el("div", "bl-note", t("common.select_bundle")));
+        rows.append(el("div", "bl-note", t("common.select_bundle")), el("div", "bl-note", t("node.library_hint")));
         return;
     }
     if (unreadableSpec(node)) {

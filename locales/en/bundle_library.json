@@ -511,6 +511,7 @@
   "node.choose_bundle": "Select a bundle…",
   "node.empty": "(empty)",
   "node.fields_changed": "Bundle fields changed: ",
+  "node.library_hint": "Press 📚 to open the library.",
   "node.list_failed": "⚠ Could not load the bundle list: {reason}",
   "node.misplaced_links": {
     "one": "This workflow saved linked output {list} under another field than the node records. The links now carry the recorded fields; check them.",

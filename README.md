@@ -5,7 +5,7 @@ of them with one node.
 
 English | [한국어](README.ko.md)
 
-![One Load Bundle node, switching between example bundles: its output slots change with each bundle, from an image and settings to a video and audio, numbers and a switch, or two images](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/outputs-follow-the-bundle.gif)
+![One Load Bundle node, switching between example bundles: its output slots change with each bundle, from an image and settings to a video and audio, numbers and a switch, or two images](media/outputs-follow-the-bundle.gif)
 
 ## Overview
 
@@ -53,7 +53,7 @@ The pack comes with an example workflow, four bundles made for it, and three mor
    library offers **Import the examples**: click it, then **Import 7 bundles**.
 3. **Run it.** Choose a bundle on the workflow's Load Bundle node and run. Choose another one and run again.
 
-![The same workflow run with each example bundle: the image and the prompt that reach it change with the bundle](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/one-workflow-many-bundles.gif)
+![The same workflow run with each example bundle: the image and the prompt that reach it change with the bundle](media/one-workflow-many-bundles.gif)
 
 The three bundles in **Field types** hold other kinds of inputs (a video and audio, numbers and a switch, two
 images). Choose one on a Load Bundle node to see its output slots change.
@@ -62,7 +62,7 @@ To make your own, select an example, **Duplicate → Duplicate with values**, ch
 It works in the same workflow. See
 [Getting started](https://github.com/romanyogurt/ComfyUI-Bundle-Library/blob/main/wiki/Getting-started.md) for more.
 
-![The library window: the seven example bundles in their groups, and Sunset loop open in the editor with its video, audio and text](https://raw.githubusercontent.com/romanyogurt/ComfyUI-Bundle-Library/main/media/library-window.png)
+![The library window: the seven example bundles in their groups, and Sunset loop open in the editor with its video, audio and text](media/library-window.png)
 
 ## Documentation
 
