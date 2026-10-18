@@ -22,6 +22,10 @@ The first public release, to be 0.1.0. Bundle Library as the [README](README.md)
 
 ## Development before 0.1.0
 
+- **0.0.36**: tags count as the same by one table on the page and on every server, whatever Unicode the server's
+  Python has; requests and files nested more than 64 deep are refused on every Python (3.14 reads deeper ones where
+  its stack allows); on Windows, a file that another program holds open is replaced once it is let go, within about
+  two seconds; the unit tests run on Ubuntu, Windows and macOS, and the test server is in the repository.
 - **0.0.35**: three example bundles of other field types (a video and audio, numbers and a switch, two
   pictures), to show that a node's outputs follow its bundle.
 - **0.0.34**: uploaded files are synced to the disk before they take their place; every write whose folder could not
