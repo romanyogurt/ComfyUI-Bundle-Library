@@ -40,7 +40,8 @@ A command-line client such as curl sends neither `Sec-Fetch-Site` nor `Origin`, 
 - Each route has required keys, optional keys (shown with `?`, which have defaults) and keys that take `null`. A
   missing required key is refused with 400 `invalid` ("Missing in the request: …"); it is never read as empty.
   Everything is checked before anything is written.
-- Text that is not valid Unicode (lone surrogates) or JSON nested too deeply is refused with 400 `invalid_json`.
+- Text that is not valid Unicode (lone surrogates) or JSON nested more than 64 deep (arrays and objects) is refused
+  with 400 `invalid_json`.
 - The node's pages also send `X-Bundle-Library-Version`. When it differs from the server's version, the write is
   refused with 409 `version_mismatch`, with `page_version` and `server_version`. A request without this header
   (a script) is not checked.
